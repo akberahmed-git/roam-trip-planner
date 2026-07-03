@@ -1,0 +1,191 @@
+:root {
+  /* Color scales */
+  --color-teal-50: #EFFCFD;
+  --color-teal-100: #D0F4F9;
+  --color-teal-200: #A2E8F4;
+  --color-teal-300: #65D5EB;
+  --color-teal-400: #2BBAD6;
+  --color-teal-500: #10A2BC;
+  --color-teal-600: #0C869D;
+  --color-teal-700: #0A6E83;
+  --color-teal-800: #095568;
+  --color-teal-900: #084454;
+
+  --color-slate-50: #F8FAFC;
+  --color-slate-100: #F1F5F9;
+  --color-slate-200: #E2E8F0;
+  --color-slate-300: #CBD5E1;
+  --color-slate-400: #94A3B8;
+  --color-slate-500: #64748B;
+  --color-slate-600: #475569;
+  --color-slate-700: #334155;
+  --color-slate-800: #1E293B;
+  --color-slate-900: #0F172A;
+
+  --color-white: #FFFFFF;
+  --color-black: #000000;
+
+  /* Brand */
+  --brand-default: #10A2BC;
+  --brand-emphasis: #0C869D;
+  --brand-strong: #0A6E83;
+  --brand-subtle: #EFFCFD;
+  --brand-muted: #D0F4F9;
+
+  /* Text */
+  --text-primary: #0F172A;
+  --text-secondary: #475569;
+  --text-tertiary: #64748B;
+  --text-disabled: #94A3B8;
+  --text-inverse: #FFFFFF;
+  --text-brand: #0A6E83;
+  --text-on-brand: #FFFFFF;
+
+  /* Surface */
+  --surface-default: #FFFFFF;
+  --surface-subtle: #F8FAFC;
+  --surface-recessed: #F1F5F9;
+  --surface-brand: #EFFCFD;
+  --surface-overlay: rgba(15, 23, 42, 0.48);
+  --surface-inverse: #0F172A;
+  --surface-inverse-subtle: #1E293B;
+
+  /* Border */
+  --border-default: #E2E8F0;
+  --border-strong: #CBD5E1;
+  --border-brand: #65D5EB;
+  --border-focus: #10A2BC;
+
+  /* Interactive */
+  --interactive-primary: #0C869D;
+  --interactive-primary-hover: #0A6E83;
+  --interactive-primary-pressed: #095568;
+  --interactive-primary-disabled: #E2E8F0;
+  --interactive-secondary: #EFFCFD;
+  --interactive-secondary-hover: #D0F4F9;
+
+  /* Confidence states */
+  --color-confirmed-fg: #15803D;
+  --color-confirmed-bg: #F0FDF4;
+  --color-confirmed-border: #86EFAC;
+  --color-confirmed-icon: #16A34A;
+
+  --color-confirmed-limited-fg: #0A6E83;
+  --color-confirmed-limited-bg: #EFFCFD;
+  --color-confirmed-limited-border: #A2E8F4;
+  --color-confirmed-limited-icon: #10A2BC;
+
+  --color-estimated-fg: #92400E;
+  --color-estimated-bg: #FFFBEB;
+  --color-estimated-border: #FCD34D;
+  --color-estimated-icon: #D97706;
+
+  --color-needs-input-fg: #334155;
+  --color-needs-input-bg: #F1F5F9;
+  --color-needs-input-border: #CBD5E1;
+  --color-needs-input-icon: #64748B;
+
+  /* Meal */
+  --meal-breakfast-fg: #92400E;
+  --meal-breakfast-bg: #FFFBEB;
+  --meal-breakfast-border: #FCD34D;
+  --meal-breakfast-icon: #D97706;
+
+  --meal-lunch-fg: #166534;
+  --meal-lunch-bg: #F0FDF4;
+  --meal-lunch-border: #86EFAC;
+  --meal-lunch-icon: #16A34A;
+
+  --meal-dinner-fg: #9F1239;
+  --meal-dinner-bg: #FFF1F2;
+  --meal-dinner-border: #FDA4AF;
+  --meal-dinner-icon: #E11D48;
+
+  /* Diff */
+  --diff-added-fg: #15803D;
+  --diff-added-bg: #F0FDF4;
+  --diff-added-border: #86EFAC;
+  --diff-removed-fg: #991B1B;
+  --diff-removed-bg: #FEF2F2;
+  --diff-removed-border: #FCA5A5;
+  --diff-changed-fg: #334155;
+  --diff-changed-bg: #F1F5F9;
+  --diff-changed-border: #CBD5E1;
+  --diff-unchanged-fg: #64748B;
+
+  /* Motion */
+  --duration-instant: 70ms;
+  --duration-fast: 150ms;
+  --duration-moderate: 250ms;
+  --duration-slow: 400ms;
+  --easing-standard: cubic-bezier(0.4, 0, 0.2, 1);
+  --easing-decelerate: cubic-bezier(0, 0, 0.2, 1);
+  --easing-accelerate: cubic-bezier(0.4, 0, 1, 1);
+
+  /* Z-index */
+  --z-base: 0;
+  --z-raised: 100;
+  --z-overlay: 200;
+  --z-modal: 300;
+  --z-drawer: 400;
+  --z-toast: 500;
+
+  /* Icon sizing */
+  --icon-sm: 16px;
+  --icon-md: 20px;
+  --icon-lg: 24px;
+
+  /* Typography */
+  --font-family-sans: 'Poppins', sans-serif;
+  --font-family-mono: 'SF Mono', 'Fira Code', monospace;
+
+  --font-size-display: 32px;
+  --font-size-h1: 24px;
+  --font-size-h2: 20px;
+  --font-size-h3: 17px;
+  --font-size-body: 15px;
+  --font-size-small: 13px;
+  --font-size-micro: 11px;
+
+  --line-height-tight: 1.2;
+  --line-height-snug: 1.35;
+  --line-height-normal: 1.5;
+  --line-height-relaxed: 1.65;
+
+  --font-weight-regular: 400;
+  --font-weight-medium: 500;
+  --font-weight-semibold: 600;
+  --font-weight-bold: 700;
+
+  --letter-spacing-normal: 0;
+  --letter-spacing-wide: 0.02em;
+  --letter-spacing-tight: -0.01em;
+  --letter-spacing-caps: 0.08em;
+
+  /* Spacing */
+  --spacing-1: 4px;
+  --spacing-2: 8px;
+  --spacing-3: 12px;
+  --spacing-4: 16px;
+  --spacing-5: 20px;
+  --spacing-6: 24px;
+  --spacing-8: 32px;
+  --spacing-10: 40px;
+  --spacing-12: 48px;
+  --spacing-16: 64px;
+
+  /* Radius */
+  --radius-sm: 8px;
+  --radius-lg: 16px;
+  --radius-full: 9999px;
+
+  /* Shadow */
+  --shadow-sm: 0 1px 3px 0 rgba(15,23,42,0.08), 0 1px 2px 0 rgba(15,23,42,0.04);
+  --shadow-md: 0 4px 12px 0 rgba(15,23,42,0.10), 0 2px 4px 0 rgba(15,23,42,0.06);
+  --shadow-lg: 0 12px 32px 0 rgba(15,23,42,0.14), 0 4px 8px 0 rgba(15,23,42,0.08);
+}
+
+/* Typography composites — apply these combinations manually per component */
+/* body-med: 15px / weight 500 / line-height 1.5 */
+/* label: 13px / weight 500 / line-height 1.5 / letter-spacing 0.02em */
+/* caps-label: 11px / weight 600 / line-height 1.5 / letter-spacing 0.08em / uppercase */
