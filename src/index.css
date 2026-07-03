@@ -51,3 +51,7 @@ code {
 #root {
   min-height: 100vh;
 }
+
+.screen {
+  padding: var(--spacing-8);
+}
