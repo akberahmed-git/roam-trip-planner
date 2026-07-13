@@ -427,8 +427,9 @@ h1 {
 .date-box {
   flex: 1;
   height: 52px;
-  border: 1px solid var(--border-default);
+  border: none;
   border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-sm);
   padding: 0 var(--spacing-4);
   font-family: var(--font-family-sans);
   font-size: var(--font-size-body);
@@ -444,7 +445,7 @@ h1 {
 }
 
 .date-box:hover {
-  border-color: var(--color-slate-400);
+  box-shadow: var(--shadow-md);
 }
 
 /* Custom date-range picker (native <input type="date"> popups can't be
