@@ -22,6 +22,11 @@ export async function generateRawItinerary(params) {
   const interests = Array.isArray(params.interests) ? params.interests : [];
   const adults = typeof params.adults === 'number' ? params.adults : 1;
 
+  const hasNightlife = interests.some(function(i) { return i.toLowerCase().includes('nightlife'); });
+  const endTimeLine = hasNightlife
+    ? '- End time: nightlife is a priority. Post-dinner activities (bars, clubs, live music) are expected. The last item of every day must end by 02:00. The traveller is back at the hotel by 02:00.'
+    : '- End time: the last item of every day must end by 22:30. The traveller must be back at the hotel by 22:30.';
+
   const groupLine = adults > 1
     ? `- Group size: ${adults} people — prefer venues with group-friendly seating, activities that are more enjoyable with multiple people, and restaurants that handle walk-in groups of ${adults} without a long wait.`
     : '';
@@ -38,6 +43,7 @@ Trip details:
 - Budget band: ${budget || 'mid-range'}
 - Accommodation (routing anchor): ${accommodation || 'a centrally located hotel'}
 ${interestsLine}${groupLine ? `\n${groupLine}` : ''}
+${endTimeLine}
 
 Generate TWO different itineraries for this trip:
 1. "Packed & Varied" — more activities per day, faster pace, wide variety of experiences. Each day has 3-4 activities (not counting meals).
@@ -58,7 +64,7 @@ For meal items specifically: the place you choose must genuinely fit that meal, 
 
 For each item, also include:
 - "categoryTag": format "Type · Descriptor", two short words separated by a dot. Examples: "Beach · Outdoor", "Restaurant · Seafront", "Museum · Outdoor", "Bar · Seafront", "Activity · Outdoor", "Hotel · Seafront". Keep this consistent for every item, including meals.
-- "startTime": a plausible 24-hour "HH:MM" clock time, sequential and realistic across the day. Nothing on any day may start before 09:00 - the day's first item (breakfast, or the first activity on a breakfastAtAccommodation day) starts at 09:00 at the earliest. Meal windows are fixed: breakfast between 09:00-10:30, lunch between 12:00-14:00, dinner between 19:00-21:00. SCHEDULING RULE (strictly enforced): the only gap between any two consecutive items is the travel time between them. Each item's startTime must equal the previous item's startTime + durationMinutes + travel time. Zero idle time is permitted. Schedule afternoon activities back-to-back after lunch so the day runs continuously right up to dinner.
+- "startTime": a plausible 24-hour "HH:MM" clock time, sequential and realistic across the day. Nothing on any day may start before 09:00 - the day's first item (breakfast, or the first activity on a breakfastAtAccommodation day) starts at 09:00 at the earliest. Meal windows are fixed: breakfast between 09:00-10:30, lunch between 12:00-14:00, dinner between 19:00-21:00. END TIME (strictly enforced): every day's last item must end by the time specified above (22:30 standard, 02:00 for nightlife). SCHEDULING RULE (strictly enforced): the only gap between any two consecutive items is the travel time between them. Each item's startTime must equal the previous item's startTime + durationMinutes + travel time. Zero idle time is permitted. Schedule afternoon activities back-to-back after lunch so the day runs continuously right up to dinner.
 - "durationMinutes": a plausible whole number of minutes for how long this stop takes. Meals are always exactly 60. Activities are 45-150.
 - "mealType": ONLY for items where "type" is "meal" — one of "breakfast", "lunch", or "dinner". Omit or set to null for non-meal items.
 
