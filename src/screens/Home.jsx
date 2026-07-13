@@ -348,7 +348,7 @@ export default function Home() {
                   key={trip.savedAt ? `${trip.title}-${trip.savedAt}` : trip.title}
                   onClick={() => handleOpenSavedTrip(trip)}
                 >
-                  <PinIcon />
+                  <span style={{ alignSelf: "flex-start", display: "flex" }}><PinIcon /></span>
                   <div style={{ flex: 1 }}>
                     <span className="list-row__title">{trip.title}</span>
                     <span className="list-row__subtitle">{trip.subtitle}</span>
