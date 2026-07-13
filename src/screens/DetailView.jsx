@@ -247,15 +247,15 @@ export default function DetailView() {
       <Header />
       <div className="screen">
         <div className="container stack">
-          <FlowBreadcrumb current="Details" />
+          <FlowBreadcrumb current="Swap" />
 
           <div className="itinerary-header">
-            <h1>{plan.label} itinerary</h1>
-            {tripParams?.destination && <p className="page-location">{tripParams.destination}</p>}
+            <h1>Swap places</h1>
+            {tripParams?.destination && <p className="page-location">{tripParams?.destination} - {plan.label}</p>}
             <p className="page-intro">
               {isGroup
-                ? 'Rearrange and swap stops to suit everyone in your group.'
-                : 'Feel free to rearrange and replace cards.'}
+                ? 'Swap places to suit everyone in your group.'
+                : 'Swap places to best suit your travel plans.'}
             </p>
           </div>
 
@@ -307,22 +307,13 @@ export default function DetailView() {
 
           <SegmentedControl options={dayLabels} value={`Day ${day?.day}`} onChange={selectDay} />
 
-          <div className="detail-footer">
-            <button
-              type="button"
-              className="detail-footer__button detail-footer__button--outline"
-              onClick={() => navigate('/map', { state: { variant: effectiveVariant } })}
-            >
-              View on map
-            </button>
-            <button
-              type="button"
-              className="detail-footer__button detail-footer__button--solid"
-              onClick={() => navigate('/finalise')}
-            >
-              Save itinerary
-            </button>
-          </div>
+          <button
+            type="button"
+            className="button-primary button-full"
+            onClick={() => navigate('/map', { state: { variant: effectiveVariant } })}
+          >
+            Continue
+          </button>
         </div>
       </div>
       <Footer />

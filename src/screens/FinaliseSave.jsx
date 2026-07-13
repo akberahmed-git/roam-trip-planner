@@ -266,7 +266,7 @@ export default function FinaliseSave() {
   function handleSaveTrip() {
     saveTrip({
       title: `${tripParams.days} day${tripParams.days === 1 ? '' : 's'} in ${tripParams.destination}`,
-      subtitle: `${plan.label} · ${days.reduce((sum, d) => sum + (d.items?.length || 0), 0)} stops`,
+      subtitle: (function() { var td = tripParams.startDate ? new Date(tripParams.startDate + 'T00:00:00') : null; var ds = td ? td.toLocaleDateString('en-US', { month: 'short', year: 'numeric' }) : ''; var sep = ' · '; var is = (tripParams.interests || []).join(sep); return [ds, is].filter(Boolean).join(sep); })(),
       destination: tripParams.destination,
       days: tripParams.days,
       savedItinerary: resolvedItinerary,
@@ -304,7 +304,7 @@ export default function FinaliseSave() {
             </div>
             <div className="finalise-card">
               <div className="finalise-row">
-                <span className="finalise-row__icon">
+                <span className="finalise-row__icon" style={{ alignSelf: 'flex-start' }}>
                   <MapPinIcon />
                 </span>
                 <div className="finalise-row__content">
@@ -313,7 +313,7 @@ export default function FinaliseSave() {
                 </div>
               </div>
               <div className="finalise-row">
-                <span className="finalise-row__icon">
+                <span className="finalise-row__icon" style={{ alignSelf: 'flex-start' }}>
                   <CalendarIcon />
                 </span>
                 <div className="finalise-row__content">
@@ -325,7 +325,7 @@ export default function FinaliseSave() {
                 </div>
               </div>
               <div className="finalise-row">
-                <span className="finalise-row__icon">
+                <span className="finalise-row__icon" style={{ alignSelf: 'flex-start' }}>
                   <UsersIcon />
                 </span>
                 <div className="finalise-row__content">
@@ -334,7 +334,7 @@ export default function FinaliseSave() {
                 </div>
               </div>
               <div className="finalise-row">
-                <span className="finalise-row__icon">
+                <span className="finalise-row__icon" style={{ alignSelf: 'flex-start' }}>
                   <HeartIcon />
                 </span>
                 <div className="finalise-row__content">

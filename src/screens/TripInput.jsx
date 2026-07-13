@@ -360,7 +360,7 @@ export default function TripInput() {
             {error && <p className="form-error">{error}</p>}
 
             <button type="submit" className="button-primary button-full">
-              Choose accommodation
+              Continue
             </button>
           </form>
         </div>

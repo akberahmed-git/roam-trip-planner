@@ -213,7 +213,7 @@ export default function ComparisonView() {
 
           <div className="itinerary-header">
             <h1>
-              {tripParams?.days} days in {tripParams?.destination}
+              {tripParams?.days} nights in {tripParams?.destination} for {adults} guest{adults === 1 ? '' : 's'}
             </h1>
             <div className="itinerary-actions">
               <button
@@ -281,9 +281,22 @@ export default function ComparisonView() {
 
           <SegmentedControl options={dayLabels} value={`Day ${day?.day}`} onChange={selectDay} />
 
-          <button type="button" className="button-primary button-full" onClick={handleExplore}>
-            Explore this itinerary
-          </button>
+          <div className="detail-footer">
+            <button
+              type="button"
+              className="detail-footer__button detail-footer__button--outline"
+              onClick={handleExplore}
+            >
+              Swap places
+            </button>
+            <button
+              type="button"
+              className="detail-footer__button detail-footer__button--solid"
+              onClick={() => navigate('/map', { state: { variant: variantKey } })}
+            >
+              Continue
+            </button>
+          </div>
           <button type="button" className="delete-itinerary-button" onClick={() => setDeleteDialogOpen(true)}>
             Delete itinerary
           </button>

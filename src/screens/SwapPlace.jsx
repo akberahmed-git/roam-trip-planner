@@ -260,14 +260,16 @@ export default function SwapPlace() {
       <Header />
       <div className="screen">
         <div className="container stack">
-          <FlowBreadcrumb current="Swap" />
+          <FlowBreadcrumb current="Swap place" />
 
           <div className="itinerary-header">
-            <h1>Swap</h1>
+            <h1>Swap {item.name}</h1>
             {tripParams?.destination && <p className="page-location">{tripParams.destination}</p>}
           </div>
 
           <CurrentPlaceCard item={item} />
+
+          <p className="page-intro">Swap places to suit everyone in your group.</p>
 
           {status === 'loading' && (
             <p className="page-intro inline-loading">
@@ -327,7 +329,7 @@ export default function SwapPlace() {
                 onClick={handleConfirm}
                 disabled={selectedIndex == null}
               >
-                Confirm swap
+                Swap
               </button>
             </div>
           )}

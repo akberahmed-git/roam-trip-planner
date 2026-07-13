@@ -138,7 +138,7 @@ export default function MapView() {
               className="detail-footer__button detail-footer__button--solid"
               onClick={() => navigate('/finalise')}
             >
-              Save itinerary
+              Continue
             </button>
           </div>
         </div>

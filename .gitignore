@@ -24,3 +24,7 @@ dist-ssr
 *.sw?
 .env
 .vercel
+
+# Generated at runtime by api/_lib/interestSuggestions.js - a local cache
+# file, not source.
+api/_lib/.interest-suggestions-cache.json

@@ -19,7 +19,7 @@ import { TOKYO_2_DAYS } from '../data/savedTrips/tokyo'
 const DEMO_TRIPS = [
   {
     title: '2 days in Tokyo',
-    subtitle: 'Feb 2026 · Temples & Shrines, Anime & Pop Culture, Nightlife & Entertainment, Modern Architecture',
+    subtitle: 'Feb 2026 · Temples & Shrines · Anime & Pop Culture · Nighte & Entertainment · Modern Architecture',
     destination: 'Tokyo',
     days: 2,
     interests: ['Temples & Shrines', 'Anime & Pop Culture', 'Nightlife & Entertainment', 'Modern Architecture'],

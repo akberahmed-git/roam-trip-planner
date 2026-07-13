@@ -323,7 +323,7 @@ export default function Accommodation() {
 
         {status === 'success' && (
           <div className="container stack">
-            <FlowBreadcrumb current="Accommodation" />
+            <FlowBreadcrumb current="Stay" />
 
             {/* itinerary-header, not a bare div - matches every other
                 screen's heading block (ComparisonView/DetailView/MapView/
@@ -331,7 +331,7 @@ export default function Accommodation() {
                 everywhere via the same flex/gap-3 column rather than a
                 one-off margin here. */}
             <div className="itinerary-header">
-              <h1>Choose your accommodation</h1>
+              <h1>Where are you staying?</h1>
               {tripParams?.destination && <p className="page-location">{tripParams.destination}</p>}
               <p className="page-intro">Recommendations based on your budget. Itinerary routes start from here.</p>
             </div>
@@ -371,7 +371,7 @@ export default function Accommodation() {
                         className="price-range-field__value"
                         aria-label={displayRange ? formatExactRange(displayRange) : undefined}
                       >
-                        {displayRange ? formatRange(displayRange) : 'Not available'}{displayRange && totalTravellers >= 3 ? '*' : ''}
+                        {displayRange ? formatRange(displayRange) : 'Not available'}
                       </span>
                     </div>
                   </div>
@@ -385,16 +385,6 @@ export default function Accommodation() {
                     />
                   </div>
                 </div>
-                {displayRange && totalTravellers >= 3 && (
-                  <p className="page-intro">
-                    * ≈ {formatRange({
-                      min: Math.round(displayRange.min / totalTravellers),
-                      max: Math.round(displayRange.max / totalTravellers),
-                      currencyCode: displayRange.currencyCode,
-                      estimated: true,
-                    })} per person/night for {totalTravellers} travellers
-                  </p>
-                )}
 
                 <div className="stack">
                   {options.map((option, index) => {
@@ -444,7 +434,7 @@ export default function Accommodation() {
                   onClick={handleGenerate}
                   disabled={options.length === 0}
                 >
-                  Generate itineraries
+                  Continue
                 </button>
               </>
             )}

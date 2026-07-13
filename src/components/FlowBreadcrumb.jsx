@@ -3,9 +3,9 @@ import { Link } from 'react-router-dom'
 const STEPS = [
   { label: 'Home', to: '/' },
   { label: 'Plan', to: '/trip-input' },
-  { label: 'Accommodation', to: '/accommodation' },
+  { label: 'Stay', to: '/accommodation' },
   { label: 'Itinerary', to: '/comparison' },
-  { label: 'Details', to: '/detail' },
+  { label: 'Swap', to: '/detail' },
 ]
 
 // Map and Swap both branch off Details (Figma: "Home / Plan / Accomodation /
