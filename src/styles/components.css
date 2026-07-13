@@ -2330,7 +2330,7 @@ h1 {
 
 .app-footer {
   background: var(--surface-default);
-  border-top: 1px solid var(--color-slate-300);
+  border-top: 1px solid var(--border-default);
   width: 100%;
 }
 
@@ -2378,7 +2378,7 @@ h1 {
 .app-footer__divider {
   height: 1px;
   width: 100%;
-  background: var(--color-slate-300);
+  background: var(--border-default);
 }
 
 .app-footer__copyright {
