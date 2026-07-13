@@ -210,6 +210,7 @@ export default function DetailView() {
   }
 
   const days = plan.days || []
+  const isGroup = (tripParams?.adults ?? 1) > 1
   const day = days[dayIndex] || days[0]
   const dayLabels = days.map((d) => `Day ${d.day}`)
 
@@ -251,7 +252,11 @@ export default function DetailView() {
           <div className="itinerary-header">
             <h1>{plan.label} itinerary</h1>
             {tripParams?.destination && <p className="page-location">{tripParams.destination}</p>}
-            <p className="page-intro">Feel free to rearrange and replace cards.</p>
+            <p className="page-intro">
+              {isGroup
+                ? 'Rearrange and swap stops to suit everyone in your group.'
+                : 'Feel free to rearrange and replace cards.'}
+            </p>
           </div>
 
           {/* scrollMarginTop, not scrollIntoView block:'center' or similar -

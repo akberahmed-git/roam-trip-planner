@@ -385,6 +385,16 @@ export default function Accommodation() {
                     />
                   </div>
                 </div>
+                {displayRange && totalTravellers > 1 && (
+                  <p className="page-intro">
+                    ≈ {formatRange({
+                      min: Math.round(displayRange.min / totalTravellers),
+                      max: Math.round(displayRange.max / totalTravellers),
+                      currencyCode: displayRange.currencyCode,
+                      estimated: true,
+                    })} per person/night for {totalTravellers} travellers
+                  </p>
+                )}
 
                 <div className="stack">
                   {options.map((option, index) => {

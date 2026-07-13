@@ -164,6 +164,8 @@ export default function ComparisonView() {
   const days = variant.days || []
   const day = days[dayIndex] || days[0]
   const dayLabels = days.map((d) => `Day ${d.day}`)
+  const adults = tripParams?.adults ?? 1
+  const isGroup = adults > 1
 
   function selectVariant(key) {
     setVariantKey(key)
@@ -244,7 +246,14 @@ export default function ComparisonView() {
             ))}
           </div>
 
-          <p className="page-intro">Two itinerary styles, pick one to explore in detail.</p>
+          {isGroup ? (
+            <>
+              <p className="page-intro">Two plans for your group of {adults} to choose from.</p>
+              <p className="page-intro">Share both with your group and pick the pace that works for everyone.</p>
+            </>
+          ) : (
+            <p className="page-intro">Two itinerary styles, pick one to explore in detail.</p>
+          )}
 
           <DailyPaceCard plan={variant} />
 
