@@ -26,10 +26,6 @@ const STAPLE_INTERESTS = ['Landmarks', 'Cuisine', 'Shopping']
 // - no more live tab-switching there, see Accommodation.jsx.
 const BUDGET_OPTIONS = ['Economy', 'Standard', 'Luxury']
 
-// "car included or not" (per Akber's request) - affects travel-time
-// calculation between itinerary stops, see api/_lib/travelTime.js.
-const TRANSPORT_OPTIONS = ['Car or taxi', 'No car or taxi']
-
 // Upper bounds for the Travellers stepper - large enough for a real family
 // or friend-group trip, small enough to stay realistic for a single
 // itinerary and single hotel selection (this app doesn't split a group
@@ -91,7 +87,7 @@ export default function TripInput() {
   const [startDate, setStartDate] = useState(tripParams?.startDate || defaultStart)
   const [endDate, setEndDate] = useState(tripParams?.endDate || defaultEnd)
   const [budget, setBudget] = useState(tripParams?.budget || 'Standard')
-  const [transport, setTransport] = useState(tripParams?.transport || 'Car or taxi')
+  const transport = 'Car or taxi'
   const [interests, setInterests] = useState(() => new Set(tripParams?.interests || []))
   // The chip set actually shown - starts as the fallback and gets replaced
   // wholesale once generation resolves for a given destination. Not
@@ -343,11 +339,6 @@ export default function TripInput() {
             <div className="form-field">
               <span className="form-label">Budget</span>
               <SegmentedControl options={BUDGET_OPTIONS} value={budget} onChange={setBudget} />
-            </div>
-
-            <div className="form-field">
-              <span className="form-label">Transport</span>
-              <SegmentedControl options={TRANSPORT_OPTIONS} value={transport} onChange={setTransport} />
             </div>
 
             <div className="form-field">
