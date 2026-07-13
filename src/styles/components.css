@@ -641,7 +641,7 @@ h1 {
   height: 36px;
   padding: 0 var(--spacing-4);
   border-radius: var(--radius-sm);
-  border: 1px solid var(--border-strong);
+  border: none;
   background: var(--surface-subtle);
   color: var(--text-tertiary);
   font-family: var(--font-family-sans);
@@ -657,34 +657,28 @@ h1 {
   white-space: nowrap;
   flex: 0 0 auto;
   width: fit-content;
-  transition: background-color var(--duration-fast) var(--easing-standard),
-    border-color var(--duration-fast) var(--easing-standard);
+  transition: background-color var(--duration-fast) var(--easing-standard);
 }
 
 .chip:hover:not(:disabled):not(.chip--selected) {
   background: var(--brand-subtle);
-  border-color: var(--border-brand);
   color: var(--text-brand);
 }
 
 .chip:active:not(:disabled):not(.chip--selected) {
   background: var(--interactive-secondary-hover);
-  border-color: var(--border-brand-pressed);
 }
 
 .chip--selected:hover {
   background: var(--color-slate-600);
-  border-color: var(--color-slate-600);
 }
 
 .chip--selected:active {
   background: var(--color-slate-700);
-  border-color: var(--color-slate-700);
 }
 
 .chip--selected {
   background: var(--text-tertiary);
-  border-color: var(--text-tertiary);
   color: var(--text-inverse);
 }
 
@@ -694,7 +688,6 @@ h1 {
    cleared in state (see TripInput.jsx's effect that clears it). */
 .chip:disabled {
   background: var(--border-default);
-  border-color: var(--border-strong);
   color: var(--text-disabled);
   cursor: not-allowed;
 }
@@ -1393,16 +1386,16 @@ h1 {
   font-size: var(--font-size-body);
   color: var(--text-primary);
   background: var(--surface-default);
-  border: 1px solid var(--border-default);
+  border: none;
   border-radius: var(--radius-sm);
+  box-shadow: var(--shadow-sm);
   padding: var(--spacing-3) var(--spacing-4);
 }
 
 .form-input:focus,
 .form-select:focus {
   outline: none;
-  border-color: var(--border-focus);
-  box-shadow: 0 0 0 3px var(--brand-muted);
+  box-shadow: 0 0 0 2px var(--border-focus), var(--shadow-sm);
 }
 
 .form-hint {
