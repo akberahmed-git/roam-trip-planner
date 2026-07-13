@@ -371,7 +371,7 @@ export default function Accommodation() {
                         className="price-range-field__value"
                         aria-label={displayRange ? formatExactRange(displayRange) : undefined}
                       >
-                        {displayRange ? formatRange(displayRange) : 'Not available'}
+                        {displayRange ? formatRange(displayRange) : 'Not available'}{displayRange && totalTravellers >= 3 ? '*' : ''}
                       </span>
                     </div>
                   </div>
@@ -385,9 +385,9 @@ export default function Accommodation() {
                     />
                   </div>
                 </div>
-                {displayRange && totalTravellers > 1 && (
+                {displayRange && totalTravellers >= 3 && (
                   <p className="page-intro">
-                    ≈ {formatRange({
+                    * ≈ {formatRange({
                       min: Math.round(displayRange.min / totalTravellers),
                       max: Math.round(displayRange.max / totalTravellers),
                       currencyCode: displayRange.currencyCode,

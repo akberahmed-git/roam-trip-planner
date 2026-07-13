@@ -247,10 +247,7 @@ export default function ComparisonView() {
           </div>
 
           {isGroup ? (
-            <>
-              <p className="page-intro">Two plans for your group of {adults} to choose from.</p>
-              <p className="page-intro">Share both with your group and pick the pace that works for everyone.</p>
-            </>
+            <p className="page-intrwo plans for your group of {adults} — share both and pick the pace that works for everyone.</p>
           ) : (
             <p className="page-intro">Two itinerary styles, pick one to explore in detail.</p>
           )}
