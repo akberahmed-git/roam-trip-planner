@@ -5,24 +5,22 @@ import Header from '../components/Header'
 import Footer from '../components/Footer'
 import LoadingSpinner from '../components/LoadingSpinner'
 import { toLocalISODate } from '../utils/date'
-import { TOKYO_2_DAYS } from '../data/savedTrips/tokyo'
 import { getSavedTrips } from '../utils/savedTrips'
 
-// Tokyo is the one fixed demo entry (title/subtitle are static placeholder
-// copy matching the Figma demo content), with a real, pre-captured result
-// (src/data/savedTrips/tokyo.js) that loads directly - instant, no live API
-// calls, and never regenerates. "My trips" shows at most this one demo plus
-// the single most recent trip actually saved via Finalise & Save (see
-// utils/savedTrips.js's MAX_SAVED_TRIPS=1), for a cap of 2 rows total.
-// Opening either one always loads its saved result - see
-// handleOpenSavedTrip below - never a fresh generation.
+// Tokyo is the one fixed demo entry. No pre-captured result - clicking it
+// starts a live generation so the itinerary reflects the selected interests
+// (Temples & Shrines, Anime & Pop Culture, Nightlife & Entertainment,
+// Modern Architecture) and the current 2-day max.
+// "My trips" shows at most this one demo plus the single most recent trip
+// actually saved via Finalise & Save (see utils/savedTrips.js's
+// MAX_SAVED_TRIPS=1), for a cap of 2 rows total.
 const DEMO_TRIPS = [
   {
     title: '2 days in Tokyo',
-    subtitle: 'Slow & immersive · 6 stops · Feb 2026',
+    subtitle: 'Feb 2026 · Temples & Shrines, Anime & Pop Culture, Nightlife & Entertainment, Modern Architecture',
     destination: 'Tokyo',
     days: 2,
-    savedItinerary: TOKYO_2_DAYS,
+    interests: ['Temples & Shrines', 'Anime & Pop Culture', 'Nightlife & Entertainment', 'Modern Architecture'],
   },
 ]
 
@@ -138,7 +136,7 @@ export default function Home() {
       children: 0,
       startDate: toLocalISODate(start),
       endDate: toLocalISODate(end),
-      interests: [],
+      interests: trip.interests || [],
       budget: trip.budget || 'Standard',
       transport: trip.transport || 'Car or taxi',
       // Undefined for trips saved before this was captured (including the
