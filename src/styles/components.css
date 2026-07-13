@@ -1,0 +1,2526 @@
+/* Shared component styles built from design tokens (tokens.css). */
+
+.container {
+  max-width: 760px;
+  margin: 0 auto;
+}
+
+/* Page title (Figma node 273:16409 "Heading 1", e.g. Swap's "Swap Blue Eye
+   Spring") - every screen's bare <h1> (Plan a trip, Choose your
+   accommodation, Your itinerary is ready, {plan} itinerary, Swap {place},
+   We hit a snag, etc.) uses this. Same "Heading 1" component as Trip Input
+   (node 273:15525) but a larger override (24px/SemiBold vs 18px/Medium) -
+   Akber picked this size as the one to standardize on across every page. */
+h1 {
+  font-family: var(--font-family-sans);
+  font-weight: var(--font-weight-semibold);
+  font-size: var(--font-size-h1);
+  line-height: 36px;
+  letter-spacing: -0.4395px;
+  color: var(--text-brand);
+  margin: 0;
+}
+
+/* App header (shared across screens) */
+
+.app-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  background: var(--surface-default);
+  border-bottom: 1px solid var(--border-default);
+  padding: var(--spacing-4);
+}
+
+.app-header__logo {
+  display: flex;
+  align-items: center;
+  gap: var(--spacing-2);
+  font-family: var(--font-family-sans);
+  font-weight: var(--font-weight-medium);
+  font-size: 18px;
+  color: var(--brand-default);
+  text-decoration: none;
+  letter-spacing: -0.02em;
+}
+
+.app-header__menu {
+  width: 36px;
+  height: 36px;
+  border-radius: var(--radius-full);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 3px;
+  background: transparent;
+}
+
+.app-header__menu span {
+  display: block;
+  width: 16px;
+  height: 3px;
+  border-radius: var(--radius-full);
+  background: var(--brand-strong);
+}
+
+/* Home screen */
+
+.home-section {
+  display: flex;
+  flex-direction: column;
+  gap: var(--spacing-3);
+}
+
+.home-section__title {
+  color: var(--text-brand);
+  font-size: var(--font-size-h1);
+  font-weight: var(--font-weight-medium);
+}
+
+.trending-card {
+  /* Full-width photo, no stroke (Akber's redesign, 9 Jul 2026 - Figma node
+     297:30059). Card no longer has its own padding/border - the photo
+     bleeds flush to all three top/left/right edges, and only the text body
+     below it is padded. Shadow alone now carries the card's definition. */
+  border-radius: var(--radius-lg);
+  background: var(--surface-default);
+  box-shadow: var(--shadow-sm);
+}
+
+/* The success-state card is a real <button> (clicking it jumps to Trip
+   Input with the destination pre-filled) - resets the browser's default
+   button chrome so it renders identically to the plain div it used to be.
+   Same pattern as .list-row--button. */
+.trending-card--button {
+  display: block;
+  width: 100%;
+  text-align: left;
+  font: inherit;
+  cursor: pointer;
+  /* Explicit reset, not implicit via a border/padding value like
+     .list-row--button relies on its base class for - .trending-card no
+     longer sets its own border or padding (full-bleed redesign, 9 Jul
+     2026), so without this the browser's native <button> chrome (a
+     default border + padding) was showing through instead. */
+  border: none;
+  padding: 0;
+  /* No background reset here, on purpose - this class is combined on the
+     same element as .trending-card (which sets the real white
+     background), and since both are single-class selectors the one
+     declared later in this file wins. An earlier "background: none" here
+     silently cancelled .trending-card's white surface (Akber's bug
+     report, 9 Jul 2026 - "doesn't have a white background"), leaving the
+     card transparent against the page. The browser's native <button>
+     background doesn't need resetting anyway once .trending-card's own
+     background is left free to apply. */
+  transition: box-shadow var(--duration-fast) var(--easing-standard);
+}
+
+/* No stroke to swap colors on anymore - hover/active now read via shadow
+   elevation and a background tint instead. */
+.trending-card--button:hover {
+  box-shadow: var(--shadow-md);
+}
+
+.trending-card--button:active {
+  background: var(--brand-subtle);
+}
+
+.trending-card__photo-stack {
+  position: relative;
+  aspect-ratio: 309 / 174;
+  width: 100%;
+  overflow: hidden;
+  /* Top corners only, matching the card's own radius exactly (radius-lg on
+     both) so the bled photo and the card's rounded shell align seamlessly
+     with no gap or overhang at the corner pixels. */
+  border-radius: var(--radius-lg) var(--radius-lg) 0 0;
+}
+
+.trending-card__photo {
+  aspect-ratio: 309 / 174;
+  width: 100%;
+  object-fit: cover;
+  display: block;
+  border-radius: var(--radius-lg) var(--radius-lg) 0 0;
+  /* Same placeholder color + centered ring spinner treatment as
+     Accommodation's hotel-card__photo (see PlacePhoto.jsx /
+     .photo-frame__spinner), so the two loading states look like the same
+     product instead of this one using a flat gray pulse. */
+  background: var(--color-teal-100);
+}
+
+/* Inside a photo-stack, both the outgoing and incoming photo occupy the same
+   box so they can cross-dissolve into each other instead of the incoming
+   photo just fading in over blank space. */
+.trending-card__photo-stack .trending-card__photo {
+  position: absolute;
+  inset: 0;
+  height: 100%;
+}
+
+.trending-card__photo--out {
+  animation: trending-photo-fade-out var(--duration-slow) var(--easing-accelerate) forwards;
+}
+
+.trending-card__photo--in {
+  animation: trending-photo-fade-in var(--duration-slow) var(--easing-decelerate) forwards;
+}
+
+@keyframes trending-photo-fade-out {
+  from {
+    opacity: 1;
+  }
+  to {
+    opacity: 0;
+  }
+}
+
+@keyframes trending-photo-fade-in {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+.carousel-nav {
+  display: flex;
+  align-items: center;
+  gap: var(--spacing-3);
+}
+
+.carousel-arrow {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 20px;
+  height: 20px;
+  padding: 0;
+  border-radius: var(--radius-full);
+  border: none;
+  background: none;
+  color: var(--text-tertiary);
+  cursor: pointer;
+  transition: background-color var(--duration-fast) var(--easing-standard),
+    color var(--duration-fast) var(--easing-standard);
+}
+
+.carousel-arrow:hover {
+  background: var(--brand-subtle);
+  color: var(--text-brand);
+}
+
+.carousel-arrow:active {
+  background: var(--interactive-secondary-hover);
+}
+
+.carousel-dots {
+  display: flex;
+  gap: var(--spacing-2);
+}
+
+.carousel-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: var(--radius-full);
+  border: none;
+  background: var(--border-strong);
+  cursor: pointer;
+  padding: 0;
+  transition: background-color var(--duration-fast) var(--easing-standard);
+}
+
+.carousel-dot:hover:not(.carousel-dot--active) {
+  background: var(--text-disabled);
+}
+
+.carousel-dot:active:not(.carousel-dot--active) {
+  background: var(--border-brand-pressed);
+}
+
+.carousel-dot--active {
+  background: var(--brand-default);
+}
+
+.carousel-dot--active:hover {
+  background: var(--interactive-primary-hover);
+}
+
+.trending-card__body {
+  /* Card itself lost its padding above (full-bleed photo) - this is now
+     the only thing padding the text block: 12px above (matches the old
+     padding-top), 16px on the sides and below. */
+  padding: var(--spacing-3) var(--spacing-4) var(--spacing-4);
+  display: flex;
+  flex-direction: column;
+  gap: var(--spacing-2);
+}
+
+.trending-card__name {
+  font-weight: var(--font-weight-medium);
+  color: var(--text-primary);
+}
+
+.trending-card__description {
+  font-size: var(--font-size-small);
+  color: var(--text-secondary);
+}
+
+.list-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--spacing-3);
+  background: var(--surface-default);
+  border: 1px solid var(--border-default);
+  border-radius: var(--radius-lg);
+  padding: var(--spacing-4);
+  text-decoration: none;
+  color: inherit;
+  transition: border-color var(--duration-fast) var(--easing-standard),
+    box-shadow var(--duration-fast) var(--easing-standard),
+    background-color var(--duration-fast) var(--easing-standard);
+}
+
+/* Covers both the plain <Link> rows (Menu items) and the real <button> rows
+   (.list-row--button, saved trips) - both are genuinely navigable, so both
+   get the same hover/active feedback. */
+.list-row:hover {
+  border-color: var(--border-brand);
+  box-shadow: var(--shadow-sm);
+}
+
+.list-row:active {
+  background: var(--brand-subtle);
+  border-color: var(--border-brand-pressed);
+}
+
+/* .list-row is also used on real <button> elements (saved trips) - resets
+   the browser's default button chrome (font, text-align, cursor) so it
+   renders identically to the <Link>/<div> versions of the same row. */
+.list-row--button {
+  width: 100%;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+.list-row__title {
+  display: block;
+  font-weight: var(--font-weight-medium);
+  color: var(--text-primary);
+  font-size: var(--font-size-body);
+}
+
+.list-row__subtitle {
+  display: block;
+  font-size: var(--font-size-small);
+  color: var(--text-tertiary);
+}
+
+/* Wraps ChevronIcon (same component the carousel arrows use) so it picks up
+   this muted color via currentColor, and doesn't get squeezed by the
+   flex-1 title/subtitle next to it. */
+.list-row__chevron {
+  display: flex;
+  align-items: center;
+  color: var(--text-tertiary);
+  flex-shrink: 0;
+}
+
+.button-full {
+  width: 100%;
+}
+
+/* Tabs (Trip Input, Comparison view) */
+
+.tabs {
+  display: flex;
+  border-bottom: 2px solid var(--border-default);
+}
+
+.tab {
+  padding: var(--spacing-3) var(--spacing-4);
+  font-size: var(--font-size-small);
+  font-weight: var(--font-weight-medium);
+  color: var(--text-disabled);
+  border-bottom: 2px solid transparent;
+  margin-bottom: -2px;
+  cursor: pointer;
+}
+
+.tab--active {
+  color: var(--text-brand);
+  border-bottom-color: var(--text-brand);
+}
+
+/* Travellers stepper */
+
+.travellers-card {
+  padding: 0 var(--spacing-4);
+}
+
+.traveller-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: var(--spacing-4) 0;
+  border-bottom: 1px solid var(--border-default);
+  color: var(--text-secondary);
+}
+
+.traveller-row--last {
+  border-bottom: none;
+}
+
+.stepper {
+  display: flex;
+  align-items: center;
+  gap: var(--spacing-3);
+}
+
+.stepper-button {
+  width: 36px;
+  height: 36px;
+  border-radius: var(--radius-full);
+  background: var(--surface-recessed);
+  border: none;
+  font-size: 18px;
+  line-height: 1;
+  color: var(--text-primary);
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: background-color var(--duration-fast) var(--easing-standard);
+}
+
+.stepper-button:hover:not(:disabled) {
+  background: var(--interactive-secondary-hover);
+  color: var(--text-brand);
+}
+
+.stepper-button:active:not(:disabled) {
+  background: var(--interactive-secondary-pressed);
+}
+
+.stepper-button:disabled {
+  color: var(--text-disabled);
+  cursor: not-allowed;
+}
+
+.stepper-count {
+  font-weight: var(--font-weight-semibold);
+  min-width: 20px;
+  text-align: center;
+}
+
+/* Dates */
+
+.date-pair {
+  display: flex;
+  gap: var(--spacing-3);
+}
+
+.date-box {
+  flex: 1;
+  height: 52px;
+  border: 1px solid var(--border-default);
+  border-radius: var(--radius-lg);
+  padding: 0 var(--spacing-4);
+  font-family: var(--font-family-sans);
+  font-size: var(--font-size-body);
+  color: var(--text-secondary);
+  background: var(--surface-default);
+  display: flex;
+  align-items: center;
+  /* Icon-then-text, both left-aligned, matching Destination's field pattern
+     - was justify-content: space-between with the icon pinned to the right. */
+  justify-content: flex-start;
+  gap: var(--spacing-2);
+  cursor: pointer;
+}
+
+.date-box:hover {
+  border-color: var(--color-slate-400);
+}
+
+/* Custom date-range picker (native <input type="date"> popups can't be
+   restyled at all - they're rendered outside the page's DOM by the OS -
+   so this is a from-scratch dropdown built entirely from Roam's tokens). */
+
+.date-range-picker {
+  position: relative;
+}
+
+.date-picker {
+  position: absolute;
+  top: calc(100% + var(--spacing-2));
+  left: 0;
+  z-index: 20;
+  width: 320px;
+  background: var(--surface-default);
+  border: 1px solid var(--border-default);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-md);
+  padding: var(--spacing-4);
+}
+
+.date-picker__header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: var(--spacing-3);
+}
+
+.date-picker__month-label {
+  font-family: var(--font-family-sans);
+  font-size: var(--font-size-body);
+  font-weight: var(--font-weight-semibold);
+  color: var(--text-primary);
+}
+
+.date-picker__nav-button {
+  width: 32px;
+  height: 32px;
+  border-radius: var(--radius-full);
+  border: none;
+  background: transparent;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+}
+
+.date-picker__nav-button:hover {
+  background: var(--surface-recessed);
+}
+
+.date-picker__weekdays {
+  display: grid;
+  grid-template-columns: repeat(7, 1fr);
+  margin-bottom: var(--spacing-1);
+}
+
+.date-picker__weekdays span {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  height: 32px;
+  font-family: var(--font-family-sans);
+  font-size: var(--font-size-micro);
+  font-weight: var(--font-weight-medium);
+  color: var(--text-tertiary);
+}
+
+.date-picker__grid {
+  display: grid;
+  grid-template-columns: repeat(7, 1fr);
+}
+
+.date-picker__cell {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  height: 36px;
+}
+
+.date-picker__day {
+  width: 32px;
+  height: 32px;
+  border-radius: var(--radius-full);
+  border: none;
+  background: transparent;
+  font-family: var(--font-family-sans);
+  font-size: var(--font-size-small);
+  font-weight: var(--font-weight-medium);
+  color: var(--text-primary);
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.date-picker__day:hover:not(:disabled) {
+  background: var(--surface-recessed);
+}
+
+.date-picker__day--adjacent {
+  color: var(--color-slate-300);
+  cursor: default;
+}
+
+/* An adjacent-month cell can be a genuinely valid end-date choice while
+   picking an end date within maxDays (see DateRangePicker.jsx) - once it's
+   actually selectable, it needs to look and behave like one, not like the
+   muted, inert lead/trail days around it. */
+.date-picker__day--adjacent:not(:disabled) {
+  color: var(--text-tertiary);
+  cursor: pointer;
+}
+
+/* Beyond MAX_TRIP_DAYS from the selected start date - unselectable, not
+   just unstyled, since generateRawItinerary.js can't reliably produce a
+   longer trip in one response (see src/utils/date.js). */
+.date-picker__day--out-of-range {
+  color: var(--text-disabled);
+  cursor: not-allowed;
+}
+
+.date-picker__day--today {
+  border: 2px solid var(--color-teal-600);
+}
+
+.date-picker__day--in-range {
+  background: var(--color-teal-100);
+}
+
+/* :not(:disabled) here isn't functionally needed (a selected day is never
+   disabled) - it's there to match the generic hover rule's specificity
+   (0-3-0) so this later, more specific-in-intent rule actually wins the
+   cascade instead of losing to it on raw specificity. */
+.date-picker__day--selected:hover:not(:disabled) {
+  /* Overrides the generic .date-picker__day:hover gray - a selected day
+     should darken like a pressed button, not look de-selected. Same token
+     .button-primary:hover already uses. */
+  background: var(--interactive-primary-hover);
+}
+
+.date-picker__day--selected {
+  background: var(--interactive-primary);
+  color: var(--text-inverse);
+  font-weight: var(--font-weight-semibold);
+}
+
+.date-picker__footer {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-top: var(--spacing-3);
+  padding-top: var(--spacing-3);
+  border-top: 1px solid var(--border-default);
+}
+
+.date-picker__footer-button {
+  border: none;
+  background: transparent;
+  font-family: var(--font-family-sans);
+  font-size: var(--font-size-small);
+  font-weight: var(--font-weight-medium);
+  color: var(--text-brand);
+  cursor: pointer;
+  padding: 0;
+}
+
+.date-picker__footer-button:hover {
+  text-decoration: underline;
+}
+
+/* Interest chips */
+
+.interests-card {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--spacing-2);
+  padding: var(--spacing-3);
+}
+
+.chip {
+  /* Explicit centering, not left to the browser default - a <button> (Trip
+     Input's picker) gets some vertical-centering behavior from the UA
+     stylesheet for free, but a plain <span> (Finalise & Save's read-only
+     chips) does not, so the exact same class rendered text flush at the
+     top of the 36px box there instead of centered. This makes both
+     elements behave identically regardless of tag. */
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  height: 36px;
+  padding: 0 var(--spacing-4);
+  border-radius: var(--radius-sm);
+  border: 1px solid var(--border-strong);
+  background: var(--surface-subtle);
+  color: var(--text-tertiary);
+  font-family: var(--font-family-sans);
+  font-size: var(--font-size-small);
+  font-weight: var(--font-weight-medium);
+  cursor: pointer;
+  /* Without these, a longer label (e.g. "Civil Rights History") gets
+     squeezed by flex-wrap's default flex-shrink:1 and wraps onto two lines
+     inside its own chip, which both distorts that one chip's size and
+     throws off every other chip's wrap position in the row - the "wonky"
+     layout on Finalise & Save's Interests row. Figma's CategoryChips
+     (node 52:7859) is explicitly whitespace-nowrap for the same reason. */
+  white-space: nowrap;
+  flex: 0 0 auto;
+  width: fit-content;
+  transition: background-color var(--duration-fast) var(--easing-standard),
+    border-color var(--duration-fast) var(--easing-standard);
+}
+
+.chip:hover:not(:disabled):not(.chip--selected) {
+  background: var(--brand-subtle);
+  border-color: var(--border-brand);
+  color: var(--text-brand);
+}
+
+.chip:active:not(:disabled):not(.chip--selected) {
+  background: var(--interactive-secondary-hover);
+  border-color: var(--border-brand-pressed);
+}
+
+.chip--selected:hover {
+  background: var(--color-slate-600);
+  border-color: var(--color-slate-600);
+}
+
+.chip--selected:active {
+  background: var(--color-slate-700);
+  border-color: var(--color-slate-700);
+}
+
+.chip--selected {
+  background: var(--text-tertiary);
+  border-color: var(--text-tertiary);
+  color: var(--text-inverse);
+}
+
+/* Destination-based availability (Figma node 46:4575) - e.g. "Beaches" for a
+   landlocked city. Higher specificity than .chip--selected so a selection
+   that becomes unavailable still reads as disabled even if it weren't
+   cleared in state (see TripInput.jsx's effect that clears it). */
+.chip:disabled {
+  background: var(--border-default);
+  border-color: var(--border-strong);
+  color: var(--text-disabled);
+  cursor: not-allowed;
+}
+
+/* Flow breadcrumb (Accommodation, Comparison, Detail) */
+
+.flow-breadcrumb {
+  font-size: var(--font-size-small);
+}
+
+.flow-breadcrumb__link {
+  color: var(--text-brand);
+  text-decoration: underline;
+}
+
+.flow-breadcrumb__current {
+  color: var(--text-brand);
+  font-weight: var(--font-weight-regular);
+}
+
+.flow-breadcrumb__sep {
+  color: var(--text-disabled);
+}
+
+/* Segmented control (budget tabs, day tabs) */
+
+.segmented {
+  display: flex;
+  gap: var(--spacing-1);
+  background: var(--surface-recessed);
+  border-radius: var(--radius-sm);
+  padding: var(--spacing-1);
+}
+
+.segmented__option {
+  flex: 1;
+  height: 40px;
+  border: none;
+  border-radius: var(--radius-sm);
+  background: transparent;
+  color: var(--text-tertiary);
+  font-family: var(--font-family-sans);
+  font-size: var(--font-size-small);
+  font-weight: var(--font-weight-medium);
+  cursor: pointer;
+  transition: color var(--duration-fast) var(--easing-standard),
+    background-color var(--duration-fast) var(--easing-standard);
+}
+
+.segmented__option:hover:not(.segmented__option--active) {
+  color: var(--text-primary);
+}
+
+.segmented__option:active:not(.segmented__option--active) {
+  background: var(--surface-default);
+  color: var(--text-primary);
+}
+
+.segmented__option--active {
+  background: var(--surface-default);
+  color: var(--text-primary);
+  box-shadow: var(--shadow-sm);
+}
+
+/* Hotel / accommodation cards */
+
+.hotel-card {
+  /* Full-width photo, no stroke (Akber's redesign, 9 Jul 2026 - Figma node
+     297:30059). No card-level padding anymore - the photo bleeds flush to
+     the top/left/right edges, and only the text body below it is padded.
+     Selected state now uses an inset box-shadow "ring" instead of a real
+     border, specifically so toggling selection doesn't shift the bled
+     photo's position (a real border would need matching padding changes
+     to compensate, like the old 17px/18px pair did).
+     This is always a real <button> (Accommodation.jsx, SwapPlace.jsx), so
+     border/padding need an explicit reset now that this class no longer
+     sets its own non-zero border/padding values to implicitly override the
+     browser's default button chrome with - same bug and fix as
+     .trending-card--button. */
+  border: none;
+  padding: 0;
+  font: inherit;
+  border-radius: var(--radius-lg);
+  cursor: pointer;
+  background: var(--surface-default);
+  text-align: left;
+  width: 100%;
+  box-shadow: var(--shadow-sm);
+  transition: box-shadow var(--duration-fast) var(--easing-standard);
+}
+
+.hotel-card:hover:not(.hotel-card--selected) {
+  box-shadow: var(--shadow-md);
+}
+
+.hotel-card:active:not(.hotel-card--selected) {
+  background: var(--brand-subtle);
+}
+
+.hotel-card--selected {
+  /* Ring drawn via box-shadow, not a real border - see comment on
+     .hotel-card above for why. */
+  box-shadow: 0 0 0 2px var(--brand-default), var(--shadow-md);
+}
+
+.hotel-card--selected:hover {
+  box-shadow: 0 0 0 2px var(--interactive-primary-hover), var(--shadow-md);
+}
+
+/* Now a wrapper (PlacePhoto renders <img>/spinner/placeholder inside it),
+   not applied directly to an <img> anymore - position:relative/overflow
+   let the absolutely-positioned image and spinner fill this exact box.
+   Top corners only, matching the card's own radius exactly so the bled
+   photo aligns seamlessly with the card's rounded shell. */
+.hotel-card__photo {
+  position: relative;
+  overflow: hidden;
+  aspect-ratio: 309 / 174;
+  width: 100%;
+  border-radius: var(--radius-lg) var(--radius-lg) 0 0;
+  background: var(--color-teal-100);
+}
+
+/* Shared "no photo" placeholder - a real, if less-documented, place can
+   legitimately have zero Places photos (see place-photo.js callers), so
+   this reads as an intentional state rather than a broken image. */
+.photo-placeholder {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: var(--color-teal-100);
+  overflow: hidden;
+}
+
+.photo-placeholder__art {
+  width: 100%;
+  height: 100%;
+  display: block;
+}
+
+/* PlacePhoto - image fills its wrapper (one of the __photo classes above,
+   which now provide position:relative/overflow:hidden/aspect-ratio) and
+   fades in once loaded; a centered spinner sits on top of the wrapper's own
+   gray/gradient background until then. */
+.photo-frame__img {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;
+  opacity: 0;
+  transition: opacity var(--duration-moderate) var(--easing-standard);
+}
+
+.photo-frame__img--loaded {
+  opacity: 1;
+}
+
+.photo-frame__spinner {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+/* Same visual as .checklist-step__icon--active (Generating/Accommodation's
+   checklist), just sized up via the width/height set inline by
+   LoadingSpinner - reuses the existing checklist-spin keyframe below rather
+   than defining a second, identical one. */
+.loading-spinner {
+  display: block;
+  border-radius: var(--radius-full);
+  border: 3px solid var(--color-teal-600);
+  border-top-color: transparent;
+  animation: checklist-spin 0.8s linear infinite;
+  flex-shrink: 0;
+}
+
+.hotel-card__body {
+  /* Card itself lost its padding above (full-bleed photo) - this is now
+     the only thing padding the body: 12px above, 16px on the sides and
+     below. */
+  padding: var(--spacing-3) var(--spacing-4) var(--spacing-4);
+  display: flex;
+  flex-direction: column;
+  gap: var(--spacing-4);
+}
+
+.hotel-card__content {
+  display: flex;
+  flex-direction: column;
+  gap: var(--spacing-2);
+}
+
+.hotel-card__name {
+  font-size: var(--font-size-h3);
+  font-weight: var(--font-weight-semibold);
+  color: var(--text-primary);
+}
+
+.hotel-card__meta {
+  display: flex;
+  gap: var(--spacing-3);
+  font-size: var(--font-size-small);
+  color: var(--text-secondary);
+  flex-wrap: wrap;
+}
+
+.hotel-card__description {
+  font-size: var(--font-size-small);
+  color: var(--text-secondary);
+}
+
+.hotel-card__tags {
+  display: flex;
+  gap: var(--spacing-3);
+}
+
+.hotel-card__tag {
+  display: inline-flex;
+  align-items: center;
+  height: 20px;
+  padding: 0 var(--spacing-2);
+  border-radius: var(--radius-full);
+  background: var(--surface-recessed);
+  color: var(--text-secondary);
+  font-size: var(--font-size-small);
+  font-weight: var(--font-weight-semibold);
+  letter-spacing: var(--letter-spacing-caps);
+  text-transform: uppercase;
+}
+
+.hotel-card__meal-tag {
+  display: inline-flex;
+  align-items: center;
+  height: 20px;
+  padding: 0 var(--spacing-3);
+  border-radius: var(--radius-full);
+  background: var(--meal-breakfast-bg);
+  border: 1px solid var(--meal-breakfast-border);
+  color: var(--meal-breakfast-fg);
+  font-size: var(--font-size-small);
+}
+
+.hotel-card__price-tag {
+  display: inline-flex;
+  align-items: center;
+  height: 20px;
+  padding: 0 var(--spacing-3);
+  border-radius: var(--radius-full);
+  background: var(--surface-brand);
+  border: 1px solid var(--border-default);
+  color: var(--text-brand);
+  font-size: var(--font-size-small);
+}
+
+.hotel-card__selected-note {
+  display: flex;
+  /* flex-start, not center - the longer variant of this text ("Selected · 2
+     nights · Exact price at booking site") wraps onto two lines, and a
+     centered icon floats in the gap between them instead of sitting next
+     to the top line like Figma (node 66:1916, icon top:3px against the
+     text's own top:1px - both effectively flush with the row's top). */
+  align-items: flex-start;
+  gap: var(--spacing-1);
+  color: var(--text-brand);
+  font-size: var(--font-size-small);
+  font-weight: var(--font-weight-medium);
+}
+
+.hotel-card__selected-note svg {
+  flex-shrink: 0;
+  /* Nudges the icon down 2px to match Figma's slight offset (icon top:3px
+     vs text top:1px) instead of sitting perfectly flush with the text's
+     cap-height, which reads as too high. */
+  margin-top: 2px;
+}
+
+/* Swap screen - alternative cards reuse .hotel-card, plus a divider and a
+   "why swap" reasoning block (Figma node 273:16409). */
+.hotel-card__divider {
+  height: 1px;
+  width: 100%;
+  background: var(--color-slate-300);
+}
+
+.why-swap {
+  display: flex;
+  flex-direction: column;
+}
+
+.why-swap__label {
+  font-size: var(--font-size-body);
+  font-weight: var(--font-weight-medium);
+  color: var(--text-brand);
+  line-height: 28px;
+}
+
+.why-swap__reason {
+  font-size: var(--font-size-small);
+  color: var(--text-secondary);
+  line-height: 18px;
+}
+
+.stack {
+  display: flex;
+  flex-direction: column;
+  gap: var(--spacing-4);
+}
+
+/* Wraps the star icon + rating text wherever a place's rating is shown
+   (place cards, hotel cards, comparison cards) - Figma node 438:32929. */
+.rating-inline {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
+
+/* The destination line that follows every page's h1, right before
+   .page-intro (Figma node 273:15537 - Accommodation's "Ksamil, Albania"
+   under "Choose your accommodation"). Akber's call, 9 Jul 2026: every
+   screen with an active trip should show this, not just Accommodation.
+   Sits inside .itinerary-header's existing flex/gap-3 column, so no extra
+   margin needed here. */
+.page-location {
+  font-family: var(--font-family-sans);
+  font-weight: var(--font-weight-regular);
+  font-size: var(--font-size-body);
+  line-height: 22.5px;
+  color: var(--text-brand);
+  margin: 0;
+}
+
+.page-intro {
+  /* Resolved conflict between Swap's "Paragraph" instance (Regular/16.25px,
+     node 273:16409) and Trip Input's/Finalise's (Medium/18px, node
+     273:16599) - both are the same shared component, just inconsistent in
+     the Figma file itself. Standardized on Medium/18px everywhere, per
+     explicit direction, rather than Swap's Regular/16.25px. */
+  font-family: var(--font-family-sans);
+  font-weight: var(--font-weight-medium);
+  font-size: var(--font-size-small);
+  line-height: 18px;
+  color: var(--text-tertiary);
+  margin-top: var(--spacing-2);
+}
+
+/* Pairs a status message with a small trailing spinner (e.g. Swap's
+   "Looking for real, nearby alternatives…") - reuses the same
+   .loading-spinner ring as everywhere else, just sized down to sit inline
+   with text instead of centered over a photo. */
+.inline-loading {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--spacing-2);
+}
+
+/* Buttons */
+
+.button-primary,
+.button-secondary {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: var(--spacing-2);
+  font-family: var(--font-family-sans);
+  font-size: var(--font-size-body);
+  font-weight: var(--font-weight-semibold);
+  border-radius: var(--radius-sm);
+  padding: var(--spacing-3) var(--spacing-6);
+  border: 1px solid transparent;
+  cursor: pointer;
+  text-decoration: none;
+  transition: background-color var(--duration-fast) var(--easing-standard),
+    border-color var(--duration-fast) var(--easing-standard);
+}
+
+.button-primary {
+  background: var(--interactive-primary);
+  color: var(--text-inverse);
+}
+
+.button-primary:hover {
+  background: var(--interactive-primary-hover);
+}
+
+.button-primary:active {
+  background: var(--interactive-primary-pressed);
+}
+
+.button-primary:disabled {
+  background: var(--interactive-primary-disabled);
+  color: var(--text-disabled);
+  cursor: not-allowed;
+}
+
+/* Figma node 46:4677 (ButtonsSm, Primary/Focus) - the app's existing
+   focus-ring pattern (border-focus + brand-muted glow, same as
+   .form-input:focus) rather than Figma's literal white+teal double ring, so
+   every focusable control in the app shares one focus treatment. Uses
+   :focus-visible (not :focus) so mouse clicks don't show a ring that's only
+   meant for keyboard/assistive-tech navigation. */
+.button-primary:focus-visible {
+  outline: none;
+  border-color: var(--border-focus);
+  box-shadow: 0 0 0 3px var(--brand-muted);
+}
+
+/* Figma node 273:16147 (Comparison view, "Delete itinerary") - a plain-text
+   destructive action under the primary "Explore this itinerary" button.
+   --diff-removed-fg is the same #991B1B used for error-banner text, reused
+   here rather than adding a new red token for what's visually one color. */
+.delete-itinerary-button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 100%;
+  padding: var(--spacing-3) var(--spacing-6);
+  background: none;
+  border: none;
+  border-radius: var(--radius-full);
+  font-family: var(--font-family-sans);
+  font-size: var(--font-size-body);
+  font-weight: var(--font-weight-medium);
+  color: var(--diff-removed-fg);
+  cursor: pointer;
+}
+
+.delete-itinerary-button:hover {
+  background: var(--diff-removed-bg);
+}
+
+.delete-itinerary-button:active {
+  background: var(--diff-removed-bg);
+  border-color: var(--diff-removed-border);
+}
+
+.delete-itinerary-button:focus-visible {
+  outline: none;
+  border-color: var(--border-focus);
+  box-shadow: 0 0 0 3px var(--brand-muted);
+}
+
+/* ConfirmDialog - shared token-styled confirm/cancel modal. Card styling
+   (border-strong + radius-lg + 17px padding) matches the same "PlaceCard"
+   convention used by hotel/comparison cards elsewhere - Figma node 427:32757
+   literally reuses that same component for this dialog. Both buttons reuse
+   the existing .pill-button classes (outline/ghost) rather than new ones -
+   Figma's spec has no red/danger treatment here at all, just the regular
+   brand-teal outline and ghost pill buttons already used across the app. */
+
+.confirm-dialog-overlay {
+  position: fixed;
+  inset: 0;
+  background: var(--surface-overlay);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: var(--spacing-4);
+  z-index: var(--z-modal);
+}
+
+.confirm-dialog {
+  width: 100%;
+  /* Figma node 427:32757 is 361px wide, not 341px - that's the 393px frame
+     minus 16px either side, same padding every other screen uses. The old
+     341px value left the card looking like it had more than 16px of margin
+     even though the overlay's own padding was already correct. */
+  max-width: 361px;
+  background: var(--surface-default);
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius-lg);
+  /* Literal box-shadow from Figma (427:32757) - closer to but not exactly
+     --shadow-lg's blur/spread, kept precise rather than substituting the
+     token. */
+  box-shadow: 0 12px 16px rgba(15, 23, 42, 0.14), 0 4px 4px rgba(15, 23, 42, 0.08);
+  padding: 17px;
+  display: flex;
+  flex-direction: column;
+  gap: var(--spacing-4);
+}
+
+.confirm-dialog__body {
+  display: flex;
+  flex-direction: column;
+  gap: var(--spacing-3);
+}
+
+.confirm-dialog__title {
+  margin: 0;
+  font-family: var(--font-family-sans);
+  font-weight: var(--font-weight-medium);
+  font-size: var(--font-size-body);
+  line-height: 28px;
+  letter-spacing: -0.4395px;
+  color: var(--text-brand);
+}
+
+.confirm-dialog__description {
+  margin: 0;
+  font-family: var(--font-family-sans);
+  font-weight: var(--font-weight-medium);
+  font-size: var(--font-size-small);
+  line-height: 18px;
+  color: var(--text-secondary);
+}
+
+.confirm-dialog__actions {
+  display: flex;
+  gap: var(--spacing-3);
+}
+
+.confirm-dialog__actions .pill-button {
+  flex: 1 0 0;
+}
+
+.button-secondary {
+  background: var(--interactive-secondary);
+  color: var(--text-brand);
+  border-color: var(--border-brand);
+}
+
+.button-secondary:hover {
+  background: var(--interactive-secondary-hover);
+}
+
+.button-secondary:active {
+  background: var(--interactive-secondary-pressed);
+  border-color: var(--border-brand-pressed);
+}
+
+.button-secondary:disabled {
+  background: var(--interactive-primary-disabled);
+  border-color: var(--interactive-primary-disabled);
+  color: var(--text-disabled);
+  cursor: not-allowed;
+}
+
+.button-secondary:focus-visible {
+  outline: none;
+  border-color: var(--border-focus);
+  box-shadow: 0 0 0 3px var(--brand-muted);
+}
+
+/* Forms */
+
+.form-field {
+  display: flex;
+  flex-direction: column;
+  gap: var(--spacing-2);
+}
+
+/* "Eyebrow" label above every field (Figma node 273:15532, e.g. Trip
+   Input's "Destination" label): 13px Medium, #64748B, 16px line-height.
+   Confirmed directly against the TextInput component itself, not just the
+   parent page instance the first pass was read from. Applies to every field
+   label app-wide (Trip Input's Destination/Travellers/Dates/Budget/
+   Transport/Interests, Accommodation's Price range/Currency). */
+.form-label {
+  font-size: var(--font-size-small);
+  font-weight: var(--font-weight-medium);
+  line-height: 16px;
+  color: var(--text-tertiary);
+}
+
+/* Price Range + Currency fields, side by side under the budget tabs. */
+.accommodation-secondary-fields {
+  display: flex;
+  gap: var(--spacing-4);
+  align-items: flex-start;
+  width: 100%;
+}
+
+.price-range-field {
+  display: flex;
+  flex-direction: column;
+  gap: var(--spacing-3);
+  flex: 1;
+  min-width: 0;
+}
+
+/* Figma node 345:31178 - price range fills whatever space is left, currency
+   is a fixed 135px rather than a flex ratio. A flexible currency column
+   (previously flex: 1, a 2:1 split with price) could shrink narrow enough to
+   ellipsis-truncate "EUR" down to "E…" - a fixed width guarantees a 3-letter
+   code always fits. */
+.price-range-field--price {
+  flex: 1 0 0;
+}
+
+.price-range-field--currency {
+  flex: 0 0 135px;
+  min-width: 135px;
+}
+
+.price-range-field__box {
+  display: flex;
+  align-items: center;
+  gap: var(--spacing-2);
+  height: 44px;
+  padding: 0 13px;
+  border-radius: 10px;
+  border: 1px solid var(--border-default);
+  background: var(--surface-recessed);
+}
+
+.price-range-field__value {
+  flex: 1;
+  min-width: 0;
+  font-size: var(--font-size-body);
+  color: var(--text-primary);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* Currency dropdown (Figma nodes 345:31118 / 345:31160) - a custom control,
+   not a native <select>, to match the exact list-panel styling (rounded
+   container, selected row highlighted, no per-row borders). */
+.currency-select {
+  position: relative;
+  width: 100%;
+}
+
+.currency-select__control {
+  display: flex;
+  align-items: center;
+  gap: var(--spacing-2);
+  width: 100%;
+  height: 44px;
+  padding: 0 13px;
+  border-radius: 10px;
+  border: 1px solid var(--border-default);
+  background: var(--surface-default);
+  cursor: pointer;
+  font-family: var(--font-family-sans);
+}
+
+.currency-select__control--open {
+  border: 2px solid var(--border-focus);
+  padding: 0 12px;
+}
+
+.currency-select__control:focus-visible {
+  outline: none;
+  border-color: var(--border-focus);
+  box-shadow: 0 0 0 3px var(--brand-muted);
+}
+
+.currency-select__value {
+  flex: 1;
+  min-width: 0;
+  text-align: left;
+  font-size: var(--font-size-body);
+  color: var(--text-primary);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.currency-select__list {
+  position: absolute;
+  top: calc(100% + 4px);
+  left: 0;
+  right: 0;
+  z-index: var(--z-overlay);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  background: var(--surface-default);
+  border: 1px solid var(--border-default);
+  border-radius: 10px;
+  overflow: hidden;
+  box-shadow: 0 12px 16px rgba(15, 23, 42, 0.14), 0 4px 4px rgba(15, 23, 42, 0.08);
+}
+
+.currency-select__option {
+  display: flex;
+  align-items: center;
+  height: 44px;
+  padding: 0 13px;
+  font-size: var(--font-size-body);
+  color: var(--text-primary);
+  cursor: pointer;
+}
+
+.currency-select__option:hover {
+  background: var(--surface-subtle);
+}
+
+.currency-select__option--selected {
+  background: var(--surface-recessed);
+}
+
+.form-input,
+.form-select {
+  font-family: var(--font-family-sans);
+  font-size: var(--font-size-body);
+  color: var(--text-primary);
+  background: var(--surface-default);
+  border: 1px solid var(--border-default);
+  border-radius: var(--radius-sm);
+  padding: var(--spacing-3) var(--spacing-4);
+}
+
+.form-input:focus,
+.form-select:focus {
+  outline: none;
+  border-color: var(--border-focus);
+  box-shadow: 0 0 0 3px var(--brand-muted);
+}
+
+.form-hint {
+  font-size: var(--font-size-small);
+  color: var(--text-tertiary);
+}
+
+.autocomplete {
+  position: relative;
+}
+
+.autocomplete-input-wrap {
+  position: relative;
+  display: flex;
+  align-items: center;
+}
+
+.autocomplete-icon {
+  position: absolute;
+  left: var(--spacing-4);
+  display: flex;
+  align-items: center;
+  pointer-events: none;
+}
+
+.autocomplete-input {
+  width: 100%;
+  padding-left: calc(var(--spacing-4) * 2 + 18px);
+}
+
+.autocomplete-list {
+  position: absolute;
+  top: calc(100% + var(--spacing-2));
+  left: 0;
+  right: 0;
+  z-index: 20;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  background: var(--surface-default);
+  border: 1px solid var(--border-default);
+  border-radius: var(--radius-sm);
+  box-shadow: var(--shadow-lg);
+  overflow: hidden;
+}
+
+.autocomplete-item {
+  display: flex;
+  align-items: center;
+  height: 44px;
+  padding: 0 var(--spacing-4);
+  font-size: var(--font-size-body);
+  cursor: pointer;
+}
+
+/* Bug fix: long Places suggestions (e.g. Karachi results with long
+   multi-part addresses) used to wrap onto multiple lines inside the fixed
+   44px row and visually overflow into neighboring rows above/below, since
+   nothing here previously constrained the text to one line. Truncating with
+   ellipsis matches the pattern already used for other single-line summary
+   fields in the app (currency-select__value, price-range-field__value). */
+.autocomplete-item__text {
+  flex: 1;
+  min-width: 0;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.autocomplete-item + .autocomplete-item {
+  border-top: 1px solid var(--border-default);
+}
+
+.autocomplete-item--active {
+  background: var(--surface-recessed);
+}
+
+.autocomplete-item__match {
+  color: var(--text-primary);
+  font-weight: var(--font-weight-medium);
+}
+
+.autocomplete-item__rest {
+  color: var(--text-tertiary);
+}
+
+.form-error {
+  font-size: var(--font-size-small);
+  color: var(--diff-removed-fg);
+}
+
+/* Figma node 414:31630 - the app's colors for this already happened to
+   match exactly (--diff-removed-bg/border/fg), this just brings the
+   typography and padding in line with the spec too. */
+.error-banner {
+  background: var(--diff-removed-bg);
+  border: 1px solid var(--diff-removed-border);
+  color: var(--diff-removed-fg);
+  border-radius: var(--radius-sm);
+  padding: 13px 17px;
+  font-family: var(--font-family-sans);
+  font-size: var(--font-size-small);
+  font-weight: var(--font-weight-medium);
+  line-height: 19.5px;
+  letter-spacing: 0.26px;
+}
+
+/* Cards */
+
+.card {
+  background: var(--surface-default);
+  border: 1px solid var(--border-default);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-sm);
+  /* Every .card use (.travellers-card, .interests-card, and anything else
+     that combines with this base class) was rendering 24px padding on every
+     side, because this rule sits later in the file than those classes' own
+     more specific padding overrides - equal specificity, so the later rule
+     in source order wins the whole property, not just the parts it actually
+     needs to override. Akber wants 24px -> 16px everywhere this shows up. */
+  padding: var(--spacing-4);
+}
+
+/* Spinner */
+
+.spinner {
+  width: 40px;
+  height: 40px;
+  border-radius: var(--radius-full);
+  border: 3px solid var(--border-default);
+  border-top-color: var(--interactive-primary);
+  animation: spin 800ms linear infinite;
+  margin-bottom: var(--spacing-4);
+}
+
+@keyframes spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+/* Comparison view */
+
+.itinerary-header {
+  display: flex;
+  flex-direction: column;
+  gap: var(--spacing-3);
+}
+
+.itinerary-actions {
+  display: flex;
+  gap: var(--spacing-2);
+}
+
+.pill-button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  height: 36px;
+  padding: 0 var(--spacing-4);
+  border-radius: var(--radius-full);
+  font-size: var(--font-size-small);
+  font-weight: var(--font-weight-medium);
+  color: var(--text-brand);
+  cursor: pointer;
+  transition: background-color var(--duration-fast) var(--easing-standard),
+    border-color var(--duration-fast) var(--easing-standard);
+  /* Same fix as .chip - without these, a pill-button squeezed by a long
+     sibling (e.g. "Book now" next to a long reservation title in
+     .finalise-reservation-row's space-between row) shrinks narrower than
+     its own label and wraps the text onto two lines instead of staying a
+     single-line pill. */
+  white-space: nowrap;
+  flex-shrink: 0;
+  /* "Add to Google Calendar" is the one spot in the app that renders this
+     class on an <a> instead of a <button> (a real calendar-file link),
+     which picks up the browser's default underline that a <button> never
+     would. Reset here so no future <a>.pill-button gets it either. */
+  text-decoration: none;
+}
+
+.pill-button--outline {
+  background: var(--brand-subtle);
+  border: 1px solid var(--border-brand);
+}
+
+.pill-button--outline:hover {
+  background: var(--interactive-secondary-hover);
+}
+
+.pill-button--outline:active {
+  background: var(--interactive-secondary-pressed);
+  border-color: var(--border-brand-pressed);
+}
+
+.pill-button--ghost {
+  background: none;
+  border: 1px solid transparent;
+}
+
+.pill-button--ghost:hover {
+  background: var(--brand-subtle);
+}
+
+.pill-button--ghost:active {
+  background: var(--interactive-secondary-hover);
+}
+
+/* Figma node 46:4677 (ButtonsSm, Disabled) - same flat gray/disabled
+   treatment regardless of whether the button was outline or ghost, matching
+   how Figma's Disabled type overrides Secondary/Ghost's own styling
+   entirely rather than just dimming it. e.g. Finalise & Save's "Book now"
+   uses this - intentionally inert since there's no real booking integration
+   behind it, so it needs to visibly read as non-functional. */
+.pill-button:disabled {
+  background: var(--interactive-primary-disabled);
+  border-color: var(--interactive-primary-disabled);
+  color: var(--text-disabled);
+  cursor: not-allowed;
+}
+
+.pill-button:focus-visible {
+  outline: none;
+  border-color: var(--border-focus);
+  box-shadow: 0 0 0 3px var(--brand-muted);
+}
+
+.pace-tabs {
+  display: flex;
+  border-bottom: 2px solid var(--border-default);
+}
+
+.pace-tab {
+  flex: 1;
+  padding: var(--spacing-3) var(--spacing-4);
+  margin-bottom: -2px;
+  background: none;
+  border: none;
+  border-bottom: 2px solid transparent;
+  font-size: var(--font-size-small);
+  font-weight: var(--font-weight-medium);
+  color: var(--text-tertiary);
+  cursor: pointer;
+  transition: color var(--duration-fast) var(--easing-standard),
+    border-color var(--duration-fast) var(--easing-standard);
+}
+
+.pace-tab:hover:not(.pace-tab--active) {
+  color: var(--text-secondary);
+  border-bottom-color: var(--border-strong);
+}
+
+.pace-tab:active:not(.pace-tab--active) {
+  color: var(--text-brand);
+}
+
+.pace-tab--active {
+  color: var(--text-brand);
+  border-bottom-color: var(--text-brand);
+}
+
+.daily-pace-card {
+  display: flex;
+  flex-direction: column;
+  gap: var(--spacing-3);
+  background: var(--surface-recessed);
+  border-radius: var(--radius-lg);
+  padding: var(--spacing-4);
+  box-shadow: var(--shadow-sm);
+}
+
+.daily-pace-card__label {
+  font-size: var(--font-size-small);
+  color: var(--text-secondary);
+}
+
+.daily-pace-card__rows {
+  display: flex;
+  flex-direction: column;
+  gap: var(--spacing-2);
+}
+
+.daily-pace-row {
+  display: flex;
+  align-items: center;
+  gap: var(--spacing-3);
+  font-size: var(--font-size-micro);
+  color: var(--text-secondary);
+}
+
+.daily-pace-row__label {
+  flex-shrink: 0;
+  width: 40px;
+}
+
+.daily-pace-row__count {
+  flex-shrink: 0;
+  text-align: right;
+}
+
+.daily-pace-bar {
+  flex: 1;
+  height: 9px;
+  border-radius: var(--radius-full);
+  background: var(--border-default);
+  overflow: hidden;
+}
+
+.daily-pace-bar__fill {
+  height: 100%;
+  border-radius: var(--radius-full);
+}
+
+.daily-pace-bar__fill--busy {
+  background: var(--color-teal-600);
+}
+
+.daily-pace-bar__fill--relaxed {
+  background: var(--color-teal-400);
+}
+
+.day-heading {
+  /* body-med -> h3 -> h2 (Akber's design update, 9 Jul 2026 - see Figma
+     node 273:15798 for the original h3 spec; bumped to h2 shortly after).
+     Shared across DetailView, ComparisonView, MapView and SwapPlace, so
+     this one change covers "all screens" as requested. */
+  font-size: var(--font-size-h2);
+  font-weight: var(--font-weight-semibold);
+  color: var(--text-brand);
+}
+
+.itinerary-card-list {
+  display: flex;
+  flex-direction: column;
+  /* 8px between every card/indicator row, evenly on both sides of the
+     indicator (Akber's call, 9 Jul 2026 - 12px read as a bit much once the
+     one-sided gap bug was actually fixed and both sides were visible at
+     once). No longer paired with a negative margin on
+     .transport-indicator__line to fake a "connecting line" effect either -
+     the line stays fully self-contained at a fixed 30px, never touching
+     either card. */
+  gap: var(--spacing-2);
+}
+
+/* Converted from a compact horizontal row (70x90 thumbnail + text) to the
+   same full-width-photo vertical card as .place-card/.hotel-card/
+   .trending-card (Akber's redesign, 9 Jul 2026 - Figma node 297:30059,
+   applied app-wide including ComparisonView's side-by-side lists and
+   MapView's stop list). No stroke, no card-level padding - the photo
+   bleeds flush to the top/left/right edges, only the text body below it
+   is padded. */
+.comparison-card {
+  display: flex;
+  flex-direction: column;
+  width: 100%;
+  background: var(--surface-default);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-sm);
+}
+
+/* Wrapper (see .hotel-card__photo above for why). Wide 309/174 slot now
+   (was a narrow 70x90 portrait thumbnail) with top corners only, matching
+   the card's own radius exactly so the bled photo aligns seamlessly with
+   the card's rounded shell. */
+.comparison-card__photo {
+  position: relative;
+  overflow: hidden;
+  width: 100%;
+  aspect-ratio: 309 / 174;
+  border-radius: var(--radius-lg) var(--radius-lg) 0 0;
+  flex-shrink: 0;
+  background: var(--surface-recessed);
+}
+
+.comparison-card__body {
+  display: flex;
+  flex-direction: column;
+  gap: var(--spacing-1);
+  min-width: 0;
+  /* Card itself lost its padding above (full-bleed photo) - this is now
+     the only thing padding the body: 12px above, 16px on the sides and
+     below. */
+  padding: var(--spacing-3) var(--spacing-4) var(--spacing-4);
+}
+
+.comparison-card__name {
+  font-size: var(--font-size-small);
+  font-weight: var(--font-weight-medium);
+  color: var(--text-primary);
+}
+
+.comparison-card__meta {
+  display: flex;
+  align-items: center;
+  gap: var(--spacing-2);
+  font-size: var(--font-size-small);
+  color: var(--text-secondary);
+}
+
+.comparison-card__description {
+  font-size: var(--font-size-small);
+  color: var(--text-secondary);
+  line-height: var(--line-height-normal);
+}
+
+.meal-tag {
+  display: inline-flex;
+  align-items: center;
+  height: 20px;
+  padding: 0 var(--spacing-2);
+  border-radius: var(--radius-full);
+  font-size: var(--font-size-micro);
+  font-weight: var(--font-weight-medium);
+  border: 1px solid transparent;
+}
+
+.meal-tag--breakfast {
+  color: var(--meal-breakfast-fg);
+  background: var(--meal-breakfast-bg);
+  border-color: var(--meal-breakfast-border);
+}
+
+.meal-tag--lunch {
+  color: var(--meal-lunch-fg);
+  background: var(--meal-lunch-bg);
+  border-color: var(--meal-lunch-border);
+}
+
+.meal-tag--dinner {
+  color: var(--meal-dinner-fg);
+  background: var(--meal-dinner-bg);
+  border-color: var(--meal-dinner-border);
+}
+
+.transport-indicator {
+  display: flex;
+  align-items: center;
+  gap: var(--spacing-2);
+  padding-left: var(--spacing-4);
+  height: 30px;
+}
+
+.transport-indicator__line {
+  flex-shrink: 0;
+  /* Figma node 273:16395 - the line's own box is a fixed 30px tall, matching
+     .transport-indicator's height exactly (align-items: center on the row
+     centers it, though at equal heights that's moot). No longer stretched
+     past that with a negative margin - the previous version reached into
+     the itinerary-card-list gap to visually touch the card below, which
+     isn't what the design does: the line stays fully self-contained, with a
+     real 12px gap open above and below it on both sides. */
+  align-self: stretch;
+  width: 3px;
+  background: var(--color-teal-300);
+}
+
+.transport-indicator__label {
+  /* Figma node 66:1914 - size/color/weight updated from 11px --color-teal-500
+     (regular) to 13px --color-teal-600 Medium. */
+  font-family: var(--font-family-sans);
+  font-weight: var(--font-weight-medium);
+  font-size: var(--font-size-small);
+  line-height: 16.25px;
+  color: var(--color-teal-600);
+}
+
+/* Detail view */
+
+.place-card {
+  /* Full-width photo, no stroke (Akber's redesign, 9 Jul 2026 - Figma node
+     297:30059). Card no longer has its own padding/border - the photo
+     bleeds flush to the top/left/right edges, and only the text body below
+     it is padded. Selected state uses an inset box-shadow "ring" instead
+     of a real border, so toggling selection doesn't shift the bled photo's
+     position. */
+  display: flex;
+  flex-direction: column;
+  width: 100%;
+  background: var(--surface-default);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-sm);
+}
+
+.place-card--selected {
+  box-shadow: 0 0 0 2px var(--border-focus), 0 4px 6px rgba(15, 23, 42, 0.1), 0 2px 2px rgba(15, 23, 42, 0.06);
+}
+
+/* Wrapper (see .hotel-card__photo above for why). Top corners only,
+   matching the card's own radius exactly so the bled photo aligns
+   seamlessly with the card's rounded shell. */
+.place-card__photo {
+  position: relative;
+  overflow: hidden;
+  width: 100%;
+  aspect-ratio: 309 / 174;
+  border-radius: var(--radius-lg) var(--radius-lg) 0 0;
+  flex-shrink: 0;
+  background: var(--surface-recessed);
+}
+
+.place-card__body {
+  display: flex;
+  flex-direction: column;
+  gap: var(--spacing-2);
+  /* Card itself lost its padding above (full-bleed photo) - this is now
+     the only thing padding the body: 12px above, 16px on the sides and
+     below. */
+  padding: var(--spacing-3) var(--spacing-4) var(--spacing-4);
+}
+
+.place-card__name {
+  font-size: var(--font-size-body);
+  font-weight: var(--font-weight-medium);
+  color: var(--text-primary);
+  line-height: 21.25px;
+}
+
+.place-card__description {
+  font-size: var(--font-size-small);
+  font-weight: var(--font-weight-medium);
+  color: var(--text-secondary);
+  line-height: 18px;
+}
+
+.place-card__footer {
+  display: flex;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: var(--spacing-3);
+}
+
+.place-card__meta {
+  display: flex;
+  flex-direction: column;
+  gap: var(--spacing-1);
+  font-size: var(--font-size-small);
+  font-weight: var(--font-weight-regular);
+  color: var(--text-tertiary);
+  line-height: 16.25px;
+  min-width: 0;
+}
+
+.place-card__meta-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.place-card__visit-row {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--spacing-2);
+}
+
+/* Figma node 66:3276 - place cards show the meal tag at 13px (matching
+   place-card__meta's own type scale), a step up from the 11px
+   ComparisonView uses for its more condensed cards - same shared
+   .meal-tag/.meal-tag--* classes, sized for this larger context. */
+.place-card__visit-row .meal-tag {
+  font-size: var(--font-size-small);
+  line-height: 19.5px;
+  padding: 0 9px;
+}
+
+.place-card__actions {
+  display: flex;
+  align-items: center;
+  gap: var(--spacing-2);
+  flex-shrink: 0;
+}
+
+.place-card__swap {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  height: 36px;
+  padding: 0 var(--spacing-4);
+  border-radius: var(--radius-full);
+  background: var(--brand-subtle);
+  border: 1px solid var(--border-brand);
+  color: var(--text-brand);
+  font-size: var(--font-size-small);
+  font-weight: var(--font-weight-medium);
+  cursor: pointer;
+  white-space: nowrap;
+  transition: background-color var(--duration-fast) var(--easing-standard),
+    border-color var(--duration-fast) var(--easing-standard);
+}
+
+.place-card__swap:hover {
+  background: var(--interactive-secondary-hover);
+}
+
+.place-card__swap:active {
+  background: var(--interactive-secondary-pressed);
+  border-color: var(--border-brand-pressed);
+}
+
+.place-card__swap:focus-visible {
+  outline: none;
+  border-color: var(--border-focus);
+  box-shadow: 0 0 0 3px var(--brand-muted);
+}
+
+.detail-footer {
+  display: flex;
+  gap: var(--spacing-4);
+}
+
+.detail-footer__button {
+  flex: 1;
+  height: 52px;
+  border-radius: var(--radius-full);
+  font-size: var(--font-size-body);
+  font-weight: var(--font-weight-medium);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  text-decoration: none;
+  border: 1px solid transparent;
+  transition: background-color var(--duration-fast) var(--easing-standard),
+    border-color var(--duration-fast) var(--easing-standard);
+}
+
+.detail-footer__button--outline {
+  background: var(--brand-subtle);
+  border-color: var(--border-brand);
+  color: var(--text-brand);
+}
+
+.detail-footer__button--outline:hover {
+  background: var(--interactive-secondary-hover);
+}
+
+.detail-footer__button--outline:active {
+  background: var(--interactive-secondary-pressed);
+  border-color: var(--border-brand-pressed);
+}
+
+.detail-footer__button--solid {
+  background: var(--interactive-primary);
+  color: var(--text-inverse);
+}
+
+.detail-footer__button--solid:hover {
+  background: var(--interactive-primary-hover);
+}
+
+.detail-footer__button--solid:active {
+  background: var(--interactive-primary-pressed);
+}
+
+/* Figma node 46:4705 (disabled button state) - same tokens as
+   .button-primary:disabled. Without this, a disabled solid button (e.g.
+   Confirm swap before an alternative is picked) looked visually identical
+   to an enabled one - it just silently did nothing when clicked, which read
+   as broken rather than "pick one first". */
+.detail-footer__button--solid:disabled {
+  background: var(--interactive-primary-disabled);
+  color: var(--text-disabled);
+  cursor: not-allowed;
+}
+
+.detail-footer__button:focus-visible {
+  outline: none;
+  border-color: var(--border-focus);
+  box-shadow: 0 0 0 3px var(--brand-muted);
+}
+
+/* Map view (Figma node 273:16450) */
+
+.map-image {
+  width: 100%;
+  aspect-ratio: 361 / 241;
+  border: 1px solid var(--border-strong);
+  /* Figma (node 197:17761 / 273:16492) rounds this at 8px, not the 16px
+     --radius-lg it had before - fixed to match now that the border makes
+     the mismatch visible. */
+  border-radius: var(--radius-sm);
+  overflow: hidden;
+  background: var(--surface-recessed);
+}
+
+.map-image__img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;
+}
+
+.map-image__empty {
+  width: 100%;
+  height: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: var(--spacing-4);
+  text-align: center;
+  color: var(--text-tertiary);
+  font-size: var(--font-size-small);
+}
+
+.map-row {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--spacing-2);
+}
+
+/* Finalise & Save (Figma node 273:16599) */
+
+.finalise-section {
+  display: flex;
+  flex-direction: column;
+  gap: var(--spacing-2);
+  width: 100%;
+}
+
+.finalise-section__header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.finalise-section__title {
+  font-size: var(--font-size-h2);
+  font-weight: var(--font-weight-medium);
+  color: var(--text-brand);
+}
+
+.finalise-card {
+  background: var(--surface-default);
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius-lg);
+  padding: var(--spacing-4);
+}
+
+.finalise-row {
+  display: flex;
+  /* flex-start, not center - when Interests wraps onto multiple lines, a
+     centered icon floats in the middle of the whole chip block instead of
+     sitting next to the "Interests" label at the top. Doesn't change how
+     the single-line rows (Destination, Dates, Travellers) look, their
+     content is short enough that start/center are visually identical. */
+  align-items: flex-start;
+  gap: var(--spacing-2);
+}
+
+.finalise-row + .finalise-row {
+  margin-top: var(--spacing-3);
+}
+
+.finalise-row__icon {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  width: 32px;
+  height: 32px;
+  border-radius: var(--radius-lg);
+}
+
+.finalise-row__content {
+  display: flex;
+  flex: 1 0 0;
+  flex-direction: column;
+  gap: var(--spacing-1);
+  min-width: 0;
+}
+
+.finalise-row__label {
+  font-size: var(--font-size-small);
+  font-weight: var(--font-weight-medium);
+  color: var(--text-tertiary);
+}
+
+.finalise-row__value {
+  font-size: var(--font-size-body);
+  font-weight: var(--font-weight-medium);
+  color: var(--text-primary);
+}
+
+.finalise-row__chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--spacing-2);
+  margin-top: var(--spacing-1);
+}
+
+
+.finalise-price-note {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding-top: var(--spacing-2);
+  font-size: var(--font-size-small);
+  color: var(--text-secondary);
+}
+
+.finalise-day-label {
+  font-size: var(--font-size-body);
+  font-weight: var(--font-weight-semibold);
+  color: var(--text-brand);
+}
+
+.finalise-itinerary-row {
+  display: flex;
+  align-items: center;
+  gap: var(--spacing-2);
+  /* body -> small, 15px -> 13px (Akber's call, 9 Jul 2026). */
+  font-size: var(--font-size-small);
+  /* slate.900 (#0F172A, via --text-primary) -> slate.600 (Akber's call, 9
+     Jul 2026). Scoped to this row rather than changing --text-primary
+     itself, since that token is used app-wide. */
+  color: var(--color-slate-600);
+}
+
+.finalise-reservation-row {
+  display: flex;
+  /* Vertically centers "Book now" against the name/note text block,
+     regardless of how many lines the note wraps to (Figma node
+     273:16717 - the button stays centered even next to a 3-line note). */
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--spacing-3);
+}
+
+/* Figma node 273:16599 shows a thin divider between each reservation row
+   (accommodation, then one per meal stop needing a booking) rather than
+   just whitespace. */
+.finalise-reservation-row + .finalise-reservation-row {
+  margin-top: var(--spacing-4);
+  padding-top: var(--spacing-4);
+  border-top: 1px solid var(--border-default);
+}
+
+.finalise-reservation-row__name {
+  font-size: var(--font-size-body);
+  color: var(--text-primary);
+}
+
+.finalise-reservation-row__note {
+  font-size: var(--font-size-small);
+  color: var(--text-secondary);
+  margin-top: var(--spacing-1);
+}
+
+.finalise-note {
+  font-size: var(--font-size-small);
+  color: var(--text-tertiary);
+}
+
+/* Figma node 273:16760 - no divider lines or card background between rows
+   here (unlike the bordered/white-surface .list-row pattern used for saved
+   trips on Home), just plain rows of icon + label + pill button directly on
+   the page background. */
+.finalise-export-list {
+  display: flex;
+  flex-direction: column;
+  width: 100%;
+}
+
+.finalise-export-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--spacing-3);
+  padding: var(--spacing-2) 0;
+}
+
+.finalise-export-row__label {
+  display: flex;
+  align-items: center;
+  gap: var(--spacing-3);
+  font-family: var(--font-family-sans);
+  font-weight: var(--font-weight-medium);
+  font-size: 14px;
+  color: var(--text-primary);
+}
+
+.finalise-stars {
+  display: flex;
+  gap: var(--spacing-2);
+}
+
+.finalise-star-button {
+  display: inline-flex;
+  background: none;
+  border: none;
+  padding: 0;
+  cursor: pointer;
+  transition: opacity var(--duration-fast) var(--easing-standard);
+}
+
+/* Only unfilled stars dim on hover/active - a filled (selected) star staying
+   under the cursor after being clicked was picking up this same dimming,
+   making the last star you rate look like a different, lighter color than
+   the filled stars before it. */
+.finalise-star-button:not(.finalise-star-button--filled):hover {
+  opacity: 0.7;
+}
+
+.finalise-star-button:not(.finalise-star-button--filled):active {
+  opacity: 0.5;
+}
+
+.finalise-rating-input {
+  width: 100%;
+  min-height: 100px;
+  padding: var(--spacing-3);
+  border-radius: var(--radius-sm);
+  border: 1px solid var(--border-default);
+  background: var(--surface-default);
+  font-family: var(--font-family-sans);
+  font-size: var(--font-size-small);
+  color: var(--text-primary);
+  resize: vertical;
+}
+
+/* Download as PDF (window.print()) - hide chrome that doesn't belong on a
+   printed/saved itinerary. */
+@media print {
+  .app-header,
+  .app-footer,
+  .finalise-section__header .pill-button,
+  .finalise-export-row,
+  .button-primary {
+    display: none;
+  }
+}
+
+/* Page footer (shared across every screen, added in the latest Figma pass) */
+
+.app-footer {
+  background: var(--surface-default);
+  border-top: 1px solid var(--color-slate-300);
+  width: 100%;
+}
+
+/* Mirrors .screen's own padding exactly, so the 760px-max column below
+   lines up with the .container above it at every viewport width. */
+.app-footer__screen {
+  padding: var(--spacing-6) var(--spacing-4);
+}
+
+.app-footer__inner {
+  display: flex;
+  flex-direction: column;
+  gap: var(--spacing-6);
+}
+
+.app-footer__columns {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+}
+
+.app-footer__column {
+  display: flex;
+  flex-direction: column;
+  gap: var(--spacing-2);
+  width: 80px;
+}
+
+.app-footer__heading {
+  font-family: var(--font-family-sans);
+  font-weight: var(--font-weight-medium);
+  font-size: var(--font-size-body);
+  color: var(--text-brand);
+}
+
+.app-footer__link {
+  /* Figma node 313:30242 - link color updated to #64748B (--text-tertiary),
+     was --text-secondary (#475569). */
+  font-family: var(--font-family-sans);
+  font-weight: var(--font-weight-medium);
+  font-size: var(--font-size-small);
+  color: var(--text-tertiary);
+}
+
+.app-footer__divider {
+  height: 1px;
+  width: 100%;
+  background: var(--color-slate-300);
+}
+
+.app-footer__copyright {
+  font-family: var(--font-family-sans);
+  font-weight: var(--font-weight-regular);
+  font-size: var(--font-size-small);
+  color: var(--text-tertiary);
+  margin: 0;
+}
+
+/* Checklist-style loading screen (Generating, Accommodation) */
+
+/* Background now comes from the base .screen rule (index.css) - every
+   screen uses --surface-subtle, not just this one - so this class only
+   needs the flex-column layout now. */
+.checklist-loading-screen {
+  display: flex;
+  flex-direction: column;
+}
+
+/* Mirrors .container (max-width 760px, centered) so this lines up with the
+   content on every other screen instead of spanning full width - .screen's
+   own 16px padding (already applied to the parent) handles the horizontal
+   edges, same as everywhere else. */
+.checklist-loading-content {
+  max-width: 760px;
+  margin: 0 auto;
+  display: flex;
+  flex-direction: column;
+  gap: var(--spacing-12);
+  padding: var(--spacing-5) 0;
+  width: 100%;
+}
+
+.checklist-loading-heading {
+  display: flex;
+  flex-direction: column;
+  gap: var(--spacing-1);
+  width: 100%;
+}
+
+/* Kept as its own class (rather than relying on the bare h1/.page-intro
+   rules) since this heading sits centered under the loading illustration
+   with its own layout, not the standard .itinerary-header flow - but the
+   typography now matches the same Figma node 273:16409 spec as every other
+   page's h1/.page-intro, so "Generating"/"Finding places to stay" read as
+   the same heading style as everywhere else. */
+.checklist-loading-heading__title {
+  font-family: var(--font-family-sans);
+  font-weight: var(--font-weight-semibold);
+  font-size: var(--font-size-h1);
+  line-height: 36px;
+  letter-spacing: -0.4395px;
+  color: var(--text-brand);
+  margin: 0;
+}
+
+.checklist-loading-heading__subtext {
+  /* Kept in sync with .page-intro's resolved Medium/18px spec. */
+  font-family: var(--font-family-sans);
+  font-weight: var(--font-weight-medium);
+  font-size: var(--font-size-small);
+  line-height: 18px;
+  color: var(--text-tertiary);
+  margin: 0;
+}
+
+/* Checklist (progress steps, currently used by Generating) */
+
+.checklist {
+  display: flex;
+  flex-direction: column;
+  gap: var(--spacing-4);
+  width: 100%;
+}
+
+.checklist-step {
+  display: flex;
+  align-items: center;
+  gap: var(--spacing-3);
+  width: 100%;
+}
+
+.checklist-step__icon {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  border-radius: var(--radius-full);
+  flex-shrink: 0;
+}
+
+.checklist-step__icon--done {
+  background: var(--color-teal-600);
+}
+
+.checklist-step__icon--active {
+  background: var(--surface-default);
+  border: 2px solid var(--color-teal-600);
+  border-top-color: transparent;
+  animation: checklist-spin 0.8s linear infinite;
+}
+
+.checklist-step__icon--pending {
+  background: var(--surface-default);
+  border: 2px solid var(--color-slate-300);
+}
+
+.checklist-step__dot {
+  width: 10px;
+  height: 10px;
+  border-radius: var(--radius-full);
+  background: var(--color-teal-600);
+}
+
+.checklist-step__label {
+  flex: 1;
+  font-family: var(--font-family-sans);
+  font-weight: var(--font-weight-medium);
+  font-size: var(--font-size-small);
+  line-height: var(--line-height-normal);
+  color: var(--text-primary);
+}
+
+.checklist-step__label--pending {
+  color: var(--color-slate-400);
+}
+
+@keyframes checklist-spin {
+  from { transform: rotate(0deg); }
+  to { transform: rotate(360deg); }
+}

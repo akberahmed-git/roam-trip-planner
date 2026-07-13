@@ -1,7 +1,20 @@
 @import './styles/tokens.css';
+@import './styles/components.css';
 
 * {
   box-sizing: border-box;
+}
+
+/* Form controls (button, input, select, textarea) don't inherit typography
+   from ancestors by default in the browser's own UA stylesheet - they use
+   the OS's default UI font instead. Without this, every button in the app
+   was silently rendering in that system font rather than Poppins, so an
+   explicit font-weight like .pill-button/.pace-tab's "Medium" (500) was
+   being faked by a font that doesn't actually have a true medium weight,
+   reading thinner than Figma's Poppins Medium. This fixes it everywhere at
+   once rather than patching font-family onto each button class. */
+button, input, select, textarea {
+  font-family: inherit;
 }
 
 body {
@@ -17,16 +30,15 @@ body {
   -moz-osx-font-smoothing: grayscale;
 }
 
-h1, h2, h3 {
+/* h1 is intentionally excluded here - it has its own complete rule in
+   components.css (Figma node 273:15525) that this leftover Vite-template
+   heading scale was silently overriding, since both had equal specificity
+   and this file's @import puts components.css first in source order. */
+h2, h3 {
   font-family: var(--font-family-sans);
   font-weight: var(--font-weight-semibold);
   color: var(--text-primary);
   margin: 0;
-}
-
-h1 {
-  font-size: var(--font-size-display);
-  line-height: var(--line-height-tight);
 }
 
 h2 {
@@ -53,5 +65,25 @@ code {
 }
 
 .screen {
-  padding: var(--spacing-8);
+  padding: var(--spacing-4);
+  background: var(--surface-subtle);
+}
+
+/* Sticky footer: each screen's root wrapper (<Header/><div class="screen">
+   .../><Footer/>) becomes a full-height flex column, and .screen grows to
+   fill whatever space isn't taken by the header/footer. On short content
+   (e.g. Generating's checklist) the footer lands at the bottom of the
+   viewport instead of right after the content with a dead gap below it; on
+   tall content it simply flows below everything, same as before. This is
+   deliberately NOT position:fixed - a fixed footer would permanently overlay
+   the bottom of the screen while scrolling through a long page like
+   Accommodation's hotel list, covering content instead of following it. */
+.app-page {
+  min-height: 100vh;
+  display: flex;
+  flex-direction: column;
+}
+
+.app-page > .screen {
+  flex: 1 0 auto;
 }

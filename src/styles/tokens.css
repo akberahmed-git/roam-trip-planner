@@ -54,6 +54,7 @@
   --border-default: #E2E8F0;
   --border-strong: #CBD5E1;
   --border-brand: #65D5EB;
+  --border-brand-pressed: #2BBAD6;
   --border-focus: #10A2BC;
 
   /* Interactive */
@@ -63,6 +64,7 @@
   --interactive-primary-disabled: #E2E8F0;
   --interactive-secondary: #EFFCFD;
   --interactive-secondary-hover: #D0F4F9;
+  --interactive-secondary-pressed: #A2E8F4;
 
   /* Confidence states */
   --color-confirmed-fg: #15803D;
