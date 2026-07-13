@@ -1167,12 +1167,8 @@ h1 {
      even though the overlay's own padding was already correct. */
   max-width: 361px;
   background: var(--surface-default);
-  border: 1px solid var(--border-strong);
   border-radius: var(--radius-lg);
-  /* Literal box-shadow from Figma (427:32757) - closer to but not exactly
-     --shadow-lg's blur/spread, kept precise rather than substituting the
-     token. */
-  box-shadow: 0 12px 16px rgba(15, 23, 42, 0.14), 0 4px 4px rgba(15, 23, 42, 0.08);
+  box-shadow: var(--shadow-lg);
   padding: 17px;
   display: flex;
   flex-direction: column;
@@ -1370,7 +1366,7 @@ h1 {
   border: 1px solid var(--border-default);
   border-radius: 10px;
   overflow: hidden;
-  box-shadow: 0 12px 16px rgba(15, 23, 42, 0.14), 0 4px 4px rgba(15, 23, 42, 0.08);
+  box-shadow: var(--shadow-lg);
 }
 
 .currency-select__option {
@@ -1518,7 +1514,6 @@ h1 {
 
 .card {
   background: var(--surface-default);
-  border: 1px solid var(--border-default);
   border-radius: var(--radius-lg);
   box-shadow: var(--shadow-sm);
   /* Every .card use (.travellers-card, .interests-card, and anything else
@@ -1891,7 +1886,7 @@ h1 {
 }
 
 .place-card--selected {
-  box-shadow: 0 0 0 2px var(--border-focus), 0 4px 6px rgba(15, 23, 42, 0.1), 0 2px 2px rgba(15, 23, 42, 0.06);
+  box-shadow: 0 0 0 2px var(--border-focus), var(--shadow-md);
 }
 
 /* Wrapper (see .hotel-card__photo above for why). Top corners only,
