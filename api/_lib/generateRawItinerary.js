@@ -35,14 +35,14 @@ Trip details:
 ${interestsLine}
 
 Generate TWO different itineraries for this trip:
-1. "Packed & Varied" — more activities per day, faster pace, wide variety of experiences.
-2. "Slow & Immersive" — fewer activities per day, more time per place, a calmer pace.
+1. "Packed & Varied" — more activities per day, faster pace, wide variety of experiences. Each day has 3-4 activities (not counting meals).
+2. "Slow & Immersive" — fewer activities per day, more time per place, a calmer pace. Each day has 1-2 activities (not counting meals). STRICT RULE: every Slow day must have fewer total items than the corresponding Packed day — this must always be true, with no exceptions.
 
 For each itinerary, also write:
 - A short "tagline" (5-8 words) summarizing the pace and style.
 - A short "divergenceLabel" (one sentence) describing what makes this specific plan distinct compared to the other one.
 
-For each itinerary, provide a day-by-day plan. Each day should include breakfast, lunch, dinner, and 2-3 activities, each with a real, specific place name (a real restaurant, attraction, or landmark that actually exists in ${destination}), not a generic description. Exception: see "breakfastAtAccommodation" below - on days where breakfast happens at the accommodation itself, do not include a breakfast item at all.
+For each itinerary, provide a day-by-day plan. Each day should include breakfast, lunch, dinner, and the activities specified above, each with a real, specific place name (a real restaurant, attraction, or landmark that actually exists in ${destination}), not a generic description. Exception: see "breakfastAtAccommodation" below - on days where breakfast happens at the accommodation itself, do not include a breakfast item at all.
 
 The traveller's accommodation for this whole trip is ${accommodation || 'a centrally located hotel'}. Every day of the itinerary starts and ends there - the app adds those bookend stops automatically, so never invent your own "return to hotel" or "check in" item. What you decide, per day, is where breakfast happens:
 - "breakfastAtAccommodation" (boolean, required on every day): true if it makes sense for this specific accommodation and this day's pacing for breakfast to happen there (e.g. a nicer hotel with its own breakfast, or a slower/later-starting day), false if the traveller should go out to a genuine, real breakfast/brunch venue instead. Vary this naturally across the trip rather than answering the same way every day - real trips mix both.
@@ -139,6 +139,34 @@ Use this exact structure. Note the example below has two items in Day 1 of "pack
   }
   if (parsed.slow) {
     computePacing(parsed.slow, 'Relaxed');
+  }
+
+  // Hard enforcement: slow day must always have strictly fewer items than packed day.
+  // If the AI returned equal or more, trim the last non-meal activity from the slow day
+  // until the count is lower. Meals (type === 'meal') are never removed.
+  if (parsed.packed && parsed.slow) {
+    for (let i = 0; i < parsed.slow.days.length; i++) {
+      const packedDay = parsed.packed.days[i];
+      const slowDay = parsed.slow.days[i];
+      if (!packedDay || !slowDay) continue;
+
+      while (slowDay.items.length >= packedDay.items.length) {
+        // Find the last activity (non-meal) to remove
+        let removed = false;
+        for (let j = slowDay.items.length - 1; j >= 0; j--) {
+          if (slowDay.items[j].type !== 'meal') {
+            slowDay.items.splice(j, 1);
+            removed = true;
+            break;
+          }
+        }
+        if (!removed) break; // only meals left, can't trim further
+      }
+
+      // Recompute pacing for the trimmed slow day
+      slowDay.stopCount = slowDay.items.length;
+      slowDay.pacingLevel = Math.min(Math.round((slowDay.items.length / 8) * 100) / 100, 1);
+    }
   }
 
   return parsed;
