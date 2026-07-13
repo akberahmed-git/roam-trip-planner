@@ -275,13 +275,13 @@ h1 {
   justify-content: space-between;
   gap: var(--spacing-3);
   background: var(--surface-default);
-  border: 1px solid var(--border-default);
+  border: none;
   border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-sm);
   padding: var(--spacing-4);
   text-decoration: none;
   color: inherit;
-  transition: border-color var(--duration-fast) var(--easing-standard),
-    box-shadow var(--duration-fast) var(--easing-standard),
+  transition: box-shadow var(--duration-fast) var(--easing-standard),
     background-color var(--duration-fast) var(--easing-standard);
 }
 
@@ -289,13 +289,12 @@ h1 {
    (.list-row--button, saved trips) - both are genuinely navigable, so both
    get the same hover/active feedback. */
 .list-row:hover {
-  border-color: var(--border-brand);
-  box-shadow: var(--shadow-sm);
+  box-shadow: var(--shadow-md);
 }
 
 .list-row:active {
   background: var(--brand-subtle);
-  border-color: var(--border-brand-pressed);
+  box-shadow: var(--shadow-sm);
 }
 
 /* .list-row is also used on real <button> elements (saved trips) - resets
