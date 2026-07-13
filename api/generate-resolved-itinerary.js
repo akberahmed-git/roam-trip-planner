@@ -407,6 +407,7 @@ export default async function handler(req, res) {
   // just skips bookending in that case (see applyAccommodationBookends).
   const accommodationDetails = req.body.accommodationDetails;
   const interests = req.body.interests;
+  const adults = req.body.adults;
   const transport = req.body.transport;
 
   if (!destination || !days) {
@@ -417,7 +418,7 @@ export default async function handler(req, res) {
   let anchor;
   try {
     const [rawResult, anchorResult] = await Promise.all([
-      generateRawItinerary({ destination, days, budget, accommodation, interests }),
+      generateRawItinerary({ destination, days, budget, accommodation, interests, adults }),
       geocodeDestination(destination).catch(() => null)
     ]);
     raw = rawResult;

@@ -20,6 +20,11 @@ export async function generateRawItinerary(params) {
   const budget = params.budget;
   const accommodation = params.accommodation;
   const interests = Array.isArray(params.interests) ? params.interests : [];
+  const adults = typeof params.adults === 'number' ? params.adults : 1;
+
+  const groupLine = adults > 1
+    ? `- Group size: ${adults} people — prefer venues with group-friendly seating, activities that are more enjoyable with multiple people, and restaurants that handle walk-in groups of ${adults} without a long wait.`
+    : '';
 
   const interestsLine = interests.length > 0
     ? `- Traveller interests: ${interests.join(', ')} — weight activity and meal choices toward these where it makes sense for the destination, rather than a generic mix.`
@@ -32,7 +37,7 @@ Trip details:
 - Length: ${days} days
 - Budget band: ${budget || 'mid-range'}
 - Accommodation (routing anchor): ${accommodation || 'a centrally located hotel'}
-${interestsLine}
+${interestsLine}${groupLine ? `\n${groupLine}` : ''}
 
 Generate TWO different itineraries for this trip:
 1. "Packed & Varied" — more activities per day, faster pace, wide variety of experiences. Each day has 3-4 activities (not counting meals).
