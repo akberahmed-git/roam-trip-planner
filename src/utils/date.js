@@ -16,7 +16,7 @@ export function toLocalISODate(date) {
 // 7-day trip pushes the response past its token budget and gets truncated
 // mid-JSON ("Claude did not return valid JSON"). 3 days is also what this
 // app's own default trip length already was, before this limit existed.
-export const MAX_TRIP_DAYS = 3
+export const MAX_TRIP_DAYS = 2
 
 // Whole nights between two "YYYY-MM-DD" strings (client-side mirror of the
 // same calculation in api/_lib/hotelPricing.js). Returns null rather than 0

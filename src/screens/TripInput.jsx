@@ -45,7 +45,7 @@ function defaultDates() {
   const start = new Date()
   start.setDate(start.getDate() + 14)
   const end = new Date(start)
-  end.setDate(end.getDate() + 3)
+  end.setDate(end.getDate() + 2)
   return { start: toLocalISODate(start), end: toLocalISODate(end) }
 }
 
