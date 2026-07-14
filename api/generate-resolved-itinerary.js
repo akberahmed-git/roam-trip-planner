@@ -208,7 +208,7 @@ function enforceEarliestStart(day) {
 // day-trip. 120 minutes (2 hours) per Akber's call - generous enough for a
 // real excursion, tight enough to catch cases like a same-named place
 // resolving hundreds of km away. See BUILD-LOG.md.
-const MAX_SAME_DAY_DRIVE_MINUTES = 120;
+const MAX_SAME_DAY_TRAVEL_MINUTES = 60;
 
 async function verifyWithRetry(item, destination, anchor) {
   let result = await verifyPlace({ name: item.name, destination: destination, type: item.type, anchor });
@@ -372,7 +372,7 @@ async function enforceDriveCap(day, transport, usedPlaceIds) {
     const next = day.items[i + 1];
     const parsed = parseTravelMinutes(current.travelToNext);
 
-    if (!parsed || parsed.mode !== 'drive' || parsed.minutes <= MAX_SAME_DAY_DRIVE_MINUTES) {
+    if (!parsed || parsed.minutes <= MAX_SAME_DAY_TRAVEL_MINUTES) {
       continue;
     }
     if (!current.location) {

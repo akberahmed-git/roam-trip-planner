@@ -78,9 +78,7 @@ CRITICAL AFTERNOON RULE (strictly enforced): After lunch, activities must run co
 
 CRITICAL MEAL RULE (strictly enforced): Every single day must include both lunch and dinner as separate meal items at real restaurants. This rule has no exceptions — not even on the last day. Evening activities such as beach clubs, bars, rooftop venues, or nightlife are scheduled AFTER dinner, never instead of it. A venue that serves food or drinks is not a substitute for a dinner meal item.
 
-CRITICAL DUPLICATE RULE (strictly enforced): Never schedule the same place, or two places that are part of the same complex or site, more than once — whether on the same day or across different days. Every single stop across the entire trip must be a unique venue. Do not include both a museum and the park or plaza surrounding that museum on any day. Do not repeat any restaurant, attraction, or landmark across days.
-
-CRITICAL ACCOMMODATION RULE (strictly enforced): Never schedule a visit to the accommodation itself or any landmark that the accommodation is named after as a day-trip activity. For example, if the traveller is staying at "Fairmont Baku Flame Towers", do not include "Flame Towers" or any viewpoint of the Flame Towers as a stop — the hotel bookends are added by the app automatically and the traveller already sees that landmark every day. Choose completely different attractions.
+CRITICAL ROUTING RULE (strictly enforced): Each day's stops must follow geographic logic — group stops by neighbourhood or district so the traveller moves in one direction across the city rather than darting back and forth. Morning stops should cluster together, afternoon stops should cluster together near the lunch spot, and dinner should be near the last afternoon activity or en route back to the hotel. Never place two consecutive stops that require crossing the entire city. Travel time between any two consecutive stops must never exceed 60 minutes by any mode of transport. If a stop you want to include is too far from the previous one, choose a different stop in the same area instead.
 
 ${ITEM_SHAPE_INSTRUCTIONS}
 
@@ -148,13 +146,9 @@ The traveller's accommodation for this whole trip is ${p.accommodation || 'a cen
 
 For meal items specifically: the place you choose must genuinely fit that meal, not just have a plausible-sounding name. For breakfast, choose somewhere that's actually a breakfast/brunch venue by nature - a café, bakery, hotel restaurant, or dedicated brunch spot - never a place whose real identity is a burger joint, steakhouse, bar, or nightclub, even if its name sounds inviting. The same logic applies to lunch and dinner: pick a place whose actual identity matches the meal, not just any restaurant name that comes to mind.
 
-CRITICAL AFTERNOON RULE (strictly enforced): After lunch, activities must run continuously so that the last pre-dinner activity ends no earlier than 18:30. Count your afternoon items: if they would finish before 18:30, you must add another slow activity (a neighbourhood stroll, a scenic viewpoint, a café, a garden, or a bar) to fill the time. Never leave more than 60 minutes unscheduled between any two consecutive afternoon items.
-
 CRITICAL MEAL RULE (strictly enforced): Every single day must include both lunch and dinner as separate meal items at real restaurants. This rule has no exceptions — not even on the last day. Evening activities such as beach clubs, bars, rooftop venues, or nightlife are scheduled AFTER dinner, never instead of it. A venue that serves food or drinks is not a substitute for a dinner meal item.
 
-CRITICAL DUPLICATE RULE (strictly enforced): Never schedule the same place, or two places that are part of the same complex or site, more than once — whether on the same day or across different days. Every single stop across the entire trip must be a unique venue. Do not include both a museum and the park or plaza surrounding that museum on any day. Do not repeat any restaurant, attraction, or landmark across days.
-
-CRITICAL ACCOMMODATION RULE (strictly enforced): Never schedule a visit to the accommodation itself or any landmark that the accommodation is named after as a day-trip activity. For example, if the traveller is staying at "Fairmont Baku Flame Towers", do not include "Flame Towers" or any viewpoint of the Flame Towers as a stop — the hotel bookends are added by the app automatically and the traveller already sees that landmark every day. Choose completely different attractions.
+CRITICAL ROUTING RULE (strictly enforced): Each day's stops must follow geographic logic — group stops by neighbourhood or district so the traveller moves in one direction across the city rather than darting back and forth. Morning stops should cluster together, afternoon stops should cluster together near the lunch spot, and dinner should be near the last afternoon activity or en route back to the hotel. Never place two consecutive stops that require crossing the entire city. Travel time between any two consecutive stops must never exceed 60 minutes by any mode of transport. If a stop you want to include is too far from the previous one, choose a different stop in the same area instead.
 
 ${ITEM_SHAPE_INSTRUCTIONS}
 
@@ -198,20 +192,13 @@ Use this exact structure:
 
 // Every day must have lunch and dinner — breakfast is either an item or
 // handled via breakfastAtAccommodation. If a day is missing either required
-// meal (or is missing a breakfast item when breakfastAtAccommodation is
-// false), the itinerary is considered invalid and the call retries once.
+// meal, the itinerary is considered invalid and the call retries once.
 function validateMeals(parsed) {
+  const REQUIRED = ['lunch', 'dinner'];
   for (const day of parsed.days || []) {
     const present = new Set(
       (day.items || []).filter((i) => i.mealType).map((i) => i.mealType)
     );
-    // Breakfast is required as an item unless the day flags that it happens
-    // at the accommodation (in which case the app fills it in automatically).
-    const required = ['lunch', 'dinner'];
-    if (!day.breakfastAtAccommodation) {
-      required.push('breakfast');
-    }
-    const REQUIRED = required;
     const missing = REQUIRED.filter((m) => !present.has(m));
     if (missing.length > 0) {
       const err = new Error(`Day ${day.day} is missing required meal(s): ${missing.join(', ')}`);
