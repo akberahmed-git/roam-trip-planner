@@ -2513,22 +2513,18 @@ h1 {
   to { transform: rotate(360deg); }
 }
 
-/* ─── Screen slide transitions ──────────────────────────────────────────── */
-
-@keyframes slide-in-from-right {
-  from { transform: translateX(100%); }
-  to   { transform: translateX(0); }
+/* ─── Screen transition: fade + scale ─────────────────────────────────────── */
+@keyframes screen-enter {
+  from {
+    opacity: 0;
+    transform: scale(0.96);
+  }
+  to {
+    opacity: 1;
+    transform: scale(1);
+  }
 }
 
-@keyframes slide-in-from-left {
-  from { transform: translateX(-100%); }
-  to   { transform: translateX(0); }
-}
-
-.route-slide--forward {
-  animation: slide-in-from-right 0.3s var(--easing-decelerate) both;
-}
-
-.route-slide--back {
-  animation: slide-in-from-left 0.3s var(--easing-decelerate) both;
+.route-transition {
+  animation: screen-enter 0.22s cubic-bezier(0, 0, 0.2, 1) both;
 }
