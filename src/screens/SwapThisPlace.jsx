@@ -155,7 +155,7 @@ function AlternativeCard({ alt, selected, onSelect }) {
   )
 }
 
-export default function SwapPlace() {
+export default function SwapThisPlace() {
   const navigate = useNavigate()
   const location = useLocation()
   const { tripParams, resolvedItinerary, swapDayItem } = useTrip()

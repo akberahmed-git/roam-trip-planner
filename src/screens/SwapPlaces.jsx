@@ -152,7 +152,7 @@ function PlaceCard({ item, onSwap, selected = false }) {
   )
 }
 
-export default function DetailView() {
+export default function SwapPlaces() {
   const navigate = useNavigate()
   const location = useLocation()
   const { tripParams, resolvedItinerary, selectedVariant, setSelectedVariant, isDayRecomputing } = useTrip()
