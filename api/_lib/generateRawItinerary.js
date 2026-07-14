@@ -78,6 +78,10 @@ CRITICAL AFTERNOON RULE (strictly enforced): After lunch, activities must run co
 
 CRITICAL MEAL RULE (strictly enforced): Every single day must include both lunch and dinner as separate meal items at real restaurants. This rule has no exceptions — not even on the last day. Evening activities such as beach clubs, bars, rooftop venues, or nightlife are scheduled AFTER dinner, never instead of it. A venue that serves food or drinks is not a substitute for a dinner meal item.
 
+CRITICAL DUPLICATE RULE (strictly enforced): Never schedule the same place, or two places that are part of the same complex or site, more than once on the same day. Each day's stops must be entirely distinct venues. For example, do not include both a museum and the park or plaza surrounding that museum on the same day — they are part of the same site. Vary the activities so that no two stops on the same day share the same building, grounds, or immediate surroundings.
+
+CRITICAL ACCOMMODATION RULE (strictly enforced): Never schedule a visit to the accommodation itself or any landmark that the accommodation is named after as a day-trip activity. For example, if the traveller is staying at "Fairmont Baku Flame Towers", do not include "Flame Towers" or any viewpoint of the Flame Towers as a stop — the hotel bookends are added by the app automatically and the traveller already sees that landmark every day. Choose completely different attractions.
+
 ${ITEM_SHAPE_INSTRUCTIONS}
 
 Use this exact structure:
@@ -146,6 +150,10 @@ For meal items specifically: the place you choose must genuinely fit that meal, 
 
 CRITICAL MEAL RULE (strictly enforced): Every single day must include both lunch and dinner as separate meal items at real restaurants. This rule has no exceptions — not even on the last day. Evening activities such as beach clubs, bars, rooftop venues, or nightlife are scheduled AFTER dinner, never instead of it. A venue that serves food or drinks is not a substitute for a dinner meal item.
 
+CRITICAL DUPLICATE RULE (strictly enforced): Never schedule the same place, or two places that are part of the same complex or site, more than once on the same day. Each day's stops must be entirely distinct venues. For example, do not include both a museum and the park or plaza surrounding that museum on the same day — they are part of the same site. Vary the activities so that no two stops on the same day share the same building, grounds, or immediate surroundings.
+
+CRITICAL ACCOMMODATION RULE (strictly enforced): Never schedule a visit to the accommodation itself or any landmark that the accommodation is named after as a day-trip activity. For example, if the traveller is staying at "Fairmont Baku Flame Towers", do not include "Flame Towers" or any viewpoint of the Flame Towers as a stop — the hotel bookends are added by the app automatically and the traveller already sees that landmark every day. Choose completely different attractions.
+
 ${ITEM_SHAPE_INSTRUCTIONS}
 
 Use this exact structure:
@@ -188,13 +196,20 @@ Use this exact structure:
 
 // Every day must have lunch and dinner — breakfast is either an item or
 // handled via breakfastAtAccommodation. If a day is missing either required
-// meal, the itinerary is considered invalid and the call retries once.
+// meal (or is missing a breakfast item when breakfastAtAccommodation is
+// false), the itinerary is considered invalid and the call retries once.
 function validateMeals(parsed) {
-  const REQUIRED = ['lunch', 'dinner'];
   for (const day of parsed.days || []) {
     const present = new Set(
       (day.items || []).filter((i) => i.mealType).map((i) => i.mealType)
     );
+    // Breakfast is required as an item unless the day flags that it happens
+    // at the accommodation (in which case the app fills it in automatically).
+    const required = ['lunch', 'dinner'];
+    if (!day.breakfastAtAccommodation) {
+      required.push('breakfast');
+    }
+    const REQUIRED = required;
     const missing = REQUIRED.filter((m) => !present.has(m));
     if (missing.length > 0) {
       const err = new Error(`Day ${day.day} is missing required meal(s): ${missing.join(', ')}`);

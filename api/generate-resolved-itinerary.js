@@ -50,6 +50,17 @@ function clampToWindow(time, window) {
 // treating that as a "maybe" from the AI.
 function enforceMealConstraints(day) {
   for (const item of day.items) {
+    // Claude occasionally sets type:"meal" but omits mealType (most common
+    // on breakfast items, which aren't validated server-side the same way
+    // lunch/dinner are). If the item's own "time" field names the meal, use
+    // it to fill in the gap - "time" is set by the same Claude call and is
+    // always one of "breakfast"/"lunch"/"dinner" for meal items.
+    if (item.type === 'meal' && !item.mealType && item.time) {
+      const inferred = ['breakfast', 'lunch', 'dinner'].find((m) => m === item.time);
+      if (inferred) {
+        item.mealType = inferred;
+      }
+    }
     if (!item.mealType) {
       continue;
     }
@@ -307,6 +318,87 @@ function stretchPreDinnerGap(day) {
   );
 }
 
+// Removes activity items whose resolved location falls within
+// ACCOMMODATION_CLASH_RADIUS_METERS of the hotel. Catches the case where
+// Claude picks the landmark the accommodation is named after as a stop
+// (e.g. "Flame Towers" when staying at "Fairmont Baku Flame Towers") — the
+// two may resolve to different place_ids but are physically the same complex.
+// Meals and existing accommodation bookend items are never removed.
+const ACCOMMODATION_CLASH_RADIUS_METERS = 200;
+
+function removeAccommodationClashes(day, accommodationDetails) {
+  if (!accommodationDetails?.location) return;
+  const hotelLoc = accommodationDetails.location;
+  day.items = day.items.filter((item) => {
+    if (item.type === 'accommodation' || item.type === 'meal') return true;
+    if (!item.location) return true;
+    const dist = haversineMeters(hotelLoc, item.location);
+    if (dist <= ACCOMMODATION_CLASH_RADIUS_METERS) {
+      console.warn(
+        `[generate-resolved-itinerary] Removing "${item.name}" — ${Math.round(dist)}m from accommodation`
+      );
+      return false;
+    }
+    return true;
+  });
+}
+
+// Removes the later of any two activity items on the same day that resolve
+// to locations within DUPLICATE_ACTIVITY_RADIUS_METERS of each other.
+// Catches cases where Claude picks two stops in the same complex
+// (e.g. "Azerbaijan Carpet Museum" and "Carpet Museum Park" on the same day).
+// Meals and accommodation bookends are never removed.
+const DUPLICATE_ACTIVITY_RADIUS_METERS = 150;
+
+function removeSameDayDuplicates(day) {
+  const activities = day.items.filter(
+    (item) => item.type !== 'meal' && item.type !== 'accommodation' && item.location
+  );
+  const toRemove = new Set();
+  for (let i = 0; i < activities.length; i++) {
+    for (let j = i + 1; j < activities.length; j++) {
+      if (toRemove.has(activities[j])) continue;
+      const dist = haversineMeters(activities[i].location, activities[j].location);
+      if (dist <= DUPLICATE_ACTIVITY_RADIUS_METERS) {
+        console.warn(
+          `[generate-resolved-itinerary] Removing near-duplicate "${activities[j].name}" ` +
+          `(${Math.round(dist)}m from "${activities[i].name}")`
+        );
+        toRemove.add(activities[j]);
+      }
+    }
+  }
+  if (toRemove.size > 0) {
+    day.items = day.items.filter((item) => !toRemove.has(item));
+  }
+}
+
+// After realignScheduleTimes cascades all start times forward, a meal can
+// land before its allowed window — most commonly dinner landing before 19:00
+// because the cascade runs earlier than expected. Re-clamps and forward-
+// cascades from that meal so everything after it stays consistent.
+function enforcePostRealignMealWindows(day) {
+  for (let i = 0; i < day.items.length; i++) {
+    const item = day.items[i];
+    if (!item.mealType) continue;
+    const mealWindow = MEAL_WINDOWS[item.mealType];
+    if (!mealWindow) continue;
+    const mins = timeToMinutes(item.startTime);
+    const windowStartMins = timeToMinutes(mealWindow.start);
+    if (mins === null || mins >= windowStartMins) continue;
+
+    // Clamp this meal to its window start, then cascade everything after it.
+    item.startTime = mealWindow.start;
+    for (let j = i + 1; j < day.items.length; j++) {
+      const prev = day.items[j - 1];
+      const curr = day.items[j];
+      const travel = parseTravelMinutes(prev.travelToNext);
+      const travelMin = travel ? travel.minutes : 0;
+      curr.startTime = addMinutesToTime(prev.startTime, (prev.durationMinutes ?? 0) + travelMin);
+    }
+  }
+}
+
 // Backstop for whatever slips past the anchor-distance checks above (road
 // routing occasionally goes the long way round even between two genuinely
 // nearby points, and this also catches anything the primary/broad search
@@ -413,6 +505,13 @@ async function resolveItinerary(itinerary, destination, anchor, transport, accom
     enforceMealConstraints(day);
     applyAccommodationBookends(day, accommodationDetails);
     enforceEarliestStart(day);
+    // Remove activity items that are physically co-located with the hotel or
+    // with another activity already on the same day — both checked against real
+    // resolved coordinates. Must run after bookends are added (so the hotel
+    // location is available for the clash check) and before computeTravelTimes
+    // (no point routing to/from stops that will be dropped).
+    removeAccommodationClashes(day, accommodationDetails);
+    removeSameDayDuplicates(day);
   });
 
   await Promise.all(
@@ -446,6 +545,11 @@ async function resolveItinerary(itinerary, destination, anchor, transport, accom
       realignScheduleTimes(day);
     });
   }
+
+  // Final guard: realignment may cascade a meal before its allowed window
+  // (e.g. dinner at 18:14 when the afternoon runs short). Re-clamp and
+  // forward-cascade from that point so the displayed times stay valid.
+  itinerary.days.forEach((day) => enforcePostRealignMealWindows(day));
 
   return itinerary;
 }
