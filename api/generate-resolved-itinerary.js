@@ -300,36 +300,42 @@ function applyResolution(item, result, usedPlaceIds, anchor) {
 // then realign is called again to cascade the updated duration forward.
 // Minimum gap (minutes) worth bothering to fix.
 const MIN_GAP_TO_STRETCH_MINUTES = 30;
-// Hard upper bound on a single activity's total duration after stretching.
-// Generous enough that even a long-duration activity (120 min) on a day with
-// an early last stop can still be stretched to fill a gap to a 19:30 dinner.
-const MAX_STRETCHED_DURATION_MINUTES = 300; // 5 hours absolute ceiling
-// Buffer to leave between the stretched activity's end and travel to dinner.
+// Maximum duration any single activity can reach after stretching. 150 min
+// (2.5 hours) is already a generous museum/beach/viewpoint visit — beyond
+// that the card reads as implausible. Excess time is spread to earlier
+// afternoon activities instead (see stretchPreDinnerGap).
+const MAX_SINGLE_ACTIVITY_DURATION_MINUTES = 150;
+// Buffer to leave between the last stretched activity's end and travel to dinner.
 const PRE_DINNER_BUFFER_MINUTES = 15;
 
+// Fills the gap before dinner by distributing extra time across ALL afternoon
+// activities (everything between lunch and dinner), not just the last one.
+// Works backwards from the last activity: if it would need to exceed
+// MAX_SINGLE_ACTIVITY_DURATION_MINUTES to fill the whole gap, it is capped
+// at that limit and the remainder is passed to the activity before it, and
+// so on. This means a 3-hour gap before dinner becomes e.g. 150 min at the
+// last stop + 30 extra min at the one before it, rather than a single
+// implausible 300-min visit. Once all durations are set, dinner's startTime
+// is written directly (bypassing realignScheduleTimes' drift-tolerance guard)
+// so the schedule stays fully consistent.
 function stretchPreDinnerGap(day) {
   const dinnerIndex = day.items.findIndex((item) => item.mealType === 'dinner');
   if (dinnerIndex <= 0) return;
 
-  // Find the last real activity before dinner — skip meals and accommodation.
-  // If there's no non-meal activity between lunch and dinner, skip past
-  // the lunch too so we at least have something to stretch.
-  let lastActivityIndex = -1;
-  for (let i = dinnerIndex - 1; i >= 0; i--) {
-    const item = day.items[i];
-    if (item.type !== 'meal' && item.type !== 'accommodation') {
-      lastActivityIndex = i;
-      break;
-    }
-  }
-  if (lastActivityIndex === -1) return;
-
-  const lastActivity = day.items[lastActivityIndex];
-  if (!lastActivity.startTime || !lastActivity.durationMinutes) return;
-
   const dinner = day.items[dinnerIndex];
   if (!dinner.startTime) return;
 
+  // Collect all non-meal, non-accommodation activities before dinner.
+  const afternoonActivities = [];
+  for (let i = 0; i < dinnerIndex; i++) {
+    const item = day.items[i];
+    if (item.type !== 'meal' && item.type !== 'accommodation' && item.startTime && item.durationMinutes) {
+      afternoonActivities.push(item);
+    }
+  }
+  if (afternoonActivities.length === 0) return;
+
+  const lastActivity = afternoonActivities[afternoonActivities.length - 1];
   const travelParsed = parseTravelMinutes(lastActivity.travelToNext);
   const travelMinutes = travelParsed ? travelParsed.minutes : 0;
 
@@ -339,21 +345,21 @@ function stretchPreDinnerGap(day) {
 
   if (gap < MIN_GAP_TO_STRETCH_MINUTES) return;
 
-  // Target: activity ends exactly [buffer] minutes before travel to dinner
-  // begins. Use the dinner's planned start time as the anchor — don't rely
-  // on the cascaded time since that's what we're trying to fix.
-  const targetEndMinutes = dinnerStartMinutes - travelMinutes - PRE_DINNER_BUFFER_MINUTES;
-  const targetDuration = targetEndMinutes - timeToMinutes(lastActivity.startTime);
+  // Distribute the gap backwards across afternoon activities.
+  // Each activity absorbs up to (MAX_SINGLE_ACTIVITY_DURATION_MINUTES - its
+  // current duration); whatever it can't absorb spills to the one before it.
+  let minutesLeft = gap - PRE_DINNER_BUFFER_MINUTES;
+  for (let i = afternoonActivities.length - 1; i >= 0 && minutesLeft > 0; i--) {
+    const activity = afternoonActivities[i];
+    const canAbsorb = MAX_SINGLE_ACTIVITY_DURATION_MINUTES - activity.durationMinutes;
+    if (canAbsorb <= 0) continue;
+    const absorb = Math.min(canAbsorb, minutesLeft);
+    activity.durationMinutes += absorb;
+    minutesLeft -= absorb;
+  }
 
-  if (targetDuration <= lastActivity.durationMinutes) return; // already fills the gap
-
-  lastActivity.durationMinutes = Math.min(targetDuration, MAX_STRETCHED_DURATION_MINUTES);
-
-  // Move dinner's startTime to match the now-filled schedule so
-  // realignScheduleTimes doesn't fight us via its drift-tolerance guard.
-  // We compute the exact cascaded arrival ourselves and write it directly —
-  // this is safe because stretchPreDinnerGap always runs immediately before
-  // realignScheduleTimes, which will then cascade everything after dinner.
+  // Write dinner's startTime directly so realignScheduleTimes' drift-tolerance
+  // guard doesn't snap it back. Recompute from the last activity's final state.
   const newActivityEnd = timeToMinutes(lastActivity.startTime) + lastActivity.durationMinutes;
   const newDinnerStart = newActivityEnd + travelMinutes;
   dinner.startTime = addMinutesToTime('00:00', newDinnerStart);
