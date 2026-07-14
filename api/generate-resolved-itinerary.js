@@ -437,6 +437,26 @@ async function enforceDriveCap(day, transport, usedPlaceIds) {
 
 async function resolveItinerary(itinerary, destination, anchor, transport, accommodationDetails) {
   const usedPlaceIds = new Set();
+
+  // Claude sometimes returns a day's items in non-chronological order (e.g. a
+  // breakfast item with startTime 09:00 landing at array index 3, after items
+  // whose startTimes are 11:00 and 13:00). Every downstream step - allItems
+  // indexing, realignScheduleTimes' i-1→i chain, stretchPreDinnerGap's
+  // "last activity before dinner" scan - assumes items are in time order, so
+  // an out-of-order array produces a jumbled schedule where time appears to go
+  // backwards and duplicate meal labels appear mid-day. Sorting here, before
+  // anything else touches the array, fixes that at the root.
+  itinerary.days.forEach((day) => {
+    day.items.sort((a, b) => {
+      const aMin = timeToMinutes(a.startTime);
+      const bMin = timeToMinutes(b.startTime);
+      if (aMin == null && bMin == null) return 0;
+      if (aMin == null) return 1;
+      if (bMin == null) return -1;
+      return aMin - bMin;
+    });
+  });
+
   const allItems = [];
 
   itinerary.days.forEach((day) => {
