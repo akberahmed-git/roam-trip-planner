@@ -1,11 +1,9 @@
 // Server-side proxy for Google Places Autocomplete (New). Keeps the API key
 // off the client, same pattern as verifyPlace.js and trendingLocations.js.
 //
-// When the user types a country name we intercept it and return real city
-// results via Google Places Text Search instead — so "France" shows Paris,
-// Nice, Lyon etc. rather than the country itself or prefix noise like
-// "Francestown, NH". Country detection uses a local name list (no external
-// API dependency) and Google handles all actual place data.
+// When the user types a country name we intercept and return real city results
+// via Google Places Text Search instead of prefix-match noise. Country names
+// are detected locally (no external API dependency).
 
 // ── All country names (ISO 3166-1 + common aliases) ─────────────────────────
 const COUNTRY_NAMES = new Set([
@@ -41,44 +39,67 @@ const COUNTRY_NAMES = new Set([
   'uruguay','uzbekistan','vanuatu','venezuela','vietnam','yemen','zambia',
   'zimbabwe',
   // Common aliases
-  'usa','us','uk','uae','ussr','south korea','north korea','ivory coast',
-  'england','scotland','wales','northern ireland','hong kong','macau',
-  'palestine','kosovo','taiwan','puerto rico','bali',
+  'usa','us','uk','uae','england','scotland','wales','hong kong','macau',
+  'ivory coast','bali','puerto rico','taiwan',
 ])
+
+// Proper title-case for display (e.g. "united states" → "United States")
+function toTitleCase(str) {
+  const lowercase = ['and','of','the','in','de']
+  return str
+    .split(' ')
+    .map((word, i) =>
+      i === 0 || !lowercase.includes(word)
+        ? word.charAt(0).toUpperCase() + word.slice(1)
+        : word
+    )
+    .join(' ')
+}
 
 function isCountryName(input) {
   return COUNTRY_NAMES.has(input.toLowerCase().trim())
 }
 
 // ── Google Places Text Search ────────────────────────────────────────────────
-// Returns popularity-ranked cities for a country using Google's own signals.
+// Returns popularity-ranked cities using Google's own signals.
+// No includedType filter — we post-filter by types to avoid over-restriction
+// that causes wrong results in some countries.
 async function searchCitiesInCountry(countryName) {
   const res = await fetch('https://places.googleapis.com/v1/places:searchText', {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',
       'X-Goog-Api-Key': process.env.GOOGLE_PLACES_API_KEY,
-      'X-Goog-FieldMask': 'places.id,places.displayName,places.formattedAddress',
+      'X-Goog-FieldMask': 'places.id,places.displayName,places.types',
     },
     body: JSON.stringify({
-      textQuery: `popular cities in ${countryName}`,
-      includedType: 'locality',
-      pageSize: 5,
+      textQuery: `most visited cities in ${countryName}`,
+      pageSize: 8,
     }),
   })
 
   if (!res.ok) return []
 
   const data = await res.json()
+  const CITY_TYPES = new Set(['locality', 'administrative_area_level_1', 'sublocality', 'sublocality_level_1'])
+  const countryLower = countryName.toLowerCase()
+
   return (data.places || [])
+    .filter((place) => {
+      // Must be a city/region type
+      const hascityType = place.types?.some((t) => CITY_TYPES.has(t))
+      if (!hascityType) return false
+      // Skip results whose display name matches the country (avoids "France, France")
+      const nameL = (place.displayName?.text || '').toLowerCase()
+      if (nameL === countryLower) return false
+      return true
+    })
     .map((place) => ({
       placeId: place.id,
-      text: place.displayName?.text
-        ? `${place.displayName.text}, ${countryName}`
-        : (place.formattedAddress || ''),
+      text: `${place.displayName.text}, ${countryName}`,
       matches: [],
     }))
-    .filter((s) => s.text)
+    .slice(0, 5)
 }
 
 // ── Google Places Autocomplete ───────────────────────────────────────────────
@@ -115,13 +136,11 @@ export async function fetchDestinationSuggestions(input) {
   const trimmed = input.trim()
 
   if (isCountryName(trimmed)) {
-    // Capitalise properly for the Google query and display text
-    const displayName = trimmed.charAt(0).toUpperCase() + trimmed.slice(1)
-    const cityResults = await searchCitiesInCountry(displayName)
-    if (cityResults.length > 0) return cityResults
-    // Fallback to autocomplete if Text Search fails
-    const fallback = await googleAutocomplete(trimmed)
-    return fallback.filter((r) => r.text.includes(','))
+    const countryName = toTitleCase(trimmed)
+    const cityResults = await searchCitiesInCountry(countryName)
+    // Only return results if we got meaningful cities — don't fall back to
+    // autocomplete which would show noise like tiny villages.
+    return cityResults
   }
 
   return googleAutocomplete(trimmed)
