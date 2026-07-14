@@ -279,7 +279,7 @@ function applyResolution(item, result, usedPlaceIds, anchor) {
 const MAX_STRETCH_MINUTES = 180;
 const MIN_GAP_TO_STRETCH_MINUTES = 90;
 
-function stretchPreDinnerGap(day) {
+function stretchPreDinnerGap(day, maxStretch = MAX_STRETCH_MINUTES) {
   const dinnerIndex = day.items.findIndex((item) => item.mealType === 'dinner');
   if (dinnerIndex <= 0) return;
 
@@ -314,7 +314,7 @@ function stretchPreDinnerGap(day) {
   const additionalMinutes = gap - 15;
   lastActivity.durationMinutes = Math.min(
     lastActivity.durationMinutes + additionalMinutes,
-    MAX_STRETCH_MINUTES
+    maxStretch
   );
 }
 
@@ -575,15 +575,17 @@ async function resolveItinerary(itinerary, destination, anchor, transport, accom
   // them.
   itinerary.days.forEach((day) => realignScheduleTimes(day));
 
-  // Slow & Immersive only: absorb any large pre-dinner gap by extending
-  // the last afternoon activity, then re-cascade so the rest of the day
-  // (dinner, hotel return) reflects the updated duration.
-  if (itinerary.pacingLabel === 'Relaxed') {
-    itinerary.days.forEach((day) => {
-      stretchPreDinnerGap(day);
-      realignScheduleTimes(day);
-    });
-  }
+  // Both variants: absorb any large pre-dinner gap by extending the last
+  // afternoon activity. Slow & Immersive can stretch up to 3 hours (a long
+  // afternoon at a spa or beach is on-brand); Packed caps at 90 minutes so
+  // the extension stays plausible. If Claude generated enough stops to fill
+  // the afternoon this is a no-op. Re-cascade after each stretch so dinner
+  // and the hotel bookend stay consistent.
+  const isRelaxed = itinerary.pacingLabel === 'Relaxed';
+  itinerary.days.forEach((day) => {
+    stretchPreDinnerGap(day, isRelaxed ? MAX_STRETCH_MINUTES : 90);
+    realignScheduleTimes(day);
+  });
 
   // Final guard: realignment may cascade a meal before its allowed window
   // (e.g. dinner at 18:14 when the afternoon runs short). Re-clamp and

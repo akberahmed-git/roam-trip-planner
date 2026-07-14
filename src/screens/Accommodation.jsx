@@ -96,7 +96,7 @@ function RangeIcon() {
 const STEPS = [
   'Searching hotels in your destination',
   'Checking ratings, prices and photos',
-  'Matching hotels to your budget',
+  'Sorting by rating and value',
 ]
 
 const STEP_INTERVAL_MS = 3200
