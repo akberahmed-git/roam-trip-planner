@@ -302,11 +302,18 @@ export async function fetchDestinationSuggestions(input) {
   const cities = COUNTRY_CITIES[key]
   if (cities) {
     const countryName = toTitleCase(trimmed)
-    return cities.map((city) => ({
-      placeId: null,
-      text: city === countryName ? city : `${city}, ${countryName}`,
-      matches: [],
-    }))
+    return cities.map((city) => {
+      const text = city === countryName ? city : `${city}, ${countryName}`
+      // Find where the typed input appears in the result so HighlightedText
+      // can bold it — same format Google uses: startOffset/endOffset.
+      const lowerText = text.toLowerCase()
+      const matchStart = lowerText.indexOf(key)
+      const matches =
+        matchStart >= 0
+          ? [{ startOffset: matchStart, endOffset: matchStart + key.length }]
+          : []
+      return { placeId: null, text, matches }
+    })
   }
 
   return googleAutocomplete(trimmed)
