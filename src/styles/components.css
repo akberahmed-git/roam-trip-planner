@@ -2104,6 +2104,22 @@ h1 {
   gap: var(--spacing-2);
 }
 
+.map-row__number {
+  flex-shrink: 0;
+  width: 28px;
+  height: 28px;
+  border-radius: var(--radius-full);
+  background: var(--color-teal-600);
+  color: #fff;
+  font-family: var(--font-family-sans);
+  font-size: var(--font-size-small);
+  font-weight: var(--font-weight-semibold);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  margin-top: 12px; /* vertically centre against the card photo */
+}
+
 /* Finalise & Save (Figma node 273:16599) */
 
 .finalise-section {

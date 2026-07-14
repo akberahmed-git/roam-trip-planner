@@ -7,9 +7,10 @@ import FlowBreadcrumb from '../components/FlowBreadcrumb'
 import SegmentedControl from '../components/SegmentedControl'
 import PlacePhoto from '../components/PlacePhoto'
 
-function MapRow({ item }) {
+function MapRow({ item, number }) {
   return (
     <div className="map-row">
+      <div className="map-row__number">{number}</div>
       <div className="comparison-card" style={{ flex: 1 }}>
         <PlacePhoto src={item.photoUrl} alt={item.name} className="comparison-card__photo" />
         <div className="comparison-card__body">
@@ -75,7 +76,7 @@ export default function MapView() {
 
   function handleViewOnCards() {
     setSelectedVariant(variantKey)
-    navigate('/swap_place', { state: { variant: variantKey } })
+    navigate('/detail', { state: { variant: variantKey } })
   }
 
   const items = day?.items || []
@@ -119,7 +120,7 @@ export default function MapView() {
               <h2 className="day-heading">{day.theme}</h2>
               <div className="stack" style={{ gap: 'var(--spacing-3)' }}>
                 {items.map((item, index) => (
-                  <MapRow key={index} item={item} />
+                  <MapRow key={index} item={item} number={index + 1} />
                 ))}
               </div>
             </div>
