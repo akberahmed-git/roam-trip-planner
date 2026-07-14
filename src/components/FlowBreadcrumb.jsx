@@ -5,20 +5,19 @@ const STEPS = [
   { label: 'Plan', to: '/trip-input' },
   { label: 'Stay', to: '/accommodation' },
   { label: 'Itinerary', to: '/comparison' },
-  { label: 'Swap', to: '/detail' },
 ]
 
-// Map and Swap both branch off Details (Figma: "Home / Plan / Accomodation /
-// Itinerary / Details / Map view" and ".../ Details / Swap") rather than
-// chaining after each other, so they're appended on top of the fixed base
-// list instead of being separate STEPS entries - two branches at the same
-// depth, not a 7th sequential step.
-export default function FlowBreadcrumb({ current }) {
+// `extra` is an optional array of { label, to } steps inserted between the
+// fixed STEPS base and `current` — used when a screen can be reached via
+// different paths (e.g. Map reached via Swap vs. directly from Itinerary).
+// Only pass `extra` when the user actually navigated through that branch;
+// don't include it by default.
+export default function FlowBreadcrumb({ current, extra = [] }) {
   const currentIndex = STEPS.findIndex((step) => step.label === current)
   const visible =
     currentIndex !== -1
       ? STEPS.slice(0, currentIndex + 1)
-      : [...STEPS, { label: current, to: '#' }]
+      : [...STEPS, ...extra, { label: current, to: '#' }]
 
   return (
     <nav className="flow-breadcrumb">

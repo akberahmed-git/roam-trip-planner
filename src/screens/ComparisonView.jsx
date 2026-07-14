@@ -189,7 +189,7 @@ export default function ComparisonView() {
     // Also pass the variant directly via navigation state, so DetailView has
     // an immediate source of truth on its very first render instead of only
     // relying on the TripContext update having landed by the time it mounts.
-    navigate('/detail', { state: { variant: variantKey } })
+    navigate('/swap_place', { state: { variant: variantKey } })
   }
 
   // Opens the token-styled ConfirmDialog rather than deleting immediately -

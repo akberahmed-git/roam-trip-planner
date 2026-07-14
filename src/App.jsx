@@ -24,7 +24,7 @@ function App() {
           <Route path="/voice-confirmation" element={<VoiceConfirmation />} />
           <Route path="/generating" element={<Generating />} />
           <Route path="/comparison" element={<ComparisonView />} />
-          <Route path="/detail" element={<DetailView />} />
+          <Route path="/swap_place" element={<DetailView />} />
           <Route path="/swap" element={<SwapPlace />} />
           <Route path="/map" element={<MapView />} />
           <Route path="/finalise" element={<FinaliseSave />} />

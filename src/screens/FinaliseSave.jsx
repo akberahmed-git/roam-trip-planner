@@ -408,7 +408,7 @@ export default function FinaliseSave() {
           <section className="finalise-section">
             <div className="finalise-section__header">
               <span className="finalise-section__title">Itinerary</span>
-              <button type="button" className="pill-button pill-button--outline" onClick={() => navigate('/detail')}>
+              <button type="button" className="pill-button pill-button--outline" onClick={() => navigate('/swap_place')}>
                 Edit
               </button>
             </div>

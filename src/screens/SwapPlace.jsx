@@ -171,7 +171,7 @@ export default function SwapPlace() {
 
   useEffect(() => {
     if (!swapContext?.item || !tripParams?.destination) {
-      navigate('/detail', { replace: true })
+      navigate('/swap_place', { replace: true })
     }
   }, [swapContext, tripParams, navigate])
 
@@ -252,7 +252,7 @@ export default function SwapPlace() {
       busyTime: undefined,
     })
 
-    navigate('/detail', { state: { variant, dayIndex } })
+    navigate('/swap_place', { state: { variant, dayIndex } })
   }
 
   return (
@@ -319,7 +319,7 @@ export default function SwapPlace() {
               <button
                 type="button"
                 className="detail-footer__button detail-footer__button--outline"
-                onClick={() => navigate('/detail', { state: { variant, dayIndex } })}
+                onClick={() => navigate('/swap_place', { state: { variant, dayIndex } })}
               >
                 Cancel
               </button>

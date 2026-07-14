@@ -75,7 +75,7 @@ export default function MapView() {
 
   function handleViewOnCards() {
     setSelectedVariant(variantKey)
-    navigate('/detail', { state: { variant: variantKey } })
+    navigate('/swap_place', { state: { variant: variantKey } })
   }
 
   const items = day?.items || []
