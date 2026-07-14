@@ -300,7 +300,7 @@ export default function Accommodation() {
             <div className="checklist-loading-heading">
               <h1 className="checklist-loading-heading__title">Finding places to stay</h1>
               <p className="checklist-loading-heading__subtext">
-                Finding the best hotels in {tripParams?.destination} for your budget.
+                Checking highly rated hotels in {tripParams?.destination}.
               </p>
             </div>
             <Checklist steps={STEPS} activeIndex={activeStep} />
