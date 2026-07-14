@@ -373,6 +373,40 @@ function removeSameDayDuplicates(day) {
   }
 }
 
+// Scans across all days and removes any activity that is within
+// DUPLICATE_ACTIVITY_RADIUS_METERS of an activity already locked in on an
+// earlier day. Meals and accommodation bookends are skipped — only sightseeing
+// / restaurant activities can duplicate. Runs after removeSameDayDuplicates so
+// the per-day pass has already cleaned up within each day before we compare
+// across them.
+function removeCrossDayDuplicates(itinerary) {
+  const seen = []; // { name, location } of every activity kept so far
+  for (const day of itinerary.days) {
+    const toRemove = new Set();
+    for (const item of day.items) {
+      if (item.type === 'meal' || item.type === 'accommodation') continue;
+      if (!item.location) continue;
+      for (const prior of seen) {
+        const dist = haversineMeters(item.location, prior.location);
+        if (dist <= DUPLICATE_ACTIVITY_RADIUS_METERS) {
+          console.warn(
+            `[generate-resolved-itinerary] Cross-day duplicate: removing "${item.name}" ` +
+            `(${Math.round(dist)}m from "${prior.name}" on an earlier day)`
+          );
+          toRemove.add(item);
+          break;
+        }
+      }
+      if (!toRemove.has(item)) {
+        seen.push({ name: item.name, location: item.location });
+      }
+    }
+    if (toRemove.size > 0) {
+      day.items = day.items.filter((item) => !toRemove.has(item));
+    }
+  }
+}
+
 // After realignScheduleTimes cascades all start times forward, a meal can
 // land before its allowed window — most commonly dinner landing before 19:00
 // because the cascade runs earlier than expected. Re-clamps and forward-
@@ -513,6 +547,11 @@ async function resolveItinerary(itinerary, destination, anchor, transport, accom
     removeAccommodationClashes(day, accommodationDetails);
     removeSameDayDuplicates(day);
   });
+
+  // Cross-day dedup: any activity whose location is within 150m of an
+  // activity already kept on an earlier day is dropped. Runs after the
+  // per-day passes so each day is already internally clean.
+  removeCrossDayDuplicates(itinerary);
 
   await Promise.all(
     itinerary.days.map((day) => computeTravelTimes(day.items, transport))
