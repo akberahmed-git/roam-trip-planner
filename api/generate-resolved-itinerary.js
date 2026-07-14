@@ -431,12 +431,12 @@ export default async function handler(req, res) {
   }
 
   try {
-    if (raw.packed) {
-      await resolveItinerary(raw.packed, destination, anchor, transport, accommodationDetails);
-    }
-    if (raw.slow) {
-      await resolveItinerary(raw.slow, destination, anchor, transport, accommodationDetails);
-    }
+    // Resolve both variants in parallel - each is independent of the other,
+    // so there's no reason to wait for packed before starting slow.
+    await Promise.all([
+      raw.packed ? resolveItinerary(raw.packed, destination, anchor, transport, accommodationDetails) : Promise.resolve(),
+      raw.slow ? resolveItinerary(raw.slow, destination, anchor, transport, accommodationDetails) : Promise.resolve(),
+    ]);
     res.status(200).json(raw);
   } catch (error) {
     res.status(500).json({ error: error.message });

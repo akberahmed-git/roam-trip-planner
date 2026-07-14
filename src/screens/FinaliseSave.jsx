@@ -454,7 +454,7 @@ export default function FinaliseSave() {
                           working link that would imply a booking flow that
                           doesn't exist - it just no longer looks inert. */}
                       <button type="button" className="pill-button pill-button--outline">
-                        Book now
+                        Book ↗
                       </button>
                     </div>
                   )}
@@ -465,7 +465,7 @@ export default function FinaliseSave() {
                         <p className="finalise-reservation-row__note">{reservation.note}</p>
                       </div>
                       <button type="button" className="pill-button pill-button--outline">
-                        Book now
+                        Book ↗
                       </button>
                     </div>
                   ))}

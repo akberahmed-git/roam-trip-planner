@@ -110,7 +110,9 @@ export default function Generating() {
             <h1 className="checklist-loading-heading__title">Generating</h1>
             <p className="checklist-loading-heading__subtext">
               {tripParams?.days === 1
-                ? 'This usually takes around 25 seconds'
+                ? 'This usually takes around 20 seconds'
+                : tripParams?.days === 2
+                ? 'This usually takes around 30 seconds'
                 : 'This usually takes around 40 seconds'}
             </p>
           </div>

@@ -49,7 +49,22 @@ export default async function handler(req, res) {
   params.set('key', process.env.GOOGLE_PLACES_API_KEY);
 
   const markerQuery = markerParams.map((m) => 'markers=' + encodeURIComponent(m)).join('&');
-  const googleUrl = `https://maps.googleapis.com/maps/api/staticmap?${params.toString()}&${markerQuery}`;
+
+  // Route line connecting stops in order. Uses the same teal as the pins
+  // (0x0A6E83). Google Static Maps requires the path to be a separate
+  // `path` query parameter - can't go through URLSearchParams since it
+  // would double-encode the pipe-separated coord list.
+  const coords = entries
+    .map((entry) => {
+      const [, coords] = entry.split(':');
+      return coords && /^-?\d+(\.\d+)?,-?\d+(\.\d+)?$/.test(coords) ? coords : null;
+    })
+    .filter(Boolean);
+  const pathQuery = coords.length >= 2
+    ? '&path=' + encodeURIComponent(`color:0x0A6E83|weight:3|${coords.join('|')}`)
+    : '';
+
+  const googleUrl = `https://maps.googleapis.com/maps/api/staticmap?${params.toString()}&${markerQuery}${pathQuery}`;
 
   try {
     const response = await fetch(googleUrl);

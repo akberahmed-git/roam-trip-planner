@@ -322,18 +322,24 @@ export async function searchAccommodations({ destination, checkInDate, checkOutD
     buckets[tier].push(place);
   }
 
-  // Widen once for any tier that came up completely empty - a destination
-  // with real inventory can still leave one tier at zero purely because the
-  // biased query phrasing didn't match local listings.
-  const emptyTiers = TIERS.filter((tier) => buckets[tier].length === 0);
-  if (emptyTiers.length > 0) {
+  // Widen for any tier that has fewer than SHOWN_PER_TIER results - covers
+  // both completely empty tiers and "thin" tiers (e.g. only 1-2 hotels
+  // returned by the biased query). A destination with real inventory can
+  // still come up thin because the biased phrasing didn't match local
+  // listings; a neutral query often surfaces what the biased one missed.
+  const thinTiers = TIERS.filter((tier) => buckets[tier].length < SHOWN_PER_TIER);
+  if (thinTiers.length > 0) {
     const widenedPlaces = (await searchTier(destination, WIDEN_QUERY))
       .filter((place) => isUsablePlace(place) && !byPlaceId.has(place.id));
     for (const place of widenedPlaces) {
       // Neutral query has no query-tier bias of its own, so default the
       // fallback (when Places has no priceLevel either) to Standard.
       const tier = tierFor(place, 'Standard');
-      if (!emptyTiers.includes(tier)) continue;
+      if (!thinTiers.includes(tier)) continue;
+      // Only fill up to SHOWN_PER_TIER slots per tier - don't overfill a
+      // tier that already had some results just because the widen query
+      // happened to return more of the same tier.
+      if (buckets[tier].length >= SHOWN_PER_TIER) continue;
       byPlaceId.set(place.id, { place, tier });
       buckets[tier].push(place);
     }
