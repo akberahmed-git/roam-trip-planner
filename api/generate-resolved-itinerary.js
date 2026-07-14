@@ -24,7 +24,7 @@ import {
 const MEAL_WINDOWS = {
   breakfast: { start: '09:00', end: '10:30' },
   lunch: { start: '12:00', end: '14:00' },
-  dinner: { start: '20:00', end: '22:00' },
+  dinner: { start: '19:00', end: '21:00' },
 };
 const FIXED_MEAL_DURATION_MINUTES = 60;
 
@@ -257,6 +257,56 @@ function applyResolution(item, result, usedPlaceIds, anchor) {
   item.location = item.location || null;
 }
 
+// For the Slow & Immersive variant: when the last pre-dinner activity wraps
+// up significantly before dinner (a common side-effect of real travel times
+// being shorter than Claude assumed when writing the schedule), extend its
+// durationMinutes to absorb the dead time rather than leaving an awkward
+// gap. Spending a long afternoon at a spa, beach, or viewpoint is exactly
+// what "slow" means - capped at 3 hours so it stays plausible. Runs after
+// realignScheduleTimes so it operates on the final cascaded start times,
+// then realign is called again to cascade the updated duration forward.
+const MAX_STRETCH_MINUTES = 180;
+const MIN_GAP_TO_STRETCH_MINUTES = 90;
+
+function stretchPreDinnerGap(day) {
+  const dinnerIndex = day.items.findIndex((item) => item.mealType === 'dinner');
+  if (dinnerIndex <= 0) return;
+
+  // Last real activity before dinner (skip meals and accommodation bookends)
+  let lastActivityIndex = -1;
+  for (let i = dinnerIndex - 1; i >= 0; i--) {
+    const item = day.items[i];
+    if (item.type !== 'meal' && item.type !== 'accommodation') {
+      lastActivityIndex = i;
+      break;
+    }
+  }
+  if (lastActivityIndex === -1) return;
+
+  const lastActivity = day.items[lastActivityIndex];
+  if (!lastActivity.startTime || !lastActivity.durationMinutes) return;
+
+  const dinner = day.items[dinnerIndex];
+  if (!dinner.startTime) return;
+
+  const travelParsed = parseTravelMinutes(lastActivity.travelToNext);
+  const travelMinutes = travelParsed ? travelParsed.minutes : 0;
+
+  const activityEndMinutes = timeToMinutes(lastActivity.startTime) + lastActivity.durationMinutes;
+  const dinnerStartMinutes = timeToMinutes(dinner.startTime);
+  const gap = dinnerStartMinutes - activityEndMinutes - travelMinutes;
+
+  if (gap < MIN_GAP_TO_STRETCH_MINUTES) return;
+
+  // Fill the gap, leaving a 15-min buffer before travel to dinner,
+  // capped so no single activity runs longer than 3 hours.
+  const additionalMinutes = gap - 15;
+  lastActivity.durationMinutes = Math.min(
+    lastActivity.durationMinutes + additionalMinutes,
+    MAX_STRETCH_MINUTES
+  );
+}
+
 // Backstop for whatever slips past the anchor-distance checks above (road
 // routing occasionally goes the long way round even between two genuinely
 // nearby points, and this also catches anything the primary/broad search
@@ -386,6 +436,16 @@ async function resolveItinerary(itinerary, destination, anchor, transport, accom
   // so this is the one place the displayed schedule gets reconciled with
   // them.
   itinerary.days.forEach((day) => realignScheduleTimes(day));
+
+  // Slow & Immersive only: absorb any large pre-dinner gap by extending
+  // the last afternoon activity, then re-cascade so the rest of the day
+  // (dinner, hotel return) reflects the updated duration.
+  if (itinerary.pacingLabel === 'Relaxed') {
+    itinerary.days.forEach((day) => {
+      stretchPreDinnerGap(day);
+      realignScheduleTimes(day);
+    });
+  }
 
   return itinerary;
 }

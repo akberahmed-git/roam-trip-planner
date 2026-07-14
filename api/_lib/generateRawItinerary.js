@@ -74,6 +74,10 @@ The traveller's accommodation for this whole trip is ${p.accommodation || 'a cen
 
 For meal items specifically: the place you choose must genuinely fit that meal, not just have a plausible-sounding name. For breakfast, choose somewhere that's actually a breakfast/brunch venue by nature - a café, bakery, hotel restaurant, or dedicated brunch spot - never a place whose real identity is a burger joint, steakhouse, bar, or nightclub, even if its name sounds inviting. The same logic applies to lunch and dinner: pick a place whose actual identity matches the meal, not just any restaurant name that comes to mind.
 
+CRITICAL AFTERNOON RULE (strictly enforced): After lunch, activities must run continuously so that the last pre-dinner activity ends no earlier than 18:30. Count your afternoon items: if they would finish before 18:30, you must add another activity to fill the time. Never leave more than 60 minutes unscheduled between any two consecutive afternoon items.
+
+CRITICAL MEAL RULE (strictly enforced): Every single day must include both lunch and dinner as separate meal items at real restaurants. This rule has no exceptions — not even on the last day. Evening activities such as beach clubs, bars, rooftop venues, or nightlife are scheduled AFTER dinner, never instead of it. A venue that serves food or drinks is not a substitute for a dinner meal item.
+
 ${ITEM_SHAPE_INSTRUCTIONS}
 
 Use this exact structure:
@@ -140,6 +144,8 @@ The traveller's accommodation for this whole trip is ${p.accommodation || 'a cen
 
 For meal items specifically: the place you choose must genuinely fit that meal, not just have a plausible-sounding name. For breakfast, choose somewhere that's actually a breakfast/brunch venue by nature - a café, bakery, hotel restaurant, or dedicated brunch spot - never a place whose real identity is a burger joint, steakhouse, bar, or nightclub, even if its name sounds inviting. The same logic applies to lunch and dinner: pick a place whose actual identity matches the meal, not just any restaurant name that comes to mind.
 
+CRITICAL MEAL RULE (strictly enforced): Every single day must include both lunch and dinner as separate meal items at real restaurants. This rule has no exceptions — not even on the last day. Evening activities such as beach clubs, bars, rooftop venues, or nightlife are scheduled AFTER dinner, never instead of it. A venue that serves food or drinks is not a substitute for a dinner meal item.
+
 ${ITEM_SHAPE_INSTRUCTIONS}
 
 Use this exact structure:
@@ -180,32 +186,67 @@ Use this exact structure:
 }`;
 }
 
+// Every day must have lunch and dinner — breakfast is either an item or
+// handled via breakfastAtAccommodation. If a day is missing either required
+// meal, the itinerary is considered invalid and the call retries once.
+function validateMeals(parsed) {
+  const REQUIRED = ['lunch', 'dinner'];
+  for (const day of parsed.days || []) {
+    const present = new Set(
+      (day.items || []).filter((i) => i.mealType).map((i) => i.mealType)
+    );
+    const missing = REQUIRED.filter((m) => !present.has(m));
+    if (missing.length > 0) {
+      const err = new Error(`Day ${day.day} is missing required meal(s): ${missing.join(', ')}`);
+      err.mealValidationFailed = true;
+      throw err;
+    }
+  }
+}
+
 async function callClaude(prompt) {
   // One variant per call: 3 days × ~6 items × ~175 tokens/item ≈ 3,150 tokens.
   // 8192 gives real headroom; Haiku's output limit is 8192 max_tokens so this
   // is also the ceiling - but a single variant at 3 days fits comfortably.
-  const message = await anthropic.messages.create({
-    model: 'claude-haiku-4-5',
-    max_tokens: 8192,
-    messages: [
-      { role: 'user', content: prompt }
-    ],
-  });
+  async function attempt() {
+    const message = await anthropic.messages.create({
+      model: 'claude-haiku-4-5',
+      max_tokens: 8192,
+      messages: [
+        { role: 'user', content: prompt }
+      ],
+    });
 
-  let rawText = message.content[0].text.trim();
-  if (rawText.startsWith('```')) {
-    rawText = rawText.replace(/^```(?:json)?\s*/, '').replace(/```\s*$/, '');
+    let rawText = message.content[0].text.trim();
+    if (rawText.startsWith('```')) {
+      rawText = rawText.replace(/^```(?:json)?\s*/, '').replace(/```\s*$/, '');
+    }
+
+    let parsed;
+    try {
+      parsed = JSON.parse(rawText);
+    } catch (parseError) {
+      const err = new Error('Claude did not return valid JSON');
+      err.rawText = rawText;
+      throw err;
+    }
+
+    // Validate every day has lunch and dinner — if not, throw so the caller
+    // can retry once before surfacing an error to the user.
+    validateMeals(parsed);
+    return parsed;
   }
 
-  let parsed;
   try {
-    parsed = JSON.parse(rawText);
-  } catch (parseError) {
-    const err = new Error('Claude did not return valid JSON');
-    err.rawText = rawText;
+    return await attempt();
+  } catch (err) {
+    // Only auto-retry meal validation failures - JSON parse errors are
+    // unlikely to self-correct on a second attempt with the same prompt.
+    if (err.mealValidationFailed) {
+      return await attempt();
+    }
     throw err;
   }
-  return parsed;
 }
 
 export async function generateRawItinerary(params) {
