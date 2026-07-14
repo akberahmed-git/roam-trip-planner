@@ -189,7 +189,7 @@ export default function ComparisonView() {
     // Also pass the variant directly via navigation state, so DetailView has
     // an immediate source of truth on its very first render instead of only
     // relying on the TripContext update having landed by the time it mounts.
-    navigate('/swap_place', { state: { variant: variantKey } })
+    navigate('/detail', { state: { variant: variantKey } })
   }
 
   // Opens the token-styled ConfirmDialog rather than deleting immediately -
@@ -247,7 +247,7 @@ export default function ComparisonView() {
           </div>
 
           {isGroup ? (
-            <p className="page-intro">Two plans for your group of {adults} — share both and pick the pace that works for everyone.</p>
+            <p className="page-intro">Two plans for your group of {adults}. Pick the pace that works for everyone.</p>
           ) : (
             <p className="page-intro">Two itinerary styles, pick one to explore in detail.</p>
           )}
