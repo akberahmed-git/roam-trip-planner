@@ -285,7 +285,7 @@ export default function ComparisonView() {
             <button
               type="button"
               className="detail-footer__button detail-footer__button--outline"
-              onClick={handleExplore}
+              onClick={() => { setSelectedVariant(variantKey); navigate('/swap_place', { state: { variant: variantKey } }); }}
             >
               Swap places
             </button>
