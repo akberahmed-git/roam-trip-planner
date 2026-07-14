@@ -70,7 +70,7 @@ async function searchCitiesInCountry(countryName) {
     headers: {
       'Content-Type': 'application/json',
       'X-Goog-Api-Key': process.env.GOOGLE_PLACES_API_KEY,
-      'X-Goog-FieldMask': 'places.id,places.displayName,places.types',
+      'X-Goog-FieldMask': 'places.id,places.displayName',
     },
     body: JSON.stringify({
       textQuery: `most visited cities in ${countryName}`,
@@ -81,18 +81,13 @@ async function searchCitiesInCountry(countryName) {
   if (!res.ok) return []
 
   const data = await res.json()
-  const CITY_TYPES = new Set(['locality', 'administrative_area_level_1', 'sublocality', 'sublocality_level_1'])
   const countryLower = countryName.toLowerCase()
 
   return (data.places || [])
     .filter((place) => {
-      // Must be a city/region type
-      const hascityType = place.types?.some((t) => CITY_TYPES.has(t))
-      if (!hascityType) return false
-      // Skip results whose display name matches the country (avoids "France, France")
+      // Skip results whose display name matches the country itself (avoids "France, France")
       const nameL = (place.displayName?.text || '').toLowerCase()
-      if (nameL === countryLower) return false
-      return true
+      return nameL !== countryLower && nameL.length > 0
     })
     .map((place) => ({
       placeId: place.id,
