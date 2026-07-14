@@ -2512,3 +2512,23 @@ h1 {
   from { transform: rotate(0deg); }
   to { transform: rotate(360deg); }
 }
+
+/* ─── Screen slide transitions ──────────────────────────────────────────── */
+
+@keyframes slide-in-from-right {
+  from { transform: translateX(100%); }
+  to   { transform: translateX(0); }
+}
+
+@keyframes slide-in-from-left {
+  from { transform: translateX(-100%); }
+  to   { transform: translateX(0); }
+}
+
+.route-slide--forward {
+  animation: slide-in-from-right 0.3s var(--easing-decelerate) both;
+}
+
+.route-slide--back {
+  animation: slide-in-from-left 0.3s var(--easing-decelerate) both;
+}

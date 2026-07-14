@@ -52,7 +52,7 @@ function AnimatedRoutes() {
     // outside the viewport. min-h-screen keeps the container tall enough
     // that popLayout can size the exiting element correctly.
     <div style={{ position: 'relative', overflowX: 'hidden', minHeight: '100vh' }}>
-      <AnimatePresence mode="popLayout" custom={dirRef.current} initial={false}>
+      <AnimatePresence mode="popLayout" custom={dirRef.current}>
         <motion.div
           key={location.pathname}
           custom={dirRef.current}
