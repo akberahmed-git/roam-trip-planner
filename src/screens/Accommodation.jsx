@@ -94,9 +94,9 @@ function RangeIcon() {
 // request/response, so this is a timed simulation - but every label
 // describes a real step, in the order it actually happens.
 const STEPS = [
-  'Searching hotels across every budget tier',
+  'Searching hotels in your destination',
   'Checking ratings, prices and photos',
-  'Sorting into accurate budget tiers',
+  'Matching hotels to your budget',
 ]
 
 const STEP_INTERVAL_MS = 3200
@@ -300,7 +300,7 @@ export default function Accommodation() {
             <div className="checklist-loading-heading">
               <h1 className="checklist-loading-heading__title">Finding places to stay</h1>
               <p className="checklist-loading-heading__subtext">
-                Checking real, highly rated hotels in {tripParams?.destination} across every budget tier.
+                Finding the best hotels in {tripParams?.destination} for your budget.
               </p>
             </div>
             <Checklist steps={STEPS} activeIndex={activeStep} />
