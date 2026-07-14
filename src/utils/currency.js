@@ -7,7 +7,15 @@
 // exhaustion incident: free, no signup, no API key, ECB-backed daily rates,
 // no published request limit that a low-traffic portfolio demo would ever
 // hit. Exactly the "don't repeat that mistake" choice.
+//
+// Limitation: Frankfurter only covers ~33 ECB-tracked currencies. Destination
+// currencies outside that set (AZN, GEL, BDT, PKR, many African currencies,
+// etc.) return an empty rates object, silently breaking conversion. When that
+// happens, open.er-api.com is used as a fallback - also free, no key, but
+// covers 170+ currencies. Cross-rates are computed through USD so the base
+// currency never needs to be directly supported by either API's own base list.
 const RATES_BASE_URL = 'https://api.frankfurter.dev/v1/latest'
+const FALLBACK_RATES_URL = 'https://open.er-api.com/v6/latest/USD'
 
 // The fixed list shown in the dropdown - matches the Figma reference
 // (node 345:31118) exactly. A destination whose local currency isn't one of
@@ -42,17 +50,52 @@ export function currencyOptionsFor(sourceCurrency) {
 
 // Rates are relative to `base` (the destination's local currency) - always
 // includes the base itself at 1 so callers don't need a special case.
+//
+// Strategy: try Frankfurter first. If it returns empty rates (unsupported
+// base currency), fall back to open.er-api.com and compute cross-rates
+// through USD — works for any of the 170+ currencies that API covers.
 export async function fetchExchangeRates(base, targets) {
   const symbols = targets.filter((code) => code && code !== base)
   if (symbols.length === 0) return { [base]: 1 }
 
-  const url = `${RATES_BASE_URL}?base=${encodeURIComponent(base)}&symbols=${encodeURIComponent(symbols.join(','))}`
-  const response = await fetch(url)
+  // Primary: Frankfurter (ECB-backed, ~33 currencies)
+  try {
+    const url = `${RATES_BASE_URL}?base=${encodeURIComponent(base)}&symbols=${encodeURIComponent(symbols.join(','))}`
+    const response = await fetch(url)
+    if (response.ok) {
+      const data = await response.json()
+      // Frankfurter returns an empty rates object (not an error) when the
+      // base currency isn't in its supported set - check before trusting it.
+      if (data.rates && Object.keys(data.rates).length > 0) {
+        return { [base]: 1, ...(data.rates || {}) }
+      }
+    }
+  } catch {
+    // fall through to fallback
+  }
+
+  // Fallback: open.er-api.com via USD as intermediary.
+  // Cross-rate formula: 1 unit of base = (symbolRate / baseRate) units of symbol,
+  // where both rates are expressed as "units per 1 USD".
+  const response = await fetch(FALLBACK_RATES_URL)
   if (!response.ok) {
     throw new Error('Exchange rate request failed with status ' + response.status)
   }
   const data = await response.json()
-  return { [base]: 1, ...(data.rates || {}) }
+  const usdRates = data.rates || {}
+
+  const baseInUsd = base === 'USD' ? 1 : usdRates[base]
+  if (!baseInUsd) throw new Error(`No rate found for ${base}`)
+
+  const crossRates = { [base]: 1 }
+  for (const symbol of symbols) {
+    const symbolInUsd = symbol === 'USD' ? 1 : usdRates[symbol]
+    if (symbolInUsd != null) {
+      // Round to 6 decimal places to avoid floating-point noise
+      crossRates[symbol] = Math.round((symbolInUsd / baseInUsd) * 1e6) / 1e6
+    }
+  }
+  return crossRates
 }
 
 export function convertAmount(amount, rate) {
