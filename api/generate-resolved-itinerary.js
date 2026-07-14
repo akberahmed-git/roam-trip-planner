@@ -325,9 +325,17 @@ function stretchPreDinnerGap(day) {
   const dinner = day.items[dinnerIndex];
   if (!dinner.startTime) return;
 
-  // Collect all non-meal, non-accommodation activities before dinner.
+  // Collect only activities that fall AFTER lunch and before dinner. Stretching
+  // morning activities (before lunch) causes an impossible schedule: if a morning
+  // activity is extended past lunchtime, realignScheduleTimes pushes lunch forward
+  // but the drift-tolerance guard snaps it back to its original time, leaving a
+  // phantom gap where the card shows you at lunch before you've left the morning
+  // stop. Restricting to post-lunch activities means only genuinely free afternoon
+  // time gets filled.
+  const lunchIndex = day.items.findIndex((item) => item.mealType === 'lunch');
+  const afternoonStart = lunchIndex >= 0 ? lunchIndex + 1 : 0;
   const afternoonActivities = [];
-  for (let i = 0; i < dinnerIndex; i++) {
+  for (let i = afternoonStart; i < dinnerIndex; i++) {
     const item = day.items[i];
     if (item.type !== 'meal' && item.type !== 'accommodation' && item.startTime && item.durationMinutes) {
       afternoonActivities.push(item);
