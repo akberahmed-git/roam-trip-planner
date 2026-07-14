@@ -87,6 +87,39 @@ function buildAccommodationItem(accommodationDetails, overrides) {
   };
 }
 
+// Guarantees every day has a dinner item. If Claude forgot to generate one
+// (rare but seen in the wild - a day ending at 17:04 with no dinner), this
+// injects a placeholder at 19:30. It has no specific restaurant name yet;
+// the description signals it's a suggestion rather than a booking so the
+// traveller knows to look something up. Runs after enforceMealConstraints
+// (so any real dinner is already window-clamped) and before
+// applyAccommodationBookends (so the return-to-hotel bookend follows dinner).
+function ensureDinner(day, destination) {
+  const hasDinner = day.items.some((item) => item.mealType === 'dinner');
+  if (hasDinner) return;
+
+  // Place it before the last accommodation item if one's already there;
+  // otherwise append. In practice applyAccommodationBookends hasn't run
+  // yet so there's nothing to insert before - just push.
+  day.items.push({
+    type: 'meal',
+    name: 'Dinner',
+    categoryTag: 'Restaurant',
+    description: `Find a local restaurant for dinner in ${destination}.`,
+    startTime: '19:30',
+    durationMinutes: FIXED_MEAL_DURATION_MINUTES,
+    mealType: 'dinner',
+    travelToNext: null,
+    photoUrl: null,
+    location: null,
+    address: null,
+    rating: null,
+    ratingCount: null,
+    hasHours: false,
+    weekdayDescriptions: null,
+  });
+}
+
 // Bookends a single day with the real accommodation: a departure/breakfast
 // stop first, a return stop last. Per Akber's call (9 Jul 2026). Skipped
 // entirely if the accommodation has no real coordinates (accommodationDetails
@@ -265,15 +298,22 @@ function applyResolution(item, result, usedPlaceIds, anchor) {
 // what "slow" means - capped at 3 hours so it stays plausible. Runs after
 // realignScheduleTimes so it operates on the final cascaded start times,
 // then realign is called again to cascade the updated duration forward.
-const MAX_STRETCH_MINUTES_RELAXED = 180;
-const MAX_STRETCH_MINUTES_PACKED = 120;
+// Minimum gap (minutes) worth bothering to fix.
 const MIN_GAP_TO_STRETCH_MINUTES = 30;
+// Hard upper bound on a single activity's total duration after stretching.
+// Generous enough that even a long-duration activity (120 min) on a day with
+// an early last stop can still be stretched to fill a gap to a 19:30 dinner.
+const MAX_STRETCHED_DURATION_MINUTES = 300; // 5 hours absolute ceiling
+// Buffer to leave between the stretched activity's end and travel to dinner.
+const PRE_DINNER_BUFFER_MINUTES = 15;
 
-function stretchPreDinnerGap(day, isRelaxed) {
+function stretchPreDinnerGap(day) {
   const dinnerIndex = day.items.findIndex((item) => item.mealType === 'dinner');
   if (dinnerIndex <= 0) return;
 
-  // Last real activity before dinner (skip meals and accommodation bookends)
+  // Find the last real activity before dinner — skip meals and accommodation.
+  // If there's no non-meal activity between lunch and dinner, skip past
+  // the lunch too so we at least have something to stretch.
   let lastActivityIndex = -1;
   for (let i = dinnerIndex - 1; i >= 0; i--) {
     const item = day.items[i];
@@ -299,15 +339,24 @@ function stretchPreDinnerGap(day, isRelaxed) {
 
   if (gap < MIN_GAP_TO_STRETCH_MINUTES) return;
 
-  // Fill the gap, leaving a 15-min buffer before travel to dinner.
-  // Relaxed: cap at 3 hours (spending a long afternoon somewhere is the point).
-  // Packed: cap at 2 hours (don't turn a busy day into a slow one).
-  const maxStretch = isRelaxed ? MAX_STRETCH_MINUTES_RELAXED : MAX_STRETCH_MINUTES_PACKED;
-  const additionalMinutes = gap - 15;
-  lastActivity.durationMinutes = Math.min(
-    lastActivity.durationMinutes + additionalMinutes,
-    maxStretch
-  );
+  // Target: activity ends exactly [buffer] minutes before travel to dinner
+  // begins. Use the dinner's planned start time as the anchor — don't rely
+  // on the cascaded time since that's what we're trying to fix.
+  const targetEndMinutes = dinnerStartMinutes - travelMinutes - PRE_DINNER_BUFFER_MINUTES;
+  const targetDuration = targetEndMinutes - timeToMinutes(lastActivity.startTime);
+
+  if (targetDuration <= lastActivity.durationMinutes) return; // already fills the gap
+
+  lastActivity.durationMinutes = Math.min(targetDuration, MAX_STRETCHED_DURATION_MINUTES);
+
+  // Move dinner's startTime to match the now-filled schedule so
+  // realignScheduleTimes doesn't fight us via its drift-tolerance guard.
+  // We compute the exact cascaded arrival ourselves and write it directly —
+  // this is safe because stretchPreDinnerGap always runs immediately before
+  // realignScheduleTimes, which will then cascade everything after dinner.
+  const newActivityEnd = timeToMinutes(lastActivity.startTime) + lastActivity.durationMinutes;
+  const newDinnerStart = newActivityEnd + travelMinutes;
+  dinner.startTime = addMinutesToTime('00:00', newDinnerStart);
 }
 
 // Backstop for whatever slips past the anchor-distance checks above (road
@@ -414,6 +463,7 @@ async function resolveItinerary(itinerary, destination, anchor, transport, accom
   // right item.
   itinerary.days.forEach((day) => {
     enforceMealConstraints(day);
+    ensureDinner(day, destination);
     applyAccommodationBookends(day, accommodationDetails);
     enforceEarliestStart(day);
   });
@@ -441,11 +491,11 @@ async function resolveItinerary(itinerary, destination, anchor, transport, accom
   itinerary.days.forEach((day) => realignScheduleTimes(day));
 
   // All variants: absorb any pre-dinner gap by extending the last afternoon
-  // activity, then re-cascade so dinner and hotel return reflect the updated
-  // duration. Relaxed gets a higher cap (3h) than Packed (2h).
-  const isRelaxed = itinerary.pacingLabel === 'Relaxed';
+  // Stretch the last pre-dinner activity to fill any gap, then re-cascade so
+  // dinner and hotel return reflect the updated duration. Applies to all pacing
+  // variants (Packed and Relaxed alike).
   itinerary.days.forEach((day) => {
-    stretchPreDinnerGap(day, isRelaxed);
+    stretchPreDinnerGap(day);
     realignScheduleTimes(day);
   });
 
