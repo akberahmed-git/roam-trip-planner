@@ -393,10 +393,23 @@ async function enforceDriveCap(day, transport, usedPlaceIds) {
       continue;
     }
 
-    const nearby = await findNearbyCandidates(next.name, next.type, current.location).catch(() => []);
-    const replacement = nearby.find(
+    // First try: find something close with the same name/type.
+    let nearby = await findNearbyCandidates(next.name, next.type, current.location).catch(() => []);
+    let replacement = nearby.find(
       (candidate) => hasUsableRating(candidate) && !usedPlaceIds.has(candidate.placeId)
     );
+
+    // Fallback: if the specific search found nothing, search by category alone
+    // (e.g. just "activity" or "restaurant") near the current location. This
+    // fires when the named place is in a different city entirely and no
+    // same-named alternative exists nearby.
+    if (!replacement && next.type) {
+      const fallbackNearby = await findNearbyCandidates(next.type, next.type, current.location).catch(() => []);
+      replacement = fallbackNearby.find(
+        (candidate) => hasUsableRating(candidate) && !usedPlaceIds.has(candidate.placeId)
+      );
+    }
+
     if (!replacement) {
       continue;
     }
