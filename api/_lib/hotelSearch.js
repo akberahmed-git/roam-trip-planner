@@ -219,8 +219,13 @@ async function searchTier(destination, tierQuery) {
     headers: {
       'Content-Type': 'application/json',
       'X-Goog-Api-Key': process.env.GOOGLE_PLACES_API_KEY,
+      // priceRange removed — Enterprise-tier field confirmed to always return null
+      // for lodging (see module header, 2nd pass comment). Removing it drops these
+      // searches from Enterprise to Pro tier (~$0 for first 5k/month vs ~$0.025 each).
+      // priceRangeFromPlace() still exists but will always return null; the Claude
+      // estimate fallback (estimatePriceRange.js) already handles that case.
       'X-Goog-FieldMask':
-        'places.id,places.displayName,places.formattedAddress,places.addressComponents,places.rating,places.userRatingCount,places.photos,places.priceLevel,places.priceRange,places.types,places.location',
+        'places.id,places.displayName,places.formattedAddress,places.addressComponents,places.rating,places.userRatingCount,places.photos,places.priceLevel,places.types,places.location',
     },
     body: JSON.stringify({ textQuery, includedType: 'lodging' }),
   });

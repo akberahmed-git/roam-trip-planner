@@ -97,7 +97,11 @@ function toSuggestion(place) {
     address: place.formattedAddress,
     rating: place.rating,
     ratingCount: place.userRatingCount,
-    photoUrl: photoUrlFor(place),
+    // photoUrl intentionally omitted for suggestions — these are fallback
+    // candidates shown when the primary place can't be verified. Fetching
+    // their photos would trigger a Place Details Photos charge for images the
+    // user may never see. The swap/suggestion UI handles a null photoUrl gracefully.
+    photoUrl: null,
     location: locationOf(place),
     ...hoursInfo(place)
   };
@@ -112,7 +116,31 @@ function buildApiErrorMessage(data) {
 
 const MATCH_THRESHOLD = 0.6;
 
+// In-request cache for Text Search results. Vercel warm instances can handle
+// multiple requests, so this also benefits across calls on the same instance.
+// Capped at 200 entries to prevent unbounded growth on long-lived instances.
+const _searchCache = new Map();
+const SEARCH_CACHE_MAX = 200;
+
+function cachedSearch(textQuery, fetcher) {
+  if (_searchCache.has(textQuery)) {
+    return Promise.resolve(_searchCache.get(textQuery));
+  }
+  return fetcher().then((result) => {
+    if (_searchCache.size >= SEARCH_CACHE_MAX) {
+      // Evict oldest entry (Map preserves insertion order)
+      _searchCache.delete(_searchCache.keys().next().value);
+    }
+    _searchCache.set(textQuery, result);
+    return result;
+  });
+}
+
 async function runSearch(name, textQuery) {
+  return cachedSearch(textQuery, () => _runSearch(name, textQuery));
+}
+
+async function _runSearch(name, textQuery) {
   let response;
   let data;
 
@@ -122,7 +150,9 @@ async function runSearch(name, textQuery) {
       headers: {
         'Content-Type': 'application/json',
         'X-Goog-Api-Key': process.env.GOOGLE_PLACES_API_KEY,
-        'X-Goog-FieldMask': 'places.id,places.displayName,places.formattedAddress,places.rating,places.userRatingCount,places.photos,places.regularOpeningHours,places.location'
+        // regularOpeningHours removed — Enterprise-tier field billing ~$0.025/request.
+        // hoursInfo() now returns hasHours: false for all places as a result.
+        'X-Goog-FieldMask': 'places.id,places.displayName,places.formattedAddress,places.rating,places.userRatingCount,places.photos,places.location'
       },
       body: JSON.stringify({ textQuery })
     });
@@ -220,7 +250,8 @@ export async function findNearbyCandidates(name, type, near, radiusMeters = 2000
       headers: {
         'Content-Type': 'application/json',
         'X-Goog-Api-Key': process.env.GOOGLE_PLACES_API_KEY,
-        'X-Goog-FieldMask': 'places.id,places.displayName,places.formattedAddress,places.rating,places.userRatingCount,places.photos,places.regularOpeningHours,places.location'
+        // regularOpeningHours removed — same Enterprise-tier cost reason as runSearch.
+        'X-Goog-FieldMask': 'places.id,places.displayName,places.formattedAddress,places.rating,places.userRatingCount,places.photos,places.location'
       },
       body: JSON.stringify({
         textQuery,
