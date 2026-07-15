@@ -225,7 +225,9 @@ async function searchTier(destination, tierQuery) {
       // priceRangeFromPlace() still exists but will always return null; the Claude
       // estimate fallback (estimatePriceRange.js) already handles that case.
       'X-Goog-FieldMask':
-        'places.id,places.displayName,places.formattedAddress,places.addressComponents,places.rating,places.userRatingCount,places.photos,places.priceLevel,places.types,places.location',
+        // rating, userRatingCount and priceLevel all removed — each is Enterprise-tier.
+        // Pro-tier only now. tierFor() falls back to the query tier without priceLevel.
+        'places.id,places.displayName,places.formattedAddress,places.addressComponents,places.photos,places.types,places.location',
     },
     body: JSON.stringify({ textQuery, includedType: 'lodging' }),
   });
@@ -247,7 +249,8 @@ async function searchTier(destination, tierQuery) {
 const WIDEN_QUERY = 'places to stay in';
 
 function isUsablePlace(place) {
-  return Boolean(place.displayName?.text && place.rating && place.userRatingCount);
+  // Ratings are no longer fetched (Enterprise-tier), so validity is name + location.
+  return Boolean(place.displayName?.text && place.location);
 }
 
 // Same Places location shape -> {lat, lng} conversion verifyPlace.js's own

@@ -402,9 +402,11 @@ export default function Accommodation() {
                             <span className="hotel-card__name">{option.name}</span>
                             <div className="hotel-card__meta">
                               <span>{option.categoryTag}</span>
-                              <span className="rating-inline">
-                                <RatingStarIcon /> {option.rating?.toFixed(1)} ({option.ratingCount?.toLocaleString()})
-                              </span>
+                              {option.rating != null && (
+                                <span className="rating-inline">
+                                  <RatingStarIcon /> {option.rating.toFixed(1)}{option.ratingCount != null ? ` (${option.ratingCount.toLocaleString()})` : ''}
+                                </span>
+                              )}
                             </div>
                             {option.address && <p className="hotel-card__description">{option.address}</p>}
                           </div>

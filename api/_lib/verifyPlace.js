@@ -116,24 +116,75 @@ function buildApiErrorMessage(data) {
 
 const MATCH_THRESHOLD = 0.6;
 
-// In-request cache for Text Search results. Vercel warm instances can handle
-// multiple requests, so this also benefits across calls on the same instance.
-// Capped at 200 entries to prevent unbounded growth on long-lived instances.
+// Two-level cache for Text Search results so the same place is never billed
+// twice. L1 is an in-memory Map that lives for the life of a warm serverless
+// instance (dedupes within a single generation). L2 is a persistent Vercel KV /
+// Upstash store, used only when KV_REST_API_URL + KV_REST_API_TOKEN are set, so
+// results survive cold starts and are shared across every request and user.
+// Without those env vars it transparently falls back to L1-only, exactly as
+// before. Failed lookups are never cached, so a transient API error still retries.
 const _searchCache = new Map();
 const SEARCH_CACHE_MAX = 200;
 
-function cachedSearch(textQuery, fetcher) {
-  if (_searchCache.has(textQuery)) {
-    return Promise.resolve(_searchCache.get(textQuery));
+const KV_URL = process.env.KV_REST_API_URL;
+const KV_TOKEN = process.env.KV_REST_API_TOKEN;
+const KV_ENABLED = Boolean(KV_URL && KV_TOKEN);
+const CACHE_TTL_SECONDS = 60 * 60 * 24 * 30; // 30 days
+
+async function kvCommand(command) {
+  const res = await fetch(KV_URL, {
+    method: 'POST',
+    headers: {
+      Authorization: `Bearer ${KV_TOKEN}`,
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify(command),
+  });
+  if (!res.ok) throw new Error('KV HTTP ' + res.status);
+  return res.json();
+}
+
+async function kvGet(key) {
+  if (!KV_ENABLED) return null;
+  try {
+    const data = await kvCommand(['GET', key]);
+    return data && data.result != null ? JSON.parse(data.result) : null;
+  } catch {
+    return null; // A cache read must never break a request.
   }
-  return fetcher().then((result) => {
+}
+
+async function kvSet(key, value) {
+  if (!KV_ENABLED) return;
+  try {
+    await kvCommand(['SET', key, JSON.stringify(value), 'EX', CACHE_TTL_SECONDS]);
+  } catch {
+    // A cache write must never break a request.
+  }
+}
+
+async function cachedSearch(textQuery, fetcher) {
+  if (_searchCache.has(textQuery)) {
+    return _searchCache.get(textQuery);
+  }
+  const kvKey = 'places:search:' + textQuery;
+  const stored = await kvGet(kvKey);
+  if (stored != null) {
+    _searchCache.set(textQuery, stored);
+    return stored;
+  }
+  const result = await fetcher();
+  // Only cache real results, never a transient failure, or we'd serve a stale
+  // error and skip the retry.
+  if (result && result.status !== 'check_failed') {
     if (_searchCache.size >= SEARCH_CACHE_MAX) {
       // Evict oldest entry (Map preserves insertion order)
       _searchCache.delete(_searchCache.keys().next().value);
     }
     _searchCache.set(textQuery, result);
-    return result;
-  });
+    await kvSet(kvKey, result);
+  }
+  return result;
 }
 
 async function runSearch(name, textQuery) {
@@ -150,9 +201,10 @@ async function _runSearch(name, textQuery) {
       headers: {
         'Content-Type': 'application/json',
         'X-Goog-Api-Key': process.env.GOOGLE_PLACES_API_KEY,
-        // regularOpeningHours removed — Enterprise-tier field billing ~$0.025/request.
-        // hoursInfo() now returns hasHours: false for all places as a result.
-        'X-Goog-FieldMask': 'places.id,places.displayName,places.formattedAddress,places.rating,places.userRatingCount,places.photos,places.location'
+        // rating, userRatingCount and regularOpeningHours all removed — each one is an
+        // Enterprise-tier field (~$0.025/request). This mask is now Pro-tier only.
+        // hoursInfo() returns hasHours: false for all places as a result.
+        'X-Goog-FieldMask': 'places.id,places.displayName,places.formattedAddress,places.photos,places.location'
       },
       body: JSON.stringify({ textQuery })
     });
@@ -250,8 +302,9 @@ export async function findNearbyCandidates(name, type, near, radiusMeters = 2000
       headers: {
         'Content-Type': 'application/json',
         'X-Goog-Api-Key': process.env.GOOGLE_PLACES_API_KEY,
-        // regularOpeningHours removed — same Enterprise-tier cost reason as runSearch.
-        'X-Goog-FieldMask': 'places.id,places.displayName,places.formattedAddress,places.rating,places.userRatingCount,places.photos,places.location'
+        // rating, userRatingCount and regularOpeningHours removed — all Enterprise-tier.
+        // Pro-tier only now, same cost reason as runSearch.
+        'X-Goog-FieldMask': 'places.id,places.displayName,places.formattedAddress,places.photos,places.location'
       },
       body: JSON.stringify({
         textQuery,

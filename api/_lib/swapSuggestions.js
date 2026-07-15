@@ -64,8 +64,9 @@ async function searchCandidate(name, destination) {
       headers: {
         'Content-Type': 'application/json',
         'X-Goog-Api-Key': process.env.GOOGLE_PLACES_API_KEY,
+        // rating and userRatingCount removed — both Enterprise-tier. Pro-tier only now.
         'X-Goog-FieldMask':
-          'places.id,places.displayName,places.formattedAddress,places.rating,places.userRatingCount,places.photos,places.location,places.types',
+          'places.id,places.displayName,places.formattedAddress,places.photos,places.location,places.types',
       },
       body: JSON.stringify({ textQuery }),
     });
@@ -77,7 +78,7 @@ async function searchCandidate(name, destination) {
 
   const data = await response.json();
   const place = data.places?.[0];
-  if (!place || !place.displayName?.text || !place.rating || !place.userRatingCount) {
+  if (!place || !place.displayName?.text || !place.location) {
     return null;
   }
 

@@ -194,15 +194,9 @@ export default function Home() {
         const nextLocations = data.locations || []
         setLocations(nextLocations)
         setStatus('success')
-        // Warm the browser cache for every photo up front, so advancing the
-        // carousel never has to wait on a network fetch mid-transition (that
-        // gap is what was showing the gradient placeholder instead of a
-        // clean crossfade).
-        nextLocations.forEach((location) => {
-          if (!location.photoUrl) return
-          const preloadImage = new Image()
-          preloadImage.src = location.photoUrl
-        })
+        // Photos are no longer preloaded here. Preloading forced a billed Place
+        // Photos fetch for every trending location up front, including ones the
+        // user never scrolled to. Images now load lazily when their card renders.
       })
       .catch(() => {
         if (!cancelled) setStatus('error')

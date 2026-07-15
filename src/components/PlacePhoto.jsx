@@ -26,6 +26,7 @@ export default function PlacePhoto({ src, alt, className, shape = 'rect' }) {
         className={`photo-frame__img${status === 'loaded' ? ' photo-frame__img--loaded' : ''}`}
         src={src}
         alt={alt}
+        loading="lazy"
         onLoad={() => setStatus('loaded')}
         onError={() => setStatus('error')}
       />
