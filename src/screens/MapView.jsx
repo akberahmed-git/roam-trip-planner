@@ -29,7 +29,7 @@ function MapRow({ item, number }) {
 export default function MapView() {
   const navigate = useNavigate()
   const location = useLocation()
-  const { tripParams, resolvedItinerary, selectedVariant, setSelectedVariant } = useTrip()
+  const { tripParams, resolvedItinerary, selectedVariant } = useTrip()
 
   const availableVariants = resolvedItinerary
     ? ['packed', 'slow'].filter((key) => resolvedItinerary[key])
@@ -72,11 +72,6 @@ export default function MapView() {
   function selectDay(label) {
     const index = days.findIndex((d) => `Day ${d.day}` === label)
     if (index !== -1) setDayIndex(index)
-  }
-
-  function handleViewOnCards() {
-    setSelectedVariant(variantKey)
-    navigate('/detail', { state: { variant: variantKey } })
   }
 
   const items = day?.items || []
@@ -127,13 +122,6 @@ export default function MapView() {
           )}
 
           <div className="detail-footer">
-            <button
-              type="button"
-              className="detail-footer__button detail-footer__button--outline"
-              onClick={handleViewOnCards}
-            >
-              View on cards
-            </button>
             <button
               type="button"
               className="detail-footer__button detail-footer__button--solid"

@@ -166,10 +166,22 @@ export function realignScheduleTimes(day) {
       continue;
     }
 
-    if (Math.abs(candidateMinutes - plannedMinutes) <= MEAL_DRIFT_TOLERANCE_MINUTES) {
+    // A meal must never be shown starting before the stop before it has
+    // finished. The old check was symmetric (abs), so when the morning ran
+    // long and the cascade pushed a meal well PAST its planned time, it fell
+    // back to the earlier planned time - printing, for example, a 12:30 lunch
+    // straight after a stop that doesn't end until 13:47 (the first-half-of-day
+    // "times running backwards" bug). So the cascade is now always accepted
+    // whenever it lands at or after the planned time (a late-but-real meal),
+    // and also when it lands only slightly before it. The fallback to the
+    // planned time is kept only for the opposite case - the day ran much faster
+    // than the AI assumed and the cascade would put the meal well BEFORE its
+    // planned time - where holding it at the later planned time keeps it
+    // reading as the right time of day and still never precedes the prior stop.
+    if (candidateMinutes >= plannedMinutes - MEAL_DRIFT_TOLERANCE_MINUTES) {
       current.startTime = candidateStart;
     }
-    // else: leave current.startTime at its original AI-planned value - the
-    // day drifted too far for this meal to move with it.
+    // else: cascade is far earlier than planned (an unusually fast day); keep
+    // the meal at its later, AI-planned time.
   }
 }
