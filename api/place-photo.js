@@ -31,7 +31,17 @@ export default async function handler(req, res) {
     const buffer = Buffer.from(arrayBuffer);
 
     res.setHeader('Content-Type', contentType);
-    res.setHeader('Cache-Control', 'public, max-age=86400');
+    // Photo references are stable per place, so a given photo never changes.
+    // max-age caches it in each user's browser; s-maxage caches it at Vercel's
+    // edge CDN so the FIRST request for a photo bills Google once and every
+    // later request (any user, any session, both itinerary variants) is a CDN
+    // hit that never re-invokes this function or re-bills the Place Details
+    // Photos SKU. immutable skips revalidation; stale-while-revalidate serves
+    // the cached copy instantly while any refresh happens in the background.
+    res.setHeader(
+      'Cache-Control',
+      'public, max-age=86400, s-maxage=2592000, stale-while-revalidate=86400, immutable'
+    );
     res.status(200).send(buffer);
   } catch (error) {
     res.status(500).json({ error: error.message });
