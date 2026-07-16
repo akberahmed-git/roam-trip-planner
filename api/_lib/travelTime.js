@@ -1,3 +1,5 @@
+import { cached } from './kvCache.js';
+
 const WALK_ATTEMPT_THRESHOLD_METERS = 3000;
 const MAX_WALK_MINUTES = 25;
 
@@ -23,7 +25,28 @@ function parseDurationSeconds(durationStr) {
   return Number.isNaN(seconds) ? null : seconds;
 }
 
+// Cache the Routes API result keyed on the two coordinates + mode. Travel time
+// between two fixed points is stable (no departureTime is set, so this is the
+// typical/static duration, not live traffic), so the same pair never needs to
+// be re-billed within the 30-day TTL. Coordinates come straight from Places, so
+// the same stop always produces the same key; rounding to 5dp (~1m) just tidies
+// float noise. Only a real minute value is cached — a null (no route / API
+// error) is left uncached so it retries. Falls back to L1-only when KV is off.
+function routeCacheKey(origin, destination, mode) {
+  const r = (n) => n.toFixed(5);
+  return `${mode}:${r(origin.lat)},${r(origin.lng)}->${r(destination.lat)},${r(destination.lng)}`;
+}
+
 async function routeDuration(origin, destination, mode) {
+  return cached(
+    'routes',
+    routeCacheKey(origin, destination, mode),
+    () => fetchRouteDuration(origin, destination, mode),
+    { shouldCache: (r) => typeof r === 'number' }
+  );
+}
+
+async function fetchRouteDuration(origin, destination, mode) {
   const body = {
     origins: [{ waypoint: { location: { latLng: { latitude: origin.lat, longitude: origin.lng } } } }],
     destinations: [{ waypoint: { location: { latLng: { latitude: destination.lat, longitude: destination.lng } } } }],

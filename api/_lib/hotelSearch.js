@@ -23,6 +23,7 @@
 // "never fabricate" elsewhere in this app, made acceptable by never hiding
 // that it's a guess.
 import { estimatePriceRanges } from './estimatePriceRange.js';
+import { cached } from './kvCache.js';
 
 const TIER_QUERY_PREFIX = {
   Economy: 'budget hotel in',
@@ -212,7 +213,24 @@ function priceRangeFromPlace(place) {
   return { min, max, currencyCode: range.startPrice.currencyCode };
 }
 
+// Cache each tier's hotel search keyed on the tier query + destination. The set
+// of real hotels for "luxury hotel in Lisbon" is stable enough to reuse within
+// the 30-day TTL, so a repeat visit to the Accommodation screen for the same
+// destination is served from cache instead of re-billing three Text Search
+// calls every time. Only a non-empty result is cached — an empty list (thin
+// destination, or a transient miss) is left uncached so the widen-query
+// fallback and future loads still get a real chance. Falls back to L1-only when
+// KV is off. A non-OK response still throws from the fetcher and is not cached.
 async function searchTier(destination, tierQuery) {
+  return cached(
+    'hotels',
+    tierQuery + '|' + destination,
+    () => fetchTier(destination, tierQuery),
+    { shouldCache: (r) => Array.isArray(r) && r.length > 0 }
+  );
+}
+
+async function fetchTier(destination, tierQuery) {
   const textQuery = tierQuery + ' ' + destination;
   const response = await fetch('https://places.googleapis.com/v1/places:searchText', {
     method: 'POST',
