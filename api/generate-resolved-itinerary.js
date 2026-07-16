@@ -321,13 +321,39 @@ const MIN_GAP_TO_STRETCH_MINUTES = 30;
 // card.
 const SLOW_MAX_SINGLE_ACTIVITY_DURATION_MINUTES = 240;
 
+// Words that suggest a stop is worth a long, unhurried visit (what a 3 to 4
+// hour Slow afternoon should land on) versus a quick photo stop. Used only to
+// bias WHERE the pre-dinner gap gets absorbed, never to add, drop or reorder
+// stops, so loose substring matching is fine and a miss just falls back to
+// Claude's own planned duration. Portuguese spellings are included because
+// Google returns local place names.
+const LINGER_KEYWORDS = ['park', 'garden', 'jardim', 'beach', 'praia', 'spa', 'thermal', 'museum', 'museu', 'gallery', 'galeria', 'palace', 'palacio', 'palácio', 'castle', 'castelo', 'monaster', 'mosteiro', 'aquarium', 'botanic', 'vineyard', 'winery', 'quinta', 'promenade', 'waterfront', 'forest'];
+const QUICK_KEYWORDS = ['viewpoint', 'miradouro', 'lookout', 'church', 'igreja', 'chapel', 'capela', 'monument', 'statue', 'memorial', 'fountain'];
+// How far a linger/quick keyword match shifts an activity's ranking, in the
+// same "minutes" units as planned duration: big enough to outrank a modestly
+// longer quick stop, small enough that duration still decides between two
+// similar places.
+const LINGER_KEYWORD_WEIGHT = 90;
+
+// Higher = better suited to soak up a long afternoon. Base is Claude's own
+// planned duration (it already gives a palace more time than a viewpoint),
+// nudged by the keyword lists above.
+function lingerScore(item) {
+  const text = `${item.name || ''} ${item.description || ''}`.toLowerCase();
+  let score = item.durationMinutes || 0;
+  if (LINGER_KEYWORDS.some((word) => text.includes(word))) score += LINGER_KEYWORD_WEIGHT;
+  if (QUICK_KEYWORDS.some((word) => text.includes(word))) score -= LINGER_KEYWORD_WEIGHT;
+  return score;
+}
+
 // Fills the whole gap before dinner by pouring it into the afternoon, so a
 // Slow day runs unhurried right up to a normal dinner instead of ending early.
 // Dinner itself never moves - it stays clamped in its meal window (19:00 at the
 // earliest, the same window Packed uses). The time is poured in from the last
-// afternoon stop backwards, so the natural wind-down spot before dinner becomes
-// the long immersive anchor of the day; only if that stop would pass the
-// believable ceiling does the overflow spill to the stop before it. The
+// stop best suited to a long visit first (see lingerScore), so the immersive
+// anchor lands on somewhere that earns it - a park, palace or museum over a
+// viewpoint or church - and overflow spills to the next best only if the first
+// would pass the believable ceiling. The
 // realignScheduleTimes pass that runs straight after recascades the stretched
 // durations forward, landing dinner exactly on its window with the travel leg
 // flowing into it.
@@ -366,13 +392,19 @@ function stretchPreDinnerGap(day) {
 
   if (gap < MIN_GAP_TO_STRETCH_MINUTES) return;
 
-  // Pour the entire gap into the afternoon, filling from the last stop backwards
-  // so one place becomes the long immersive anchor and only overflow lands on
-  // the stop before it. No buffer is subtracted: the goal is zero visible gap,
-  // with the day running straight up to dinner.
+  // Pour the entire gap into the afternoon, filling the stops best suited to a
+  // long visit first (highest lingerScore), each capped at the ceiling, spilling
+  // to the next best. Ties go to the later stop, so an equally-suitable place
+  // closer to dinner wins and the day still flows naturally into the evening.
+  // No buffer is subtracted: the goal is zero visible gap. The total added
+  // equals the gap wherever it lands, so dinner still cascades onto its window.
+  const ranked = afternoonActivities
+    .map((activity, index) => ({ activity, index, score: lingerScore(activity) }))
+    .sort((a, b) => (b.score - a.score) || (b.index - a.index));
+
   let minutesLeft = gap;
-  for (let i = afternoonActivities.length - 1; i >= 0 && minutesLeft > 0; i--) {
-    const activity = afternoonActivities[i];
+  for (const { activity } of ranked) {
+    if (minutesLeft <= 0) break;
     const canAbsorb = SLOW_MAX_SINGLE_ACTIVITY_DURATION_MINUTES - activity.durationMinutes;
     if (canAbsorb <= 0) continue;
     const absorb = Math.min(canAbsorb, minutesLeft);
