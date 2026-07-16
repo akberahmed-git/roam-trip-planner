@@ -253,6 +253,18 @@ function pickSubstitute(suggestions, usedPlaceIds, anchor) {
 
 function applyResolution(item, result, usedPlaceIds, anchor) {
   if (result.status === 'found') {
+    // Same real place already used earlier in the trip? This happens when
+    // Claude proposes two distinct-sounding stops that Google resolves to the
+    // same listing - e.g. "Lahore Fort" and the "Sheesh Mahal" palace inside
+    // it both resolving to the Lahore Fort place ID - so the itinerary would
+    // otherwise show the same place twice, back to back. The dedup below only
+    // guarded the substitute (not_found) path; a successful match had none.
+    // Flag it for removal rather than mutating it; resolveItinerary drops
+    // flagged items before anything else runs. First occurrence wins.
+    if (usedPlaceIds.has(result.placeId)) {
+      item._duplicatePlace = true;
+      return;
+    }
     item.name = result.name;
     item.address = result.address;
     item.rating = result.rating;
@@ -487,6 +499,16 @@ async function resolveItinerary(itinerary, destination, anchor, transport, accom
     applyResolution(item, results[index], usedPlaceIds, anchor);
   });
 
+  // Remove any stop applyResolution flagged as a duplicate real place (two
+  // proposed stops resolving to the same Google listing). Done here, before
+  // description refresh, meal constraints, bookends and travel times, so every
+  // downstream step sees the deduped day. resolvedItems mirrors allItems minus
+  // the dropped stops so the description pass doesn't re-audit a removed item.
+  itinerary.days.forEach((day) => {
+    day.items = day.items.filter((item) => !item._duplicatePlace);
+  });
+  const resolvedItems = allItems.filter((item) => !item._duplicatePlace);
+
   // Every item gets audited here, not just the ones verification changed -
   // a "found, exact name match" item can still carry a description that
   // contradicts its own real name (e.g. Claude both named and described a
@@ -495,7 +517,7 @@ async function resolveItinerary(itinerary, destination, anchor, transport, accom
   // A match-score-based filter would miss that case entirely, since the
   // name was never substituted - see refreshDescriptions.js.
   try {
-    await refreshDescriptions(allItems);
+    await refreshDescriptions(resolvedItems);
   } catch (error) {
     // Non-fatal - worst case a mismatched-but-real description from before
     // stays in place, same as if this feature didn't exist.
