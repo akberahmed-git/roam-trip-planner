@@ -312,24 +312,25 @@ function applyResolution(item, result, usedPlaceIds, anchor) {
 // then realign is called again to cascade the updated duration forward.
 // Minimum gap (minutes) worth bothering to fix.
 const MIN_GAP_TO_STRETCH_MINUTES = 30;
-// Maximum duration any single activity can reach after stretching. 150 min
-// (2.5 hours) is already a generous museum/beach/viewpoint visit — beyond
-// that the card reads as implausible. Excess time is spread to earlier
-// afternoon activities instead (see stretchPreDinnerGap).
-const MAX_SINGLE_ACTIVITY_DURATION_MINUTES = 150;
-// Buffer to leave between the last stretched activity's end and travel to dinner.
-const PRE_DINNER_BUFFER_MINUTES = 15;
+// How long a single afternoon activity may run after absorbing dead time. The
+// Slow & Immersive variant is built around long, unhurried stops, so a 4-hour
+// afternoon at one place (a spa, a beach, a castle and its grounds, a museum
+// you actually finish) is the point of the variant, not filler. Whatever the
+// last stop can't hold under this ceiling spills back to the stop before it, so
+// the day still runs right up to dinner with no gap and no single implausible
+// card.
+const SLOW_MAX_SINGLE_ACTIVITY_DURATION_MINUTES = 240;
 
-// Fills the gap before dinner by distributing extra time across ALL afternoon
-// activities (everything between lunch and dinner), not just the last one.
-// Works backwards from the last activity: if it would need to exceed
-// MAX_SINGLE_ACTIVITY_DURATION_MINUTES to fill the whole gap, it is capped
-// at that limit and the remainder is passed to the activity before it, and
-// so on. This means a 3-hour gap before dinner becomes e.g. 150 min at the
-// last stop + 30 extra min at the one before it, rather than a single
-// implausible 300-min visit. Once all durations are set, dinner's startTime
-// is written directly (bypassing realignScheduleTimes' drift-tolerance guard)
-// so the schedule stays fully consistent.
+// Fills the whole gap before dinner by pouring it into the afternoon, so a
+// Slow day runs unhurried right up to a normal dinner instead of ending early.
+// Dinner itself never moves - it stays clamped in its meal window (19:00 at the
+// earliest, the same window Packed uses). The time is poured in from the last
+// afternoon stop backwards, so the natural wind-down spot before dinner becomes
+// the long immersive anchor of the day; only if that stop would pass the
+// believable ceiling does the overflow spill to the stop before it. The
+// realignScheduleTimes pass that runs straight after recascades the stretched
+// durations forward, landing dinner exactly on its window with the travel leg
+// flowing into it.
 function stretchPreDinnerGap(day) {
   const dinnerIndex = day.items.findIndex((item) => item.mealType === 'dinner');
   if (dinnerIndex <= 0) return;
@@ -365,24 +366,27 @@ function stretchPreDinnerGap(day) {
 
   if (gap < MIN_GAP_TO_STRETCH_MINUTES) return;
 
-  // Distribute the gap backwards across afternoon activities.
-  // Each activity absorbs up to (MAX_SINGLE_ACTIVITY_DURATION_MINUTES - its
-  // current duration); whatever it can't absorb spills to the one before it.
-  let minutesLeft = gap - PRE_DINNER_BUFFER_MINUTES;
+  // Pour the entire gap into the afternoon, filling from the last stop backwards
+  // so one place becomes the long immersive anchor and only overflow lands on
+  // the stop before it. No buffer is subtracted: the goal is zero visible gap,
+  // with the day running straight up to dinner.
+  let minutesLeft = gap;
   for (let i = afternoonActivities.length - 1; i >= 0 && minutesLeft > 0; i--) {
     const activity = afternoonActivities[i];
-    const canAbsorb = MAX_SINGLE_ACTIVITY_DURATION_MINUTES - activity.durationMinutes;
+    const canAbsorb = SLOW_MAX_SINGLE_ACTIVITY_DURATION_MINUTES - activity.durationMinutes;
     if (canAbsorb <= 0) continue;
     const absorb = Math.min(canAbsorb, minutesLeft);
     activity.durationMinutes += absorb;
     minutesLeft -= absorb;
   }
 
-  // Write dinner's startTime directly so realignScheduleTimes' drift-tolerance
-  // guard doesn't snap it back. Recompute from the last activity's final state.
-  const newActivityEnd = timeToMinutes(lastActivity.startTime) + lastActivity.durationMinutes;
-  const newDinnerStart = newActivityEnd + travelMinutes;
-  dinner.startTime = addMinutesToTime('00:00', newDinnerStart);
+  // dinner.startTime is deliberately left untouched so it stays in its window.
+  // The realignScheduleTimes pass right after this recascades the stretched
+  // durations: because the afternoon now ends right before the window time,
+  // dinner lands exactly on it. In the rare case where even every afternoon stop
+  // at the ceiling can't fill the gap (minutesLeft still > 0), a small residual
+  // gap is left before dinner rather than dragging dinner early, by far the
+  // rarer and less jarring outcome.
 }
 
 // Backstop for whatever slips past the anchor-distance checks above (road
