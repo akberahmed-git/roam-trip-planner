@@ -163,6 +163,21 @@ function StarIcon({ filled }) {
   )
 }
 
+// External-link icon on the "Book" buttons in the Reservations needed section
+// (Figma node 657:17192, 12x12). Literal SVG supplied by design, kept verbatim
+// per the "ask for the real SVG" rule. Fill is the same #0A6E83 brand colour as
+// the button label.
+function ExternalLinkIcon() {
+  return (
+    <svg width="12" height="12" viewBox="0 0 12 12" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
+      <path
+        d="M10.0001 10.6666H1.99972C1.63296 10.6666 1.33334 10.367 1.33334 10.0002V1.99988C1.33334 1.63313 1.63296 1.3335 1.99972 1.3335H5.3336C5.69973 1.3335 5.99998 1.03325 5.99998 0.666493C5.99998 0.300368 5.69973 0.000113511 5.3336 0.000113511H1.3334C0.593543 0.000113511 0 0.599975 0 1.3335V10.6666C0 11.4001 0.599867 12 1.3334 12H10.6666C11.4001 12 12 11.4001 12 10.6666V6.66645C12 6.30033 11.6997 6.00007 11.3336 6.00007C10.9669 6.00007 10.6666 6.30033 10.6666 6.66645V10.0003C10.6666 10.3671 10.3669 10.6666 10.0001 10.6666ZM7.33337 0.666509C7.33337 1.03327 7.633 1.33352 7.99976 1.33352H9.72645L3.63973 7.42019C3.38001 7.6799 3.38001 8.09986 3.63973 8.36021C3.90008 8.61993 4.32004 8.61993 4.57976 8.36021L10.6665 2.27354V4.00022C10.6665 4.36698 10.9667 4.6666 11.3335 4.6666C11.6996 4.6666 11.9999 4.36698 11.9999 4.00022V0.666379C11.9999 0.300255 11.6996 0 11.3335 0H7.99963C7.63287 0 7.33324 0.300255 7.33324 0.666379L7.33337 0.666509Z"
+        fill="#0A6E83"
+      />
+    </svg>
+  )
+}
+
 export default function FinaliseSave() {
   const navigate = useNavigate()
   const { tripParams, resolvedItinerary, selectedVariant } = useTrip()
@@ -454,7 +469,8 @@ export default function FinaliseSave() {
                           working link that would imply a booking flow that
                           doesn't exist - it just no longer looks inert. */}
                       <button type="button" className="pill-button pill-button--outline">
-                        Book ↗
+                        Book
+                        <ExternalLinkIcon />
                       </button>
                     </div>
                   )}
@@ -465,7 +481,8 @@ export default function FinaliseSave() {
                         <p className="finalise-reservation-row__note">{reservation.note}</p>
                       </div>
                       <button type="button" className="pill-button pill-button--outline">
-                        Book ↗
+                        Book
+                        <ExternalLinkIcon />
                       </button>
                     </div>
                   ))}

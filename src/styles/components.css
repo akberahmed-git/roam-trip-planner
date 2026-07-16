@@ -1553,6 +1553,10 @@ h1 {
   display: inline-flex;
   align-items: center;
   justify-content: center;
+  /* 8px between a label and a trailing icon (e.g. "Book" + external-link glyph
+     in the Reservations rows, Figma node 657:17190). Inert on single-label
+     buttons, which have nothing to space against. */
+  gap: var(--spacing-2);
   height: 36px;
   padding: 0 var(--spacing-4);
   border-radius: var(--radius-full);
@@ -2230,12 +2234,22 @@ h1 {
 
 .finalise-reservation-row {
   display: flex;
-  /* Vertically centers "Book now" against the name/note text block,
-     regardless of how many lines the note wraps to (Figma node
-     273:16717 - the button stays centered even next to a 3-line note). */
+  /* Vertically centers "Book" against the name/note text block, regardless of
+     how many lines the note wraps to (Figma node 273:16717 - the button stays
+     centered even next to a 3-line note). */
   align-items: center;
-  justify-content: space-between;
+  /* 12px between the text and the Book button. Matches Figma node 273:16727,
+     which lays the row out as a flex-1 text block plus a fixed 12px gap rather
+     than space-between, so the gap stays a consistent 12px whatever the text
+     width. */
   gap: var(--spacing-3);
+}
+
+/* Text block grows to fill the row, pushing the Book button to the right with
+   the fixed 12px gap above (Figma flex-[1_0_0] on node 273:16728). */
+.finalise-reservation-row > div {
+  flex: 1 1 auto;
+  min-width: 0;
 }
 
 /* Figma node 273:16599 shows a thin divider between each reservation row
