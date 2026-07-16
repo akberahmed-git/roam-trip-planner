@@ -312,51 +312,46 @@ function applyResolution(item, result, usedPlaceIds, anchor) {
 // then realign is called again to cascade the updated duration forward.
 // Minimum gap (minutes) worth bothering to fix.
 const MIN_GAP_TO_STRETCH_MINUTES = 30;
-// How long a single afternoon activity may run after absorbing dead time. The
-// Slow & Immersive variant is built around long, unhurried stops, so a 4-hour
-// afternoon at one place (a spa, a beach, a castle and its grounds, a museum
-// you actually finish) is the point of the variant, not filler. Whatever the
-// last stop can't hold under this ceiling spills back to the stop before it, so
-// the day still runs right up to dinner with no gap and no single implausible
-// card.
-const SLOW_MAX_SINGLE_ACTIVITY_DURATION_MINUTES = 240;
+// How long a single afternoon stop may plausibly run after absorbing dead time,
+// by the kind of place it is. A castle, museum, park or palace earns a long,
+// immersive visit; a viewpoint or church does not; anything unrecognised sits
+// in between. This is what stops a Slow day dumping four hours onto a wine bar
+// (which reads as absurd) while still letting four hours land on a castle
+// (which doesn't). Keyword-based, so it is a heuristic nudge: a place whose name
+// gives nothing away just gets the neutral middle.
+const LINGER_ACTIVITY_CEILING_MINUTES = 240;
+const NEUTRAL_ACTIVITY_CEILING_MINUTES = 150;
+const QUICK_ACTIVITY_CEILING_MINUTES = 90;
 
-// Words that suggest a stop is worth a long, unhurried visit (what a 3 to 4
-// hour Slow afternoon should land on) versus a quick photo stop. Used only to
-// bias WHERE the pre-dinner gap gets absorbed, never to add, drop or reorder
-// stops, so loose substring matching is fine and a miss just falls back to
-// Claude's own planned duration. Portuguese spellings are included because
-// Google returns local place names.
+// Words that mark a stop as worth a long visit versus a quick one. Used only to
+// pick each stop's ceiling above, never to add, drop or reorder stops, so loose
+// substring matching is fine. Portuguese spellings are included because Google
+// returns local place names.
 const LINGER_KEYWORDS = ['park', 'garden', 'jardim', 'beach', 'praia', 'spa', 'thermal', 'museum', 'museu', 'gallery', 'galeria', 'palace', 'palacio', 'palácio', 'castle', 'castelo', 'monaster', 'mosteiro', 'aquarium', 'botanic', 'vineyard', 'winery', 'quinta', 'promenade', 'waterfront', 'forest'];
 const QUICK_KEYWORDS = ['viewpoint', 'miradouro', 'lookout', 'church', 'igreja', 'chapel', 'capela', 'monument', 'statue', 'memorial', 'fountain'];
-// How far a linger/quick keyword match shifts an activity's ranking, in the
-// same "minutes" units as planned duration: big enough to outrank a modestly
-// longer quick stop, small enough that duration still decides between two
-// similar places.
-const LINGER_KEYWORD_WEIGHT = 90;
 
-// Higher = better suited to soak up a long afternoon. Base is Claude's own
-// planned duration (it already gives a palace more time than a viewpoint),
-// nudged by the keyword lists above.
-function lingerScore(item) {
+function activityCeiling(item) {
   const text = `${item.name || ''} ${item.description || ''}`.toLowerCase();
-  let score = item.durationMinutes || 0;
-  if (LINGER_KEYWORDS.some((word) => text.includes(word))) score += LINGER_KEYWORD_WEIGHT;
-  if (QUICK_KEYWORDS.some((word) => text.includes(word))) score -= LINGER_KEYWORD_WEIGHT;
-  return score;
+  if (LINGER_KEYWORDS.some((word) => text.includes(word))) return LINGER_ACTIVITY_CEILING_MINUTES;
+  if (QUICK_KEYWORDS.some((word) => text.includes(word))) return QUICK_ACTIVITY_CEILING_MINUTES;
+  return NEUTRAL_ACTIVITY_CEILING_MINUTES;
 }
 
-// Fills the whole gap before dinner by pouring it into the afternoon, so a
-// Slow day runs unhurried right up to a normal dinner instead of ending early.
+// Fills the gap before dinner by spreading it across the afternoon, so a Slow
+// day runs unhurried right up to a normal dinner instead of ending early.
 // Dinner itself never moves - it stays clamped in its meal window (19:00 at the
-// earliest, the same window Packed uses). The time is poured in from the last
-// stop best suited to a long visit first (see lingerScore), so the immersive
-// anchor lands on somewhere that earns it - a park, palace or museum over a
-// viewpoint or church - and overflow spills to the next best only if the first
-// would pass the believable ceiling. The
-// realignScheduleTimes pass that runs straight after recascades the stretched
-// durations forward, landing dinner exactly on its window with the travel leg
-// flowing into it.
+// earliest, the same window Packed uses). The time is shared out in even
+// portions across the afternoon stops rather than piled onto one, and each stop
+// only takes as much as its own kind of place can plausibly hold (see
+// activityCeiling); whatever one stop can't take redistributes across the ones
+// that still have room. The realignScheduleTimes pass straight after recascades
+// the stretched durations, landing dinner on its window. If even every stop at
+// its ceiling can't absorb the whole gap - a day with a single afternoon stop
+// that would need more than four hours to fill - the remainder is handed to the
+// most linger-worthy stop so the timeline is never left with a hole, even though
+// that stop then runs long. The real cure for that case is the generator handing
+// this step enough stops to spread across, not something the schedule can invent
+// its way out of.
 function stretchPreDinnerGap(day) {
   const dinnerIndex = day.items.findIndex((item) => item.mealType === 'dinner');
   if (dinnerIndex <= 0) return;
@@ -392,33 +387,55 @@ function stretchPreDinnerGap(day) {
 
   if (gap < MIN_GAP_TO_STRETCH_MINUTES) return;
 
-  // Pour the entire gap into the afternoon, filling the stops best suited to a
-  // long visit first (highest lingerScore), each capped at the ceiling, spilling
-  // to the next best. Ties go to the later stop, so an equally-suitable place
-  // closer to dinner wins and the day still flows naturally into the evening.
-  // No buffer is subtracted: the goal is zero visible gap. The total added
-  // equals the gap wherever it lands, so dinner still cascades onto its window.
-  const ranked = afternoonActivities
-    .map((activity, index) => ({ activity, index, score: lingerScore(activity) }))
-    .sort((a, b) => (b.score - a.score) || (b.index - a.index));
+  // Share the gap out in even portions across the afternoon stops. Each stop can
+  // absorb up to its own plausible ceiling (activityCeiling); whenever a stop
+  // hits its ceiling, the leftover is redistributed across the stops that still
+  // have room on the next pass. This keeps a long afternoon spread over two or
+  // three natural stops instead of ballooning one, while still respecting that
+  // some places (a castle) can hold far more time than others (a wine bar). The
+  // total added equals the gap unless nothing can absorb it, so dinner still
+  // cascades onto its window.
+  const fillable = afternoonActivities
+    .map((activity) => ({ activity, headroom: activityCeiling(activity) - activity.durationMinutes }))
+    .filter((entry) => entry.headroom > 0);
 
   let minutesLeft = gap;
-  for (const { activity } of ranked) {
-    if (minutesLeft <= 0) break;
-    const canAbsorb = SLOW_MAX_SINGLE_ACTIVITY_DURATION_MINUTES - activity.durationMinutes;
-    if (canAbsorb <= 0) continue;
-    const absorb = Math.min(canAbsorb, minutesLeft);
-    activity.durationMinutes += absorb;
-    minutesLeft -= absorb;
+  let active = fillable;
+  while (minutesLeft > 0 && active.length > 0) {
+    const share = minutesLeft / active.length;
+    let addedThisPass = 0;
+    for (const entry of active) {
+      const add = Math.min(Math.round(share), entry.headroom, minutesLeft - addedThisPass);
+      if (add <= 0) continue;
+      entry.activity.durationMinutes += add;
+      entry.headroom -= add;
+      addedThisPass += add;
+    }
+    minutesLeft -= addedThisPass;
+    active = active.filter((entry) => entry.headroom > 0);
+    if (addedThisPass <= 0) break;
+  }
+
+  // If time is still left over after every stop has reached its ceiling - a day
+  // with too few afternoon stops, e.g. a single castle that would need five-plus
+  // hours to reach dinner - hand the remainder to the most linger-worthy stop
+  // and let it run past its nominal ceiling rather than leave a hole in the day.
+  // A visible gap reads as a bug; an extra-long castle just reads as a slow day.
+  // The proper cure is the generator giving Slow days enough stops in the first
+  // place; this guarantees the timeline is always continuous regardless.
+  if (minutesLeft > 0 && afternoonActivities.length > 0) {
+    const anchor = afternoonActivities
+      .slice()
+      .sort((a, b) => (activityCeiling(b) - activityCeiling(a)) || (b.durationMinutes - a.durationMinutes))[0];
+    anchor.durationMinutes += minutesLeft;
+    minutesLeft = 0;
   }
 
   // dinner.startTime is deliberately left untouched so it stays in its window.
   // The realignScheduleTimes pass right after this recascades the stretched
-  // durations: because the afternoon now ends right before the window time,
-  // dinner lands exactly on it. In the rare case where even every afternoon stop
-  // at the ceiling can't fill the gap (minutesLeft still > 0), a small residual
-  // gap is left before dinner rather than dragging dinner early, by far the
-  // rarer and less jarring outcome.
+  // durations: because the afternoon now ends right before the window time and
+  // the whole gap has been absorbed, dinner lands exactly on its window with the
+  // travel leg flowing straight into it and no dead time anywhere in the day.
 }
 
 // Backstop for whatever slips past the anchor-distance checks above (road
