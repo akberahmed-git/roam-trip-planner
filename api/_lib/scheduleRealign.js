@@ -283,3 +283,145 @@ export function snapArrivalsToGrid(day, transport) {
     current.startTime = addMinutesToTime('00:00', arrival);
   }
 }
+
+// Afternoon gap-fill. Shared by generate-resolved-itinerary.js (Slow variant
+// generation) and recompute-day-travel-times.js (after a swap or reorder), so
+// a swapped day keeps dinner parked in its window with no dead time, exactly
+// like a freshly generated one. Depends only on parseTravelMinutes and
+// timeToMinutes above; the ceiling constants and keyword lists are private
+// helpers used solely by activityCeiling.
+// For the Slow & Immersive variant: when the last pre-dinner activity wraps
+// up significantly before dinner (a common side-effect of real travel times
+// being shorter than Claude assumed when writing the schedule), extend its
+// durationMinutes to absorb the dead time rather than leaving an awkward
+// gap. Spending a long afternoon at a spa, beach, or viewpoint is exactly
+// what "slow" means - capped at 3 hours so it stays plausible. Runs after
+// realignScheduleTimes so it operates on the final cascaded start times,
+// then realign is called again to cascade the updated duration forward.
+// Minimum gap (minutes) worth bothering to fix.
+const MIN_GAP_TO_STRETCH_MINUTES = 30;
+// How long a single afternoon stop may plausibly run after absorbing dead time,
+// by the kind of place it is. A castle, museum, park or palace earns a long,
+// immersive visit; a viewpoint or church does not; anything unrecognised sits
+// in between. This is what stops a Slow day dumping four hours onto a wine bar
+// (which reads as absurd) while still letting four hours land on a castle
+// (which doesn't). Keyword-based, so it is a heuristic nudge: a place whose name
+// gives nothing away just gets the neutral middle.
+const LINGER_ACTIVITY_CEILING_MINUTES = 240;
+const NEUTRAL_ACTIVITY_CEILING_MINUTES = 150;
+const QUICK_ACTIVITY_CEILING_MINUTES = 90;
+
+// Words that mark a stop as worth a long visit versus a quick one. Used only to
+// pick each stop's ceiling above, never to add, drop or reorder stops, so loose
+// substring matching is fine. Portuguese spellings are included because Google
+// returns local place names.
+const LINGER_KEYWORDS = ['park', 'garden', 'jardim', 'beach', 'praia', 'spa', 'thermal', 'museum', 'museu', 'gallery', 'galeria', 'palace', 'palacio', 'palácio', 'castle', 'castelo', 'monaster', 'mosteiro', 'aquarium', 'botanic', 'vineyard', 'winery', 'quinta', 'promenade', 'waterfront', 'forest'];
+const QUICK_KEYWORDS = ['viewpoint', 'miradouro', 'lookout', 'church', 'igreja', 'chapel', 'capela', 'monument', 'statue', 'memorial', 'fountain'];
+
+function activityCeiling(item) {
+  const text = `${item.name || ''} ${item.description || ''}`.toLowerCase();
+  if (LINGER_KEYWORDS.some((word) => text.includes(word))) return LINGER_ACTIVITY_CEILING_MINUTES;
+  if (QUICK_KEYWORDS.some((word) => text.includes(word))) return QUICK_ACTIVITY_CEILING_MINUTES;
+  return NEUTRAL_ACTIVITY_CEILING_MINUTES;
+}
+
+// Fills the gap before dinner by spreading it across the afternoon, so a Slow
+// day runs unhurried right up to a normal dinner instead of ending early.
+// Dinner itself never moves - it stays clamped in its meal window (19:00 at the
+// earliest, the same window Packed uses). The time is shared out in even
+// portions across the afternoon stops rather than piled onto one, and each stop
+// only takes as much as its own kind of place can plausibly hold (see
+// activityCeiling); whatever one stop can't take redistributes across the ones
+// that still have room. The realignScheduleTimes pass straight after recascades
+// the stretched durations, landing dinner on its window. If even every stop at
+// its ceiling can't absorb the whole gap - a day with a single afternoon stop
+// that would need more than four hours to fill - the remainder is handed to the
+// most linger-worthy stop so the timeline is never left with a hole, even though
+// that stop then runs long. The real cure for that case is the generator handing
+// this step enough stops to spread across, not something the schedule can invent
+// its way out of.
+export function stretchPreDinnerGap(day) {
+  const dinnerIndex = day.items.findIndex((item) => item.mealType === 'dinner');
+  if (dinnerIndex <= 0) return;
+
+  const dinner = day.items[dinnerIndex];
+  if (!dinner.startTime) return;
+
+  // Collect only activities that fall AFTER lunch and before dinner. Stretching
+  // morning activities (before lunch) causes an impossible schedule: if a morning
+  // activity is extended past lunchtime, realignScheduleTimes pushes lunch forward
+  // but the drift-tolerance guard snaps it back to its original time, leaving a
+  // phantom gap where the card shows you at lunch before you've left the morning
+  // stop. Restricting to post-lunch activities means only genuinely free afternoon
+  // time gets filled.
+  const lunchIndex = day.items.findIndex((item) => item.mealType === 'lunch');
+  const afternoonStart = lunchIndex >= 0 ? lunchIndex + 1 : 0;
+  const afternoonActivities = [];
+  for (let i = afternoonStart; i < dinnerIndex; i++) {
+    const item = day.items[i];
+    if (item.type !== 'meal' && item.type !== 'accommodation' && item.startTime && item.durationMinutes) {
+      afternoonActivities.push(item);
+    }
+  }
+  if (afternoonActivities.length === 0) return;
+
+  const lastActivity = afternoonActivities[afternoonActivities.length - 1];
+  const travelParsed = parseTravelMinutes(lastActivity.travelToNext);
+  const travelMinutes = travelParsed ? travelParsed.minutes : 0;
+
+  const activityEndMinutes = timeToMinutes(lastActivity.startTime) + lastActivity.durationMinutes;
+  const dinnerStartMinutes = timeToMinutes(dinner.startTime);
+  const gap = dinnerStartMinutes - activityEndMinutes - travelMinutes;
+
+  if (gap < MIN_GAP_TO_STRETCH_MINUTES) return;
+
+  // Share the gap out in even portions across the afternoon stops. Each stop can
+  // absorb up to its own plausible ceiling (activityCeiling); whenever a stop
+  // hits its ceiling, the leftover is redistributed across the stops that still
+  // have room on the next pass. This keeps a long afternoon spread over two or
+  // three natural stops instead of ballooning one, while still respecting that
+  // some places (a castle) can hold far more time than others (a wine bar). The
+  // total added equals the gap unless nothing can absorb it, so dinner still
+  // cascades onto its window.
+  const fillable = afternoonActivities
+    .map((activity) => ({ activity, headroom: activityCeiling(activity) - activity.durationMinutes }))
+    .filter((entry) => entry.headroom > 0);
+
+  let minutesLeft = gap;
+  let active = fillable;
+  while (minutesLeft > 0 && active.length > 0) {
+    const share = minutesLeft / active.length;
+    let addedThisPass = 0;
+    for (const entry of active) {
+      const add = Math.min(Math.round(share), entry.headroom, minutesLeft - addedThisPass);
+      if (add <= 0) continue;
+      entry.activity.durationMinutes += add;
+      entry.headroom -= add;
+      addedThisPass += add;
+    }
+    minutesLeft -= addedThisPass;
+    active = active.filter((entry) => entry.headroom > 0);
+    if (addedThisPass <= 0) break;
+  }
+
+  // If time is still left over after every stop has reached its ceiling - a day
+  // with too few afternoon stops, e.g. a single castle that would need five-plus
+  // hours to reach dinner - hand the remainder to the most linger-worthy stop
+  // and let it run past its nominal ceiling rather than leave a hole in the day.
+  // A visible gap reads as a bug; an extra-long castle just reads as a slow day.
+  // The proper cure is the generator giving Slow days enough stops in the first
+  // place; this guarantees the timeline is always continuous regardless.
+  if (minutesLeft > 0 && afternoonActivities.length > 0) {
+    const anchor = afternoonActivities
+      .slice()
+      .sort((a, b) => (activityCeiling(b) - activityCeiling(a)) || (b.durationMinutes - a.durationMinutes))[0];
+    anchor.durationMinutes += minutesLeft;
+    minutesLeft = 0;
+  }
+
+  // dinner.startTime is deliberately left untouched so it stays in its window.
+  // The realignScheduleTimes pass right after this recascades the stretched
+  // durations: because the afternoon now ends right before the window time and
+  // the whole gap has been absorbed, dinner lands exactly on its window with the
+  // travel leg flowing straight into it and no dead time anywhere in the day.
+}
