@@ -63,6 +63,19 @@ function CalendarIcon() {
   )
 }
 
+function ClockIcon() {
+  return (
+    <svg width="20" height="20" viewBox="0 0 17 17" fill="none">
+      <path
+        d="M8.5 0.25C13.0534 0.25 16.75 3.94661 16.75 8.5C16.75 13.0534 13.0534 16.75 8.5 16.75C3.94661 16.75 0.25 13.0534 0.25 8.5C0.25 3.94661 3.94661 0.25 8.5 0.25ZM8.5 1.81641C4.81138 1.81641 1.81641 4.81138 1.81641 8.5C1.81641 12.1886 4.81138 15.1836 8.5 15.1836C12.1886 15.1836 15.1836 12.1886 15.1836 8.5C15.1836 4.81138 12.1886 1.81641 8.5 1.81641ZM8.5 3.18359C8.93274 3.18359 9.2832 3.53405 9.2832 3.9668V8.03027C9.2832 8.10956 9.31581 8.18508 9.37402 8.23926L12.2295 10.8555H12.2305C12.5484 11.148 12.57 11.6439 12.2783 11.9629H12.2773C11.9848 12.2809 11.49 12.3024 11.1709 12.0107L8.31641 9.39453C7.93438 9.04332 7.7168 8.54908 7.7168 8.03027V3.9668C7.7168 3.53405 8.06726 3.18359 8.5 3.18359Z"
+        fill="var(--text-disabled)"
+        stroke="var(--text-disabled)"
+        strokeWidth="0.5"
+      />
+    </svg>
+  )
+}
+
 function UsersIcon() {
   return (
     <svg width="20" height="20" viewBox="0 0 20 20" fill="none">
@@ -368,6 +381,19 @@ export default function FinaliseSave() {
                     // - a missing row read as broken, not "none picked".
                     <span className="finalise-row__value">Not specified</span>
                   )}
+                </div>
+              </div>
+              <div className="finalise-row">
+                <span className="finalise-row__icon" style={{ alignSelf: 'flex-start' }}>
+                  <ClockIcon />
+                </span>
+                <div className="finalise-row__content">
+                  <span className="finalise-row__label">Trip Type</span>
+                  {/* The chosen variant's own label ("Packed & Varied" /
+                      "Slow & Immersive"), the same string ComparisonView shows
+                      on its pace tabs. Falls back for saved trips restored
+                      without one, so the row never reads as broken. */}
+                  <span className="finalise-row__value">{plan.label || 'Not specified'}</span>
                 </div>
               </div>
             </div>
