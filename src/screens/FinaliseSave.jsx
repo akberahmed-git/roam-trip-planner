@@ -309,7 +309,12 @@ export default function FinaliseSave() {
       transport: tripParams.transport,
     })
     setSaveState('saved')
-    navigate('/')
+    // Land on Home but with a ?saved=true marker in the URL. Home matches the
+    // '/' route regardless of query string, so the user still sees the home
+    // screen they started on - but the address now differs from the bare start
+    // URL, which is what lets an unmoderated-test tool (UXtweak) detect that
+    // the trip was actually saved rather than confusing it with the start page.
+    navigate('/?saved=true')
   }
 
   return (
