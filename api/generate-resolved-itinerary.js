@@ -612,10 +612,25 @@ function roundStayDurations(day) {
 // landing on its clean intended time.
 //
 // A real hop never collapses below 15 minutes, so no stop is ever shown as
-// being reached the same minute you left the last one. Gaps with no travel
-// value at all (an unresolved place, both routing and estimate failed) are left
-// untouched, exactly as realignScheduleTimes leaves them.
-function snapArrivalsToGrid(day) {
+// being reached the same minute you left the last one.
+//
+// Missing travel legs get filled rather than skipped (per Akber's call,
+// 17 Jul 2026). A leg only ends up with no travel value when a place never
+// resolved to real coordinates AND the Claude fallback estimate also failed,
+// so neither routing nor an estimate is possible. Leaving it blank used to
+// mean that stop kept its raw AI-guessed start time while the stop before it
+// finished at a different moment, which showed up as an unexplained gap (or,
+// if the guessed times overlapped, two stops booked on top of each other) -
+// both of which read as a bug. So instead of leaving it, we assume a nominal
+// one-grid-unit hop (15 minutes, in the day's default mode) and cascade
+// through it like any other leg. The number is an admitted assumption, not a
+// routed value, but a continuous schedule that's a few minutes off on one
+// unroutable hop is far better than a visible hole in the day. The underlying
+// "why didn't this place resolve" is worth chasing separately, but it should
+// never surface to the traveller as broken-looking time.
+function snapArrivalsToGrid(day, transport) {
+  const defaultMode = transport === 'No car or taxi' ? 'walk' : 'drive';
+
   for (let i = 1; i < day.items.length; i++) {
     const previous = day.items[i - 1];
     const current = day.items[i];
@@ -623,18 +638,21 @@ function snapArrivalsToGrid(day) {
     if (!previous.startTime) {
       continue;
     }
-    const parsed = parseTravelMinutes(previous.travelToNext);
-    if (!parsed) {
-      continue;
-    }
     const previousStart = timeToMinutes(previous.startTime);
     if (previousStart == null) {
       continue;
     }
 
+    // Real routed/estimated leg where available; a nominal assumed hop where
+    // the leg never got a value at all (see the note above). Either way the
+    // schedule below stays continuous.
+    const parsed = parseTravelMinutes(previous.travelToNext);
+    const mode = parsed ? parsed.mode : defaultMode;
+    const baseMinutes = parsed ? parsed.minutes : STAY_DURATION_INCREMENT_MINUTES;
+
     const previousEnd = previousStart + (previous.durationMinutes || 0);
     let arrival =
-      Math.round((previousEnd + parsed.minutes) / STAY_DURATION_INCREMENT_MINUTES) *
+      Math.round((previousEnd + baseMinutes) / STAY_DURATION_INCREMENT_MINUTES) *
       STAY_DURATION_INCREMENT_MINUTES;
     let gap = arrival - previousEnd;
     if (gap < STAY_DURATION_INCREMENT_MINUTES) {
@@ -642,7 +660,7 @@ function snapArrivalsToGrid(day) {
       arrival = previousEnd + gap;
     }
 
-    previous.travelToNext = `${gap} minute ${parsed.mode}`;
+    previous.travelToNext = `${gap} minute ${mode}`;
     current.startTime = addMinutesToTime('00:00', arrival);
   }
 }
@@ -851,7 +869,7 @@ async function resolveItinerary(itinerary, destination, anchor, transport, accom
     stretchPreDinnerGap(day);
     roundStayDurations(day);
     realignScheduleTimes(day);
-    snapArrivalsToGrid(day);
+    snapArrivalsToGrid(day, transport);
   });
 
   return itinerary;
