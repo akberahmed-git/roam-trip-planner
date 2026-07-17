@@ -292,7 +292,7 @@ export default function ComparisonView() {
             <button
               type="button"
               className="detail-footer__button detail-footer__button--solid"
-              onClick={() => navigate('/map', { state: { variant: variantKey } })}
+              onClick={() => { setSelectedVariant(variantKey); navigate('/map', { state: { variant: variantKey } }); }}
             >
               Continue
             </button>

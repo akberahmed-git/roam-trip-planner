@@ -29,7 +29,7 @@ function MapRow({ item, number }) {
 export default function MapView() {
   const navigate = useNavigate()
   const location = useLocation()
-  const { tripParams, resolvedItinerary, selectedVariant } = useTrip()
+  const { tripParams, resolvedItinerary, selectedVariant, setSelectedVariant } = useTrip()
 
   const availableVariants = resolvedItinerary
     ? ['packed', 'slow'].filter((key) => resolvedItinerary[key])
@@ -125,7 +125,15 @@ export default function MapView() {
             <button
               type="button"
               className="detail-footer__button detail-footer__button--solid"
-              onClick={() => navigate('/finalise')}
+              // Commit the variant being viewed here into context before
+              // Finalise reads it. MapView's heading is driven by this local
+              // variantKey (from nav state / context / first-available), but
+              // Finalise reads selectedVariant from context - without this,
+              // arriving here via a path that never set it (e.g. Comparison's
+              // Continue before its fix, or Home's map link) left Finalise
+              // falling back to the first variant and showing the wrong Trip
+              // Type. Syncing here guarantees the two screens always agree.
+              onClick={() => { setSelectedVariant(variantKey); navigate('/finalise') }}
             >
               Continue
             </button>
