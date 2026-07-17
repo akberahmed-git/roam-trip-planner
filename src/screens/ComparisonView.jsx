@@ -279,24 +279,31 @@ export default function ComparisonView() {
             </div>
           )}
 
+          {/* Secondary CTA sits ABOVE the lower day picker, primary CTA below
+              it (Akber's call). Both full width and stacked rather than the
+              old side-by-side row, so each reads as its own decision. */}
+          <button
+            type="button"
+            className="detail-footer__button detail-footer__button--outline"
+            style={{ width: '100%' }}
+            onClick={() => { setSelectedVariant(variantKey); navigate('/swap_place', { state: { variant: variantKey } }); }}
+          >
+            Swap places
+          </button>
+
           <SegmentedControl options={dayLabels} value={`Day ${day?.day}`} onChange={selectDay} />
 
-          <div className="detail-footer">
-            <button
-              type="button"
-              className="detail-footer__button detail-footer__button--outline"
-              onClick={() => { setSelectedVariant(variantKey); navigate('/swap_place', { state: { variant: variantKey } }); }}
-            >
-              Swap places
-            </button>
-            <button
-              type="button"
-              className="detail-footer__button detail-footer__button--solid"
-              onClick={() => { setSelectedVariant(variantKey); navigate('/map', { state: { variant: variantKey } }); }}
-            >
-              Continue
-            </button>
-          </div>
+          {/* Primary CTA names the variant being continued with, so the choice
+              is explicit at the point of committing to it. */}
+          <button
+            type="button"
+            className="detail-footer__button detail-footer__button--solid"
+            style={{ width: '100%' }}
+            onClick={() => { setSelectedVariant(variantKey); navigate('/map', { state: { variant: variantKey } }); }}
+          >
+            Continue with {variant.label}
+          </button>
+
           <button type="button" className="delete-itinerary-button" onClick={() => setDeleteDialogOpen(true)}>
             Delete itinerary
           </button>

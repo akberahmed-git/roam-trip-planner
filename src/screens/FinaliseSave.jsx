@@ -536,11 +536,6 @@ export default function FinaliseSave() {
                 <p className="page-intro">No reservations needed for this trip.</p>
               )}
             </div>
-            <p className="finalise-note">
-              Per-stop booking guidance beyond accommodation and Standard/Luxury meal reservations (tickets, tours)
-              isn't wired up yet for arbitrary destinations - the app doesn't have a real data source for which other
-              stops need advance booking, so this section is scoped to those two for now rather than guessing.
-            </p>
           </section>
 
           <section className="finalise-section">

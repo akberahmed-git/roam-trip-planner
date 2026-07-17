@@ -307,13 +307,22 @@ export default function SwapPlaces() {
 
           <SegmentedControl options={dayLabels} value={`Day ${day?.day}`} onChange={selectDay} />
 
-          <button
-            type="button"
-            className="button-primary button-full"
-            onClick={() => navigate('/map', { state: { variant: effectiveVariant } })}
-          >
-            Continue
-          </button>
+          <div className="detail-footer">
+            <button
+              type="button"
+              className="detail-footer__button detail-footer__button--outline"
+              onClick={() => navigate('/comparison')}
+            >
+              Cancel
+            </button>
+            <button
+              type="button"
+              className="detail-footer__button detail-footer__button--solid"
+              onClick={() => navigate('/map', { state: { variant: effectiveVariant } })}
+            >
+              Continue
+            </button>
+          </div>
         </div>
       </div>
       <Footer />
