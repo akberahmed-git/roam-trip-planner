@@ -285,7 +285,7 @@ export default function ComparisonView() {
           <button
             type="button"
             className="detail-footer__button detail-footer__button--outline"
-            style={{ width: '100%' }}
+            style={{ width: '100%', flex: 'none' }}
             onClick={() => { setSelectedVariant(variantKey); navigate('/swap_place', { state: { variant: variantKey } }); }}
           >
             Swap places
@@ -298,7 +298,7 @@ export default function ComparisonView() {
           <button
             type="button"
             className="detail-footer__button detail-footer__button--solid"
-            style={{ width: '100%' }}
+            style={{ width: '100%', flex: 'none' }}
             onClick={() => { setSelectedVariant(variantKey); navigate('/map', { state: { variant: variantKey } }); }}
           >
             Continue with {variant.label}
