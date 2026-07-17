@@ -454,9 +454,13 @@ export default function FinaliseSave() {
               </button>
             </div>
             <div className="finalise-card">
-              <div className="stack" style={{ gap: 'var(--spacing-4)' }}>
+              {/* spacing-6 (24px) between day blocks and between a day heading
+                  and its stops gives the heading 24px of breathing room above
+                  and below, per Figma node 273-16518. The very first heading's
+                  top space is the card's own 16px padding. */}
+              <div className="stack" style={{ gap: 'var(--spacing-6)' }}>
                 {days.map((day) => (
-                  <div key={day.day} className="stack" style={{ gap: 'var(--spacing-2)' }}>
+                  <div key={day.day} className="stack" style={{ gap: 'var(--spacing-6)' }}>
                     <span className="finalise-day-label">Day {day.day}</span>
                     <div className="stack" style={{ gap: 'var(--spacing-2)' }}>
                       {(day.items || []).map((item, index) => (
