@@ -309,22 +309,13 @@ export default function FinaliseSave() {
       transport: tripParams.transport,
     })
     setSaveState('saved')
-    // Land on Home but with a ?saved=true marker in the URL. Home matches the
-    // '/' route regardless of query string, so the user still sees the home
-    // screen they started on - but the address now differs from the bare start
-    // URL, which is what lets an unmoderated-test tool (UXtweak) detect that
-    // the trip was actually saved rather than confusing it with the start page.
-    //
-    // Deliberately a full-page navigation (window.location) rather than a
-    // client-side router push. A real page load is something every URL-based
-    // testing tool detects reliably, whereas an in-app route change can slip
-    // past it - that was the cause of the earlier unmoderated-test failure,
-    // where reaching /finalise via client-side routing was never registered.
-    // Safe to hard-reload here: the trip is already persisted to localStorage
-    // just above, and Home rebuilds its "My trips" list from that, so nothing
-    // is lost. This is the terminal step of the flow, so losing in-memory
-    // trip state on the reload has no downside.
-    window.location.assign('/?saved=true')
+    // Land on the dedicated My trips page - the terminal screen of the flow.
+    // The trip is already persisted to localStorage just above, and My trips
+    // reads its list from there, so the user sees the trip they just saved.
+    // /my-trips is also a distinct URL from the start page, so it can double as
+    // a completion signal for URL-based test tools on platforms where that
+    // detection works (desktop).
+    navigate('/my-trips')
   }
 
   return (
