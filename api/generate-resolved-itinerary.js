@@ -120,6 +120,139 @@ function ensureDinner(day, destination) {
   });
 }
 
+// Guarantees breakfast on the days that don't eat at the hotel. When
+// day.breakfastAtAccommodation is set, applyAccommodationBookends adds a real
+// "Breakfast at <hotel>" stop, so nothing is needed here. Otherwise Claude is
+// expected to supply a breakfast spot, and when it omits one this adds a
+// placeholder that resolveMealPlaceholders turns into a real cafe near the
+// first stop of the day.
+function ensureBreakfast(day, destination) {
+  if (day.breakfastAtAccommodation) return;
+  const hasBreakfast = day.items.some((item) => item.mealType === 'breakfast');
+  if (hasBreakfast) return;
+
+  day.items.push({
+    type: 'meal',
+    name: 'Breakfast',
+    categoryTag: 'Cafe',
+    description: `Find a local spot for breakfast in ${destination}.`,
+    startTime: '09:00',
+    durationMinutes: FIXED_MEAL_DURATION_MINUTES,
+    mealType: 'breakfast',
+    travelToNext: null,
+    photoUrl: null,
+    location: null,
+    address: null,
+    rating: null,
+    ratingCount: null,
+    hasHours: false,
+    weekdayDescriptions: null,
+  });
+}
+
+// Guarantees every day has a lunch item, mirroring ensureDinner. Claude
+// sometimes omits lunch entirely (seen on a Packed Day 2, 1 Aug 2026 - the day
+// jumped from a morning stop straight to the afternoon with no lunch at all),
+// and unlike dinner there was no backstop for it. Adds a midday placeholder;
+// resolveItinerary re-sorts the day immediately after so it lands in its proper
+// slot, then resolveMealPlaceholders turns it into a real restaurant.
+function ensureLunch(day, destination) {
+  const hasLunch = day.items.some((item) => item.mealType === 'lunch');
+  if (hasLunch) return;
+
+  day.items.push({
+    type: 'meal',
+    name: 'Lunch',
+    categoryTag: 'Restaurant',
+    description: `Find a local restaurant for lunch in ${destination}.`,
+    startTime: '13:00',
+    durationMinutes: FIXED_MEAL_DURATION_MINUTES,
+    mealType: 'lunch',
+    travelToNext: null,
+    photoUrl: null,
+    location: null,
+    address: null,
+    rating: null,
+    ratingCount: null,
+    hasHours: false,
+    weekdayDescriptions: null,
+  });
+}
+
+// Search term used when adopting a real place for a location-less meal, by meal
+// type - breakfast wants a cafe, lunch and dinner a restaurant.
+const MEAL_SEARCH_QUERY = {
+  breakfast: 'breakfast cafe',
+  lunch: 'restaurant',
+  dinner: 'restaurant',
+};
+
+// A meal that reaches this point with no real location is either an
+// ensureBreakfast/ensureLunch/ensureDinner backstop (Claude omitted the meal) or a meal Claude
+// named that never resolved against Google. Either way the card would read
+// "find a local restaurant" with no real place, which is exactly what Akber
+// flagged (1 Aug 2026): a meal must always be a real place. So for each
+// location-less meal, search for a genuine restaurant near where the traveller
+// already is - the nearest neighbouring stop that did resolve, falling back to
+// the destination centre - and adopt it. photoUrl stays null (findNearbyCandidates
+// deliberately skips the billable Place Photo fetch), so the card shows a real
+// name, address and map pin without a photo, which is a real place, not a
+// placeholder. If nothing suitable turns up (genuinely no nearby restaurant, or
+// the search fails), the honest "find a restaurant" text is left in place rather
+// than adopting a wrong or far-flung place.
+async function resolveMealPlaceholders(day, anchor, usedPlaceIds) {
+  for (let i = 0; i < day.items.length; i++) {
+    const item = day.items[i];
+    if (!item.mealType || item.location) {
+      continue;
+    }
+
+    let near = null;
+    for (let j = i - 1; j >= 0 && !near; j--) {
+      if (day.items[j].location) near = day.items[j].location;
+    }
+    for (let j = i + 1; j < day.items.length && !near; j++) {
+      if (day.items[j].location) near = day.items[j].location;
+    }
+    const query = MEAL_SEARCH_QUERY[item.mealType] || 'restaurant';
+    const pickNear = async (loc) => {
+      if (!loc) return null;
+      const candidates = await findNearbyCandidates(query, null, loc).catch(() => []);
+      return (
+        candidates.find(
+          (c) =>
+            c.location &&
+            !usedPlaceIds.has(c.placeId) &&
+            (!anchor || haversineMeters(anchor, c.location) <= MAX_BROAD_DISTANCE_METERS)
+        ) || null
+      );
+    };
+
+    // Prefer a place near the adjacent stop; fall back to the destination centre
+    // so a meal in a sparse area (or with no resolved neighbour) still lands a
+    // real place rather than staying a placeholder.
+    let pick = await pickNear(near);
+    if (!pick && anchor && anchor !== near) {
+      pick = await pickNear(anchor);
+    }
+    if (!pick) {
+      continue;
+    }
+
+    item.name = pick.name;
+    item.address = pick.address;
+    item.location = pick.location;
+    item.rating = null;
+    item.ratingCount = null;
+    item.photoUrl = null;
+    item.hasHours = pick.hasHours || false;
+    item.weekdayDescriptions = pick.weekdayDescriptions || null;
+    const label = item.mealType.charAt(0).toUpperCase() + item.mealType.slice(1);
+    item.description = `${label} at ${pick.name}.`;
+    usedPlaceIds.add(pick.placeId);
+  }
+}
+
 // Bookends a single day with the real accommodation: a departure/breakfast
 // stop first, a return stop last. Per Akber's call (9 Jul 2026). Skipped
 // entirely if the accommodation has no real coordinates (accommodationDetails
@@ -585,10 +718,32 @@ async function resolveItinerary(itinerary, destination, anchor, transport, accom
   // right item.
   itinerary.days.forEach((day) => {
     enforceMealConstraints(day);
+    ensureBreakfast(day, destination);
+    ensureLunch(day, destination);
     ensureDinner(day, destination);
+    // ensureLunch pushes a 13:00 item to the end of the array; re-sort so it
+    // lands in its real midday slot before bookends wrap the day and before
+    // resolveMealPlaceholders and travel times run on the ordered list.
+    day.items.sort((a, b) => {
+      const aMin = timeToMinutes(a.startTime);
+      const bMin = timeToMinutes(b.startTime);
+      if (aMin == null && bMin == null) return 0;
+      if (aMin == null) return 1;
+      if (bMin == null) return -1;
+      return aMin - bMin;
+    });
     applyAccommodationBookends(day, accommodationDetails);
     enforceEarliestStart(day);
   });
+
+  // Turn any meal that still has no real location - the ensureLunch/ensureDinner
+  // backstops, or a meal Claude named that never resolved - into a genuine
+  // nearby restaurant, so a meal card is never a bare "find a restaurant"
+  // placeholder (Akber, 1 Aug 2026). Sequential, not Promise.all, so the shared
+  // usedPlaceIds stays consistent and two days can't adopt the same restaurant.
+  for (const day of itinerary.days) {
+    await resolveMealPlaceholders(day, anchor, usedPlaceIds);
+  }
 
   await Promise.all(
     itinerary.days.map((day) => computeTravelTimes(day.items, transport))
