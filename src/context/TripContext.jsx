@@ -1,13 +1,57 @@
-import { createContext, useContext, useState, useCallback, useRef } from 'react'
+import { createContext, useContext, useState, useEffect, useCallback, useRef } from 'react'
 
 const TripContext = createContext(null)
 
+// In-progress trip is mirrored to sessionStorage so a full-page reload (a
+// refresh, a hard navigation into a mid-flow route, or a testing tool
+// re-entering the site) rehydrates the flow instead of booting empty and
+// bouncing the user back to the start. sessionStorage (not localStorage) is
+// deliberate: this is ephemeral in-progress state that should survive a reload
+// within the same session but not resurrect a half-finished trip days later.
+// Finished trips are saved separately and explicitly (see utils/savedTrips).
+const STORAGE_KEYS = {
+  tripParams: 'roam.inProgress.tripParams',
+  resolvedItinerary: 'roam.inProgress.resolvedItinerary',
+  selectedVariant: 'roam.inProgress.selectedVariant',
+}
+
+function readStored(key) {
+  try {
+    const raw = sessionStorage.getItem(key)
+    return raw ? JSON.parse(raw) : null
+  } catch {
+    // sessionStorage unavailable (private mode, disabled) or corrupt JSON -
+    // fall back to no persisted state rather than crash the app on boot.
+    return null
+  }
+}
+
+function writeStored(key, value) {
+  try {
+    if (value == null) {
+      sessionStorage.removeItem(key)
+    } else {
+      sessionStorage.setItem(key, JSON.stringify(value))
+    }
+  } catch {
+    // Quota exceeded or storage unavailable - skip persisting rather than
+    // break the flow. Worst case a reload doesn't restore, same as before.
+  }
+}
+
 export function TripProvider({ children }) {
-  const [tripParams, setTripParams] = useState(null)
-  const [resolvedItinerary, setResolvedItinerary] = useState(null)
-  const [selectedVariant, setSelectedVariant] = useState(null)
+  const [tripParams, setTripParams] = useState(() => readStored(STORAGE_KEYS.tripParams))
+  const [resolvedItinerary, setResolvedItinerary] = useState(() => readStored(STORAGE_KEYS.resolvedItinerary))
+  const [selectedVariant, setSelectedVariant] = useState(() => readStored(STORAGE_KEYS.selectedVariant))
   const [status, setStatus] = useState('idle') // idle | loading | success | error
   const [errorMessage, setErrorMessage] = useState(null)
+
+  // Mirror the three flow-critical pieces of state to sessionStorage on every
+  // change, so a reload rehydrates them (see STORAGE_KEYS above). Setting any
+  // of them to null - e.g. via resetTrip - clears its stored copy too.
+  useEffect(() => { writeStored(STORAGE_KEYS.tripParams, tripParams) }, [tripParams])
+  useEffect(() => { writeStored(STORAGE_KEYS.resolvedItinerary, resolvedItinerary) }, [resolvedItinerary])
+  useEffect(() => { writeStored(STORAGE_KEYS.selectedVariant, selectedVariant) }, [selectedVariant])
 
   const generateItinerary = useCallback(async (params) => {
     setStatus('loading')
