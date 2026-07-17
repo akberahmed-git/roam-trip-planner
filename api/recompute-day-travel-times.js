@@ -1,5 +1,10 @@
 import { computeTravelTimes } from './_lib/travelTime.js';
-import { fillMissingTravelTimes, realignScheduleTimes } from './_lib/scheduleRealign.js';
+import {
+  fillMissingTravelTimes,
+  realignScheduleTimes,
+  roundStayDurations,
+  snapArrivalsToGrid
+} from './_lib/scheduleRealign.js';
 
 // Called after a swap or reorder on the Detail screen (see TripContext.jsx's
 // swapDayItem/reorderDayItem) - both clear travelToNext on the legs they
@@ -37,7 +42,16 @@ export default async function handler(req, res) {
     const day = { items };
     await computeTravelTimes(day.items, transport);
     await fillMissingTravelTimes(day, transport, destination);
+    // Same reconciliation tail as initial generation (see
+    // generate-resolved-itinerary.js), so a swapped or reordered day reads
+    // identically to a freshly generated one: reconcile against real travel,
+    // round stays to the 15-minute grid, re-cascade, then snap arrivals to the
+    // grid and fill any leg the swap left without a travel time (which would
+    // otherwise show as a gap on the affected day).
     realignScheduleTimes(day);
+    roundStayDurations(day);
+    realignScheduleTimes(day);
+    snapArrivalsToGrid(day, transport);
     res.status(200).json({ items: day.items });
   } catch (error) {
     res.status(500).json({ error: error.message });

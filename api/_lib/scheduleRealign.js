@@ -185,3 +185,101 @@ export function realignScheduleTimes(day) {
     // the meal at its later, AI-planned time.
   }
 }
+
+// Time spent AT a place is always shown in clean 15-minute increments, so we
+// never surface something like "319 minutes". Only the stay durations get
+// rounded - travel legs between places keep their exact routed values, since
+// those are real drive/walk times and forcing them onto a grid would be a lie.
+// Accommodation bookends are left alone (their duration is structural, not a
+// visit length). Anything positive rounds to the nearest 15 and never below 15.
+//
+// Lives here (not in generate-resolved-itinerary.js) so the swap/reorder
+// recompute path gets identical treatment to initial generation - a swapped
+// day should read exactly the same as a freshly generated one.
+export const STAY_DURATION_INCREMENT_MINUTES = 15;
+export function roundStayDurations(day) {
+  for (const item of day.items) {
+    if (item.type === 'accommodation') continue;
+    if (item.durationMinutes == null) continue;
+    let rounded =
+      Math.round(item.durationMinutes / STAY_DURATION_INCREMENT_MINUTES) *
+      STAY_DURATION_INCREMENT_MINUTES;
+    if (rounded < STAY_DURATION_INCREMENT_MINUTES) {
+      rounded = STAY_DURATION_INCREMENT_MINUTES;
+    }
+    item.durationMinutes = rounded;
+  }
+}
+
+// Places are the clean grid, travel flexes to fit. With every stay duration
+// already snapped to 15 minutes (roundStayDurations above), this walks the day
+// forward and snaps each ARRIVAL time to the nearest 15 as well, then rewrites
+// the leg that got you there so the numbers still add up exactly. The result:
+// every arrival and departure on screen reads as :00 / :15 / :30 / :45, and the
+// travel time becomes whatever gap sits between two grid-aligned stops.
+//
+// This deliberately inverts realignScheduleTimes' original fixed point (per
+// Akber's call, 17 Jul 2026): there, travel was the grounded truth and the
+// schedule bent to it; here the place times are the truth and the displayed
+// travel bends to them. The arithmetic invariant ("start + stay + travel always
+// adds up to the next start") is preserved either way - only which value gives
+// is different. The cost is that a displayed travel time is now approximate to
+// the nearest quarter hour rather than the exact routed minute, which sits well
+// inside the app's existing estimate noise. Nearest (not always-up) rounding is
+// used on purpose: rounding every leg up would accumulate across the day and
+// drag dinner steadily later, whereas nearest cancels out and lets dinner keep
+// landing on its clean intended time.
+//
+// A real hop never collapses below 15 minutes, so no stop is ever shown as
+// being reached the same minute you left the last one.
+//
+// Missing travel legs get filled rather than skipped (per Akber's call,
+// 17 Jul 2026). A leg only ends up with no travel value when a place never
+// resolved to real coordinates AND the Claude fallback estimate also failed,
+// so neither routing nor an estimate is possible. Leaving it blank used to
+// mean that stop kept its raw AI-guessed start time while the stop before it
+// finished at a different moment, which showed up as an unexplained gap (or,
+// if the guessed times overlapped, two stops booked on top of each other) -
+// both of which read as a bug. So instead of leaving it, we assume a nominal
+// one-grid-unit hop (15 minutes, in the day's default mode) and cascade
+// through it like any other leg. The number is an admitted assumption, not a
+// routed value, but a continuous schedule that's a few minutes off on one
+// unroutable hop is far better than a visible hole in the day. The underlying
+// "why didn't this place resolve" is worth chasing separately, but it should
+// never surface to the traveller as broken-looking time.
+export function snapArrivalsToGrid(day, transport) {
+  const defaultMode = transport === 'No car or taxi' ? 'walk' : 'drive';
+
+  for (let i = 1; i < day.items.length; i++) {
+    const previous = day.items[i - 1];
+    const current = day.items[i];
+
+    if (!previous.startTime) {
+      continue;
+    }
+    const previousStart = timeToMinutes(previous.startTime);
+    if (previousStart == null) {
+      continue;
+    }
+
+    // Real routed/estimated leg where available; a nominal assumed hop where
+    // the leg never got a value at all (see the note above). Either way the
+    // schedule below stays continuous.
+    const parsed = parseTravelMinutes(previous.travelToNext);
+    const mode = parsed ? parsed.mode : defaultMode;
+    const baseMinutes = parsed ? parsed.minutes : STAY_DURATION_INCREMENT_MINUTES;
+
+    const previousEnd = previousStart + (previous.durationMinutes || 0);
+    let arrival =
+      Math.round((previousEnd + baseMinutes) / STAY_DURATION_INCREMENT_MINUTES) *
+      STAY_DURATION_INCREMENT_MINUTES;
+    let gap = arrival - previousEnd;
+    if (gap < STAY_DURATION_INCREMENT_MINUTES) {
+      gap = STAY_DURATION_INCREMENT_MINUTES;
+      arrival = previousEnd + gap;
+    }
+
+    previous.travelToNext = `${gap} minute ${mode}`;
+    current.startTime = addMinutesToTime('00:00', arrival);
+  }
+}
