@@ -12,6 +12,7 @@ import SwapThisPlace from './screens/SwapThisPlace'
 import MapView from './screens/MapView'
 import FinaliseSave from './screens/FinaliseSave'
 import MyTrips from './screens/MyTrips'
+import Complete from './screens/Complete'
 
 function AnimatedRoutes() {
   const location = useLocation()
@@ -30,6 +31,7 @@ function AnimatedRoutes() {
         <Route path="/map" element={<MapView />} />
         <Route path="/finalise" element={<FinaliseSave />} />
         <Route path="/my-trips" element={<MyTrips />} />
+        <Route path="/complete" element={<Complete />} />
       </Routes>
     </div>
   )

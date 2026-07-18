@@ -309,13 +309,11 @@ export default function FinaliseSave() {
       transport: tripParams.transport,
     })
     setSaveState('saved')
-    // Land on the dedicated My trips page - the terminal screen of the flow.
-    // The trip is already persisted to localStorage just above, and My trips
-    // reads its list from there, so the user sees the trip they just saved.
-    // /my-trips is also a distinct URL from the start page, so it can double as
-    // a completion signal for URL-based test tools on platforms where that
-    // detection works (desktop).
-    navigate('/my-trips')
+    // Land on the "Task complete" screen - the terminal screen of the flow.
+    // Makes it unmistakable to a test participant that the task is finished
+    // (it tells them to return to the UXtweak app). The trip is already
+    // persisted to localStorage just above, so it's in "My trips" regardless.
+    navigate('/complete')
   }
 
   return (
