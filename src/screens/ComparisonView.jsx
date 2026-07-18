@@ -1,5 +1,5 @@
 import { Fragment, useEffect, useRef, useState } from 'react'
-import { useNavigate } from 'react-router-dom'
+import { useNavigate, useLocation } from 'react-router-dom'
 import { useTrip } from '../context/TripContext'
 import Header from '../components/Header'
 import Footer from '../components/Footer'
@@ -121,14 +121,27 @@ function DailyPaceCard({ plan }) {
 
 export default function ComparisonView() {
   const navigate = useNavigate()
+  const location = useLocation()
   const { tripParams, resolvedItinerary, setSelectedVariant, resetTrip } = useTrip()
 
   const availableVariants = resolvedItinerary
     ? ['packed', 'slow'].filter((key) => resolvedItinerary[key])
     : []
 
-  const [variantKey, setVariantKey] = useState(null)
-  const [dayIndex, setDayIndex] = useState(0)
+  // Honour a variant/day passed in navigation state. Used when returning here
+  // after confirming a swap (SwapThisPlace sends back the variant and day that
+  // was edited), so Comparison opens on exactly that plan and day with the
+  // swapped place visible, instead of defaulting to the first variant on day 1.
+  // A stray/invalid variant falls back to null, which the effect below then
+  // resolves to the first available variant - so normal entry is unchanged.
+  const [variantKey, setVariantKey] = useState(() =>
+    (typeof location.state?.variant === 'string' && resolvedItinerary?.[location.state.variant])
+      ? location.state.variant
+      : null
+  )
+  const [dayIndex, setDayIndex] = useState(() =>
+    typeof location.state?.dayIndex === 'number' ? location.state.dayIndex : 0
+  )
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false)
 
   // Scrolled into view whenever the day changes (see selectDay below) - the

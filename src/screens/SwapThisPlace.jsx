@@ -252,7 +252,11 @@ export default function SwapThisPlace() {
       busyTime: undefined,
     })
 
-    navigate('/swap_place', { state: { variant, dayIndex } })
+    // Back to Comparison (not the swap-places list) with the swapped place
+    // showing. The variant and day are passed so Comparison opens on exactly
+    // the plan and day that was just edited, rather than defaulting to the
+    // first variant on day 1.
+    navigate('/comparison', { state: { variant, dayIndex } })
   }
 
   return (
