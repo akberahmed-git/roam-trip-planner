@@ -226,7 +226,7 @@ export default function ComparisonView() {
 
           <div className="itinerary-header">
             <h1>
-              {tripParams?.days} nights in {tripParams?.destination} for {adults} guest{adults === 1 ? '' : 's'}
+              {tripParams?.days} day{tripParams?.days === 1 ? '' : 's'} in {tripParams?.destination} for {adults} guest{adults === 1 ? '' : 's'}
             </h1>
             <div className="itinerary-actions">
               <button

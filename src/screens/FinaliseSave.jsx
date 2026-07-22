@@ -352,7 +352,7 @@ export default function FinaliseSave() {
                   <span className="finalise-row__label">Dates</span>
                   <span className="finalise-row__value">
                     {formatDateRange(tripParams.startDate, tripParams.endDate)}
-                    {tripParams.days ? ` · ${tripParams.days} night${tripParams.days === 1 ? '' : 's'}` : ''}
+                    {tripParams.days ? ` · ${tripParams.days} day${tripParams.days === 1 ? '' : 's'}` : ''}
                   </span>
                 </div>
               </div>
