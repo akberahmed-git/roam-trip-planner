@@ -30,6 +30,15 @@ const MEAL_WINDOWS = {
   dinner: { start: '19:00', end: '21:00' },
 };
 const FIXED_MEAL_DURATION_MINUTES = 60;
+// Slow & Immersive is meant to feel unhurried, and a 60-minute meal reads as
+// rushed against its long, lingering activity stops (Akber's call). So on that
+// variant every meal - breakfast, lunch and dinner, including the ones this
+// pipeline injects as backstops and the accommodation-breakfast bookend - runs
+// for this long instead. resolveItinerary picks which value applies per variant
+// from the itinerary's pacingLabel ('Relaxed' = Slow & Immersive), and the
+// existing realign/stretch/snap passes recascade every surrounding stop around
+// the longer meal automatically, so nothing else needs to know about it.
+const SLOW_MEAL_DURATION_MINUTES = 120;
 
 function clampToWindow(time, window) {
   const minutes = timeToMinutes(time);
@@ -51,7 +60,7 @@ function clampToWindow(time, window) {
 // travel times, bookending) - every downstream step can then already assume
 // every meal is exactly 60 minutes and inside its window, rather than
 // treating that as a "maybe" from the AI.
-function enforceMealConstraints(day) {
+function enforceMealConstraints(day, mealDuration) {
   for (const item of day.items) {
     if (!item.mealType) {
       continue;
@@ -60,7 +69,7 @@ function enforceMealConstraints(day) {
     if (window) {
       item.startTime = clampToWindow(item.startTime, window);
     }
-    item.durationMinutes = FIXED_MEAL_DURATION_MINUTES;
+    item.durationMinutes = mealDuration;
   }
 }
 
@@ -97,7 +106,7 @@ function buildAccommodationItem(accommodationDetails, overrides) {
 // traveller knows to look something up. Runs after enforceMealConstraints
 // (so any real dinner is already window-clamped) and before
 // applyAccommodationBookends (so the return-to-hotel bookend follows dinner).
-function ensureDinner(day, destination) {
+function ensureDinner(day, destination, mealDuration) {
   const hasDinner = day.items.some((item) => item.mealType === 'dinner');
   if (hasDinner) return;
 
@@ -110,7 +119,7 @@ function ensureDinner(day, destination) {
     categoryTag: 'Restaurant',
     description: `Find a local restaurant for dinner in ${destination}.`,
     startTime: '19:30',
-    durationMinutes: FIXED_MEAL_DURATION_MINUTES,
+    durationMinutes: mealDuration,
     mealType: 'dinner',
     travelToNext: null,
     photoUrl: null,
@@ -129,7 +138,7 @@ function ensureDinner(day, destination) {
 // expected to supply a breakfast spot, and when it omits one this adds a
 // placeholder that resolveMealPlaceholders turns into a real cafe near the
 // first stop of the day.
-function ensureBreakfast(day, destination) {
+function ensureBreakfast(day, destination, mealDuration) {
   if (day.breakfastAtAccommodation) return;
   const hasBreakfast = day.items.some((item) => item.mealType === 'breakfast');
   if (hasBreakfast) return;
@@ -140,7 +149,7 @@ function ensureBreakfast(day, destination) {
     categoryTag: 'Cafe',
     description: `Find a local spot for breakfast in ${destination}.`,
     startTime: '09:00',
-    durationMinutes: FIXED_MEAL_DURATION_MINUTES,
+    durationMinutes: mealDuration,
     mealType: 'breakfast',
     travelToNext: null,
     photoUrl: null,
@@ -159,7 +168,7 @@ function ensureBreakfast(day, destination) {
 // and unlike dinner there was no backstop for it. Adds a midday placeholder;
 // resolveItinerary re-sorts the day immediately after so it lands in its proper
 // slot, then resolveMealPlaceholders turns it into a real restaurant.
-function ensureLunch(day, destination) {
+function ensureLunch(day, destination, mealDuration) {
   const hasLunch = day.items.some((item) => item.mealType === 'lunch');
   if (hasLunch) return;
 
@@ -169,7 +178,7 @@ function ensureLunch(day, destination) {
     categoryTag: 'Restaurant',
     description: `Find a local restaurant for lunch in ${destination}.`,
     startTime: '13:00',
-    durationMinutes: FIXED_MEAL_DURATION_MINUTES,
+    durationMinutes: mealDuration,
     mealType: 'lunch',
     travelToNext: null,
     photoUrl: null,
@@ -262,7 +271,7 @@ async function resolveMealPlaceholders(day, anchor, usedPlaceIds) {
 // missing, or an older saved trip from before location was captured) - a
 // bookend stop that can't be routed to/from would just be a dead entry with
 // no travel time, worse than not adding it.
-function applyAccommodationBookends(day, accommodationDetails) {
+function applyAccommodationBookends(day, accommodationDetails, mealDuration) {
   if (!accommodationDetails?.location) {
     return;
   }
@@ -279,7 +288,7 @@ function applyAccommodationBookends(day, accommodationDetails) {
     day.items.unshift(
       buildAccommodationItem(accommodationDetails, {
         startTime: breakfastTime,
-        durationMinutes: FIXED_MEAL_DURATION_MINUTES,
+        durationMinutes: mealDuration,
         mealType: 'breakfast',
         description: `Breakfast at ${accommodationDetails.name}.`,
       })
@@ -521,6 +530,16 @@ async function enforceDriveCap(day, transport, usedPlaceIds) {
 async function resolveItinerary(itinerary, destination, anchor, transport, accommodationDetails) {
   const usedPlaceIds = new Set();
 
+  // Slow & Immersive (pacingLabel 'Relaxed', set by computePacing in
+  // generateRawItinerary.js) gives every meal a longer, unhurried sitting;
+  // every other variant keeps the standard 60. Chosen once per variant here
+  // and handed to each meal-building step below so the whole day is built
+  // around the right length from the start.
+  const mealDuration =
+    itinerary.pacingLabel === 'Relaxed'
+      ? SLOW_MEAL_DURATION_MINUTES
+      : FIXED_MEAL_DURATION_MINUTES;
+
   // Claude sometimes returns a day's items in non-chronological order (e.g. a
   // breakfast item with startTime 09:00 landing at array index 3, after items
   // whose startTimes are 11:00 and 13:00). Every downstream step - allItems
@@ -594,10 +613,10 @@ async function resolveItinerary(itinerary, destination, anchor, transport, accom
   // enforceEarliestStart needs the day's final item order to check the
   // right item.
   itinerary.days.forEach((day) => {
-    enforceMealConstraints(day);
-    ensureBreakfast(day, destination);
-    ensureLunch(day, destination);
-    ensureDinner(day, destination);
+    enforceMealConstraints(day, mealDuration);
+    ensureBreakfast(day, destination, mealDuration);
+    ensureLunch(day, destination, mealDuration);
+    ensureDinner(day, destination, mealDuration);
     // ensureLunch pushes a 13:00 item to the end of the array; re-sort so it
     // lands in its real midday slot before bookends wrap the day and before
     // resolveMealPlaceholders and travel times run on the ordered list.
@@ -609,7 +628,7 @@ async function resolveItinerary(itinerary, destination, anchor, transport, accom
       if (bMin == null) return -1;
       return aMin - bMin;
     });
-    applyAccommodationBookends(day, accommodationDetails);
+    applyAccommodationBookends(day, accommodationDetails, mealDuration);
     enforceEarliestStart(day);
   });
 
