@@ -3,6 +3,20 @@ import { cached } from './kvCache.js';
 const WALK_ATTEMPT_THRESHOLD_METERS = 3000;
 const MAX_WALK_MINUTES = 25;
 
+// Upper sanity bound on any single travel leg, in minutes. This mirrors the
+// generator's own CRITICAL ROUTING RULE exactly: no two consecutive stops may
+// be more than 60 minutes apart by any mode, so any leg that comes back longer
+// than 60 already contradicts the itinerary the generator was told to build. A
+// leg over this almost always means a stop resolved to the wrong place entirely
+// (e.g. a Santorini day-2 stop that mapped to a beach on Rhodes, a different
+// island with no road route between them). Rather than surface an absurd
+// "900 minute drive" - which then cascades through realignScheduleTimes/
+// snapArrivalsToGrid and wraps the day past midnight into the next day -
+// anything over this cap is treated as no usable travel value at all (null),
+// which both schedule passes already handle gracefully without spilling the
+// timeline.
+export const MAX_TRAVEL_MINUTES = 60;
+
 function haversineMeters(a, b) {
   const R = 6371000;
   const toRad = (deg) => (deg * Math.PI) / 180;
@@ -79,7 +93,16 @@ async function fetchRouteDuration(origin, destination, mode) {
     return null;
   }
 
-  return Math.max(1, Math.round(seconds / 60));
+  const minutes = Math.max(1, Math.round(seconds / 60));
+  // A routed leg longer than the sanity cap means the destination stop is
+  // effectively unreachable within a normal day (almost always a mislocated
+  // stop). Treat it as no route rather than a real, absurd duration. Left
+  // uncached (routeDuration only caches numbers) so it re-checks next time.
+  if (minutes > MAX_TRAVEL_MINUTES) {
+    return null;
+  }
+
+  return minutes;
 }
 
 function formatTravelLabel(minutes, mode) {

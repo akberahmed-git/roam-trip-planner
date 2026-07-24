@@ -59,7 +59,7 @@ Trip details:
 ${p.interestsLine}${p.groupLine ? `\n${p.groupLine}` : ''}
 ${p.endTimeLine}
 
-Generate ONE itinerary: "Packed & Varied" — more activities per day, faster pace, wide variety of experiences. Each day has 3-4 activities (not counting meals).
+Generate ONE itinerary: "Packed & Varied" — more activities per day, faster pace, wide variety of experiences. Each day has 4-5 activities (not counting meals). Favour more, shorter stops over fewer, longer ones: no single activity should run longer than 120 minutes, and the afternoon in particular should be built from several distinct stops rather than one long visit.
 
 Also write:
 - A short "tagline" (5-8 words) summarizing the pace and style.
@@ -74,7 +74,7 @@ The traveller's accommodation for this whole trip is ${p.accommodation || 'a cen
 
 For meal items specifically: the place you choose must genuinely fit that meal, not just have a plausible-sounding name. For breakfast, choose somewhere that's actually a breakfast/brunch venue by nature - a café, bakery, hotel restaurant, or dedicated brunch spot - never a place whose real identity is a burger joint, steakhouse, bar, or nightclub, even if its name sounds inviting. The same logic applies to lunch and dinner: pick a place whose actual identity matches the meal, not just any restaurant name that comes to mind.
 
-CRITICAL AFTERNOON RULE (strictly enforced): After lunch, activities must run continuously so that the last pre-dinner activity ends no earlier than 18:30. Count your afternoon items: if they would finish before 18:30, you must add another activity to fill the time. Never leave more than 60 minutes unscheduled between any two consecutive afternoon items.
+CRITICAL AFTERNOON RULE (strictly enforced): After lunch, activities must run continuously so that the last pre-dinner activity ends no earlier than 18:30. Count your afternoon items: if they would finish before 18:30, you must add another activity to fill the time — always by adding another distinct stop, never by inflating a single stop's duration past 120 minutes. Aim for at least three separate afternoon stops between lunch and dinner. Never leave more than 60 minutes unscheduled between any two consecutive afternoon items.
 
 CRITICAL MEAL RULE (strictly enforced): Every single day must include both lunch and dinner as separate meal items at real restaurants. This rule has no exceptions — not even on the last day. Evening activities such as beach clubs, bars, rooftop venues, or nightlife are scheduled AFTER dinner, never instead of it. A venue that serves food or drinks is not a substitute for a dinner meal item.
 

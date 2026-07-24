@@ -1,4 +1,5 @@
 import Anthropic from '@anthropic-ai/sdk';
+import { MAX_TRAVEL_MINUTES } from './travelTime.js';
 
 const anthropic = new Anthropic({
   apiKey: process.env.ANTHROPIC_API_KEY,
@@ -74,6 +75,17 @@ Respond with ONLY valid JSON, no markdown formatting, no code fences, no comment
   const minutes = Math.round(Number(parsed.minutes));
   if (!Number.isFinite(minutes) || minutes <= 0) {
     throw new Error('Claude returned an invalid minutes value for a travel duration estimate');
+  }
+  // Same upper sanity bound the real routing path enforces (see
+  // MAX_TRAVEL_MINUTES in travelTime.js). This fallback is the likeliest source
+  // of an absurd value: when two stops are on different islands or otherwise
+  // have no road route, the real Routes call returns null (no ROUTE_EXISTS) and
+  // this estimate fires instead, where Claude may reason its way to a ferry- or
+  // flight-scale number like 900. Throwing here lets fillMissingTravelTimes'
+  // catch leave the gap null - far better than cascading a 15-hour leg that
+  // pushes the itinerary into the next day.
+  if (minutes > MAX_TRAVEL_MINUTES) {
+    throw new Error(`Estimated travel duration ${minutes} min exceeds the ${MAX_TRAVEL_MINUTES} min cap`);
   }
   const modeLabel = parsed.mode === 'drive' ? 'drive' : 'walk';
 
