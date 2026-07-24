@@ -284,6 +284,18 @@ export function haversineMeters(a, b) {
 // alone isn't tight enough, e.g. "Albania" still spans a multi-hour drive.
 export const MAX_BROAD_DISTANCE_METERS = 50000;
 
+// Outer sanity bound applied to the PRIMARY search result. The primary query
+// already carries the full destination string, but Google treats that as a text
+// hint, not a hard geographic constraint, so a strong name match on the wrong
+// continent (a Lisbon stop resolving to North America - the transatlantic map
+// pin) can still come back as "found". This radius is deliberately looser than
+// MAX_BROAD_DISTANCE_METERS so a legitimately spread-out city or region isn't
+// rejected, while anything wildly off - another country or continent - is. A
+// primary result past this is not trusted; verifyPlace re-tries via the broad
+// search and, failing that, returns not_found so the stop is left without a
+// (wrong) location rather than pinned somewhere impossible.
+export const MAX_PLAUSIBLE_DISTANCE_METERS = 150000;
+
 // Used by generate-resolved-itinerary.js's drive-time backstop: when two
 // consecutive verified stops turn out to be an unreasonable drive apart
 // (almost always a real place that resolved to the wrong region - a
@@ -368,7 +380,20 @@ export async function verifyPlace(params) {
 
   const primary = await runSearch(name, primaryQuery);
 
-  if (primary.status === 'found' || primary.status === 'check_failed') {
+  if (primary.status === 'check_failed') {
+    return primary;
+  }
+
+  // A "found" primary is trusted only if it sits a plausible distance from the
+  // destination. The destination in the query is just a text hint to Google,
+  // not a hard geographic bound, so a strong name match on another continent
+  // can come back as "found" (a Lisbon stop resolving to North America - the
+  // transatlantic pin). Past the sanity radius it is rejected here and re-tried
+  // via the broad search below.
+  const primaryPlausible =
+    !anchor || !primary.location ||
+    haversineMeters(anchor, primary.location) <= MAX_PLAUSIBLE_DISTANCE_METERS;
+  if (primary.status === 'found' && primaryPlausible) {
     return primary;
   }
 
@@ -386,18 +411,34 @@ export async function verifyPlace(params) {
   if (broad.status === 'found') {
     if (anchor && broad.location) {
       const distance = haversineMeters(anchor, broad.location);
-      if (distance > MAX_BROAD_DISTANCE_METERS) {
-        // Right country, wrong region (e.g. matched somewhere hours away by car).
-        // Don't trust it, fall through to the primary's result instead.
-        return primary;
+      if (distance <= MAX_BROAD_DISTANCE_METERS) {
+        return broad;
       }
+      // Right country, wrong region (e.g. matched somewhere hours away by car) -
+      // fall through to suggestions rather than trusting it.
+    } else {
+      return broad;
     }
-    return broad;
   }
 
+  // Prefer surfacing nearby suggestions the traveller can accept over returning
+  // a place we have just judged too far away.
   if (broad.status === 'not_found' && broad.suggestions && broad.suggestions.length > 0) {
     return broad;
   }
+  if (primary.status === 'not_found' && primary.suggestions && primary.suggestions.length > 0) {
+    return primary;
+  }
 
-  return primary;
+  // Nothing trustworthy and near - including a "found" primary we just rejected
+  // as implausibly far. Return a clean not_found so applyResolution leaves the
+  // stop without a location (no map pin, keeps its name) rather than pinning it
+  // on the wrong continent. A location-less stop draws no map line; the tight
+  // MAX_BROAD_DISTANCE_METERS substitute guard still applies if a suggestion is
+  // adopted later.
+  return {
+    status: 'not_found',
+    nameMatchScore: primary.nameMatchScore || 0,
+    suggestions: [],
+  };
 }
