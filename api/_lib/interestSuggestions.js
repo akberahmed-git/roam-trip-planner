@@ -43,6 +43,16 @@ export const STAPLE_INTERESTS = ['Landmarks', 'Cuisine', 'Shopping'];
 
 const STAPLE_KEYS = new Set(STAPLE_INTERESTS.map((tag) => tag.toLowerCase()));
 
+// "Nightlife" is a conditional pin (added after the staples when the model
+// reports hasNightlife), never one of the 7 generated categories. These keys
+// catch any nightlife/bar/club label the model returns among the 7 anyway, so
+// it's stripped there and only ever appears via the deterministic pin - its
+// presence should track the hasNightlife judgment, not chance.
+const NIGHTLIFE_KEYS = new Set([
+  'nightlife', 'night life', 'bars', 'bar', 'clubs', 'club', 'clubbing',
+  'night out', 'nights out', 'going out',
+]);
+
 // Persisted to a JSON file on disk, not an in-memory Map (changed 9 Jul
 // 2026) - the first version cached in a module-level Map, which relies on
 // vercel dev keeping the same warm Node process between requests. Confirmed
@@ -98,11 +108,15 @@ Generate exactly 7 additional interest categories that are specifically well-sui
 3. Avoid generic filler or near-duplicates - each category should represent a distinct, real way to spend time here.
 4. Each category should be 1-3 words, in the same short, scannable style as: Landmarks, Cuisine, Shopping, Museums, Markets, Nature, Architecture.
 5. Do not include duplicates, and do not repeat the staple categories listed above.
+6. Do NOT include "Nightlife" (or close equivalents like "Bars", "Clubs", "Night out") as one of the 7 - nightlife is decided separately via the "hasNightlife" field below, so leave those slots for other categories.
+
+Separately, decide one boolean: does this destination have a genuine, culturally appropriate nightlife scene - bars, clubs, live-music venues or a late-night going-out culture that locals and visitors actually use? Set "hasNightlife" to true only when that is really the case. For destinations where late-night or alcohol-centred venues are not part of the culture, or that are quiet/rural without a real night-out scene, set it to false. This is the same cultural-fit judgment as rule 1, applied specifically to nightlife.
 
 Respond with ONLY valid JSON, no markdown formatting, no code fences, no commentary. Use this exact structure:
 
 {
-  "interests": ["Temples", "Street food", "Markets", "Nature", "Architecture", "Tea houses", "Gardens"]
+  "interests": ["Temples", "Street food", "Markets", "Nature", "Architecture", "Tea houses", "Gardens"],
+  "hasNightlife": true
 }`;
 
   // Haiku, not Sonnet (changed 9 Jul 2026, addressing Akber's "still takes
@@ -136,7 +150,10 @@ Respond with ONLY valid JSON, no markdown formatting, no code fences, no comment
 
   // Defensive on shape (array of non-empty strings), on duplicates, on
   // accidentally re-suggesting a staple, and on a sane count - none of this
-  // is guaranteed just because the prompt asked for it.
+  // is guaranteed just because the prompt asked for it. Also drop any
+  // "Nightlife"/bar/club label the model slipped into the 7 despite rule 6 -
+  // nightlife is pinned separately below from the hasNightlife flag, so its
+  // presence must never depend on the model happening to spend a slot on it.
   const seen = new Set();
   let dynamic = (Array.isArray(parsed.interests) ? parsed.interests : [])
     .filter((entry) => typeof entry === 'string' && entry.trim())
@@ -144,17 +161,35 @@ Respond with ONLY valid JSON, no markdown formatting, no code fences, no comment
     .filter((entry) => {
       const key = entry.toLowerCase();
       if (STAPLE_KEYS.has(key) || seen.has(key)) return false;
+      if (NIGHTLIFE_KEYS.has(key)) return false;
       seen.add(key);
       return true;
     })
     .slice(0, 7);
+
+  // Nightlife is a conditional pin, not a generated category: when the model
+  // judges this destination to have a genuine, culturally appropriate
+  // nightlife scene, "Nightlife" is shown right after the staples, in a
+  // stable, predictable slot, rather than left to chance among the 7. It maps
+  // straight onto the interest the itinerary generator already recognises
+  // (generateRawItinerary.js pushes the day's end time later when a nightlife
+  // interest is selected). When hasNightlife is false - a quiet destination,
+  // or one where a night-out scene isn't part of the culture - the chip is
+  // simply absent, exactly as the per-destination approach intends.
+  const hasNightlife = parsed.hasNightlife === true;
 
   // A genuinely empty response just means the row is the three staples
   // alone - not ideal, but safer than guessing at generic extra categories
   // for a destination the model couldn't usefully classify. Cached like any
   // other result - a second request for the same destination should get the
   // same answer instantly, not pay for an identical generation call again.
-  const result = { interests: [...STAPLE_INTERESTS, ...dynamic] };
+  const result = {
+    interests: [
+      ...STAPLE_INTERESTS,
+      ...(hasNightlife ? ['Nightlife'] : []),
+      ...dynamic,
+    ],
+  };
 
   cache[cacheKey] = result;
   // Plain object keys preserve insertion order for string keys in JS, same
