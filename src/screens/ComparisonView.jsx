@@ -7,6 +7,7 @@ import FlowBreadcrumb from '../components/FlowBreadcrumb'
 import SegmentedControl from '../components/SegmentedControl'
 import PlacePhoto from '../components/PlacePhoto'
 import ConfirmDialog from '../components/ConfirmDialog'
+import { formatDuration, formatTravelLabel } from '../utils/duration'
 
 function WalkIcon() {
   return (
@@ -57,7 +58,7 @@ function TransportIndicator({ label }) {
     <div className="transport-indicator">
       <span className="transport-indicator__line" />
       <Icon />
-      <span className="transport-indicator__label">{label}</span>
+      <span className="transport-indicator__label">{formatTravelLabel(label)}</span>
     </div>
   )
 }
@@ -78,7 +79,7 @@ function ComparisonCard({ item }) {
           {item.startTime && (
             <span>
               {item.startTime}
-              {item.durationMinutes ? ` · ${item.durationMinutes} min` : ''}
+              {item.durationMinutes ? ` · ${formatDuration(item.durationMinutes)}` : ''}
             </span>
           )}
           <MealTag mealType={item.mealType} />

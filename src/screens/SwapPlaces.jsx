@@ -7,6 +7,7 @@ import FlowBreadcrumb from '../components/FlowBreadcrumb'
 import SegmentedControl from '../components/SegmentedControl'
 import PlacePhoto from '../components/PlacePhoto'
 import LoadingSpinner from '../components/LoadingSpinner'
+import { formatTravelLabel } from '../utils/duration'
 
 function WalkIcon() {
   return (
@@ -73,7 +74,7 @@ function TransportIndicator({ label }) {
     <div className="transport-indicator">
       <span className="transport-indicator__line" />
       <Icon />
-      <span className="transport-indicator__label">{label}</span>
+      <span className="transport-indicator__label">{formatTravelLabel(label)}</span>
     </div>
   )
 }
