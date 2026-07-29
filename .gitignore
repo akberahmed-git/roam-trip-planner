@@ -29,3 +29,6 @@ dist-ssr
 # file, not source.
 api/_lib/.interest-suggestions-cache.json
 *.bak
+
+# local-only project notes (not for the public repo)
+_local-notes/
