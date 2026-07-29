@@ -12,10 +12,10 @@ import { TOKYO_2_DAYS } from './savedTrips/tokyo'
 export const DEMO_TRIPS = [
   {
     title: '2 days in Tokyo',
-    subtitle: 'Feb 2026 · Temples & Shrines · Anime & Pop Culture · Nightlife & Entertainment · Modern Architecture',
+    subtitle: 'Feb 2026 · Temples & Shrines · Anime & Pop Culture · Nightlife · Modern Architecture',
     destination: 'Tokyo',
     days: 2,
-    interests: ['Temples & Shrines', 'Anime & Pop Culture', 'Nightlife & Entertainment', 'Modern Architecture'],
+    interests: ['Temples & Shrines', 'Anime & Pop Culture', 'Nightlife', 'Modern Architecture'],
     budget: 'Standard',
     accommodation: 'Hotel Chinzanso Tokyo',
     accommodationDetails: {
