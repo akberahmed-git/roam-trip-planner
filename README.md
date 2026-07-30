@@ -45,7 +45,7 @@ checking.
 - Back end: serverless functions on Vercel
 - AI: Anthropic Claude. Haiku writes the raw itineraries, Sonnet tidies the descriptions and fills gaps
 - Places and routing: Google Places and Google Routes
-- Design: built from a Figma file, with components generated into code through the Figma MCP server and design tokens in `src/styles/tokens.css`
+- Design: built from a Figma file, with components brought into code through the Figma MCP server and design tokens in `src/styles/tokens.css`
 - Language: TypeScript throughout, front end and serverless functions
 
 ## The part I'm proud of
