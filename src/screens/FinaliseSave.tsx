@@ -325,7 +325,6 @@ export default function FinaliseSave() {
         <div className="container stack">
           <div className="itinerary-header">
             <h1>Your itinerary is ready</h1>
-            {tripParams?.destination && <p className="page-location">{tripParams.destination}</p>}
             <p className="page-intro">Save it, share it, or export it to your calendar</p>
           </div>
 
