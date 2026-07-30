@@ -2,7 +2,7 @@
 
 An AI trip planner that only suggests places that actually exist.
 
-Live: https://roam-trip-planner.vercel.app
+Live: https://roam.akberahmed.com
 
 ## What it is
 
