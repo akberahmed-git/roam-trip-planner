@@ -1,4 +1,4 @@
-import { estimateTravelDuration } from './estimateTravelDuration';
+import { estimateTravelDuration } from './estimateTravelDuration.js';
 
 // Shared by generate-resolved-itinerary.js (initial generation) and
 // recompute-day-travel-times.js (after a swap or reorder) - both need the

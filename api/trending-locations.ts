@@ -1,4 +1,4 @@
-import { getTrendingLocations } from './_lib/trendingLocations';
+import { getTrendingLocations } from './_lib/trendingLocations.js';
 
 export default async function handler(req, res) {
   try {

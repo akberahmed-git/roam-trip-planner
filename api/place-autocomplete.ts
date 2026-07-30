@@ -1,4 +1,4 @@
-import { fetchDestinationSuggestions } from './_lib/autocompletePlaces';
+import { fetchDestinationSuggestions } from './_lib/autocompletePlaces.js';
 
 export default async function handler(req, res) {
   if (req.method !== 'GET') {

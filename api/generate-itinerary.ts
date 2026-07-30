@@ -1,4 +1,4 @@
-import { generateRawItinerary } from './_lib/generateRawItinerary';
+import { generateRawItinerary } from './_lib/generateRawItinerary.js';
 
 export default async function handler(req, res) {
   if (req.method !== 'POST') {

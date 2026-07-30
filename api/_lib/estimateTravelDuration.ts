@@ -1,5 +1,5 @@
 import Anthropic from '@anthropic-ai/sdk';
-import { MAX_TRAVEL_MINUTES } from './travelTime';
+import { MAX_TRAVEL_MINUTES } from './travelTime.js';
 
 const anthropic = new Anthropic({
   apiKey: process.env.ANTHROPIC_API_KEY,

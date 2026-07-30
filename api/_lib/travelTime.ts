@@ -1,4 +1,4 @@
-import { cached } from './kvCache';
+import { cached } from './kvCache.js';
 
 const WALK_ATTEMPT_THRESHOLD_METERS = 3000;
 const MAX_WALK_MINUTES = 25;

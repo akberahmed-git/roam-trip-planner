@@ -1,11 +1,11 @@
-import { computeTravelTimes } from './_lib/travelTime';
+import { computeTravelTimes } from './_lib/travelTime.js';
 import {
   fillMissingTravelTimes,
   realignScheduleTimes,
   roundStayDurations,
   snapArrivalsToGrid,
   stretchPreDinnerGap
-} from './_lib/scheduleRealign';
+} from './_lib/scheduleRealign.js';
 
 // Called after a swap or reorder on the Detail screen (see TripContext.jsx's
 // swapDayItem/reorderDayItem) - both clear travelToNext on the legs they

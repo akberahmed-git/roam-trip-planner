@@ -10,7 +10,7 @@
 // falls back to the existing priceLevelLabel badge instead of showing a wrong
 // or made-up number.
 
-import { nameSimilarity } from './verifyPlace';
+import { nameSimilarity } from './verifyPlace.js';
 
 // The free, unauthenticated data.xotelo.com endpoint started returning
 // "available only for RapidAPI" 401s (confirmed live, 8 Jul 2026), so this

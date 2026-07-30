@@ -1,13 +1,13 @@
-import { generateRawItinerary } from './_lib/generateRawItinerary';
+import { generateRawItinerary } from './_lib/generateRawItinerary.js';
 import {
   verifyPlace,
   geocodeDestination,
   haversineMeters,
   MAX_BROAD_DISTANCE_METERS,
   findNearbyCandidates
-} from './_lib/verifyPlace';
-import { computeTravelTimes, travelBetween } from './_lib/travelTime';
-import { refreshDescriptions } from './_lib/refreshDescriptions';
+} from './_lib/verifyPlace.js';
+import { computeTravelTimes, travelBetween } from './_lib/travelTime.js';
+import { refreshDescriptions } from './_lib/refreshDescriptions.js';
 import {
   parseTravelMinutes,
   addMinutesToTime,
@@ -17,7 +17,7 @@ import {
   roundStayDurations,
   snapArrivalsToGrid,
   stretchPreDinnerGap
-} from './_lib/scheduleRealign';
+} from './_lib/scheduleRealign.js';
 
 // Fixed meal windows and the "day can't start before 9am" rule, per Akber's
 // call (9 Jul 2026). Enforced here rather than trusted to the prompt alone

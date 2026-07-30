@@ -1,4 +1,4 @@
-import { verifyPlace } from './_lib/verifyPlace';
+import { verifyPlace } from './_lib/verifyPlace.js';
 
 export default async function handler(req, res) {
   if (req.method !== 'POST') {

@@ -22,8 +22,8 @@
 // visible "Estimated" badge in the UI - the one deliberate exception to
 // "never fabricate" elsewhere in this app, made acceptable by never hiding
 // that it's a guess.
-import { estimatePriceRanges } from './estimatePriceRange';
-import { cached } from './kvCache';
+import { estimatePriceRanges } from './estimatePriceRange.js';
+import { cached } from './kvCache.js';
 
 const TIER_QUERY_PREFIX = {
   Economy: 'budget hotel in',

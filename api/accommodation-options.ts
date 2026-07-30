@@ -1,4 +1,4 @@
-import { searchAccommodations } from './_lib/hotelSearch';
+import { searchAccommodations } from './_lib/hotelSearch.js';
 
 export default async function handler(req, res) {
   if (req.method !== 'POST') {

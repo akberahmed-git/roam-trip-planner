@@ -1,4 +1,4 @@
-import { getInterestSuggestions } from './_lib/interestSuggestions';
+import { getInterestSuggestions } from './_lib/interestSuggestions.js';
 
 export default async function handler(req, res) {
   if (req.method !== 'POST') {
