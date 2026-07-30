@@ -47,7 +47,7 @@ checking.
 - Places and routing: Google Places and Google Routes
 - Design: built from a Figma file, with design tokens in `src/styles/tokens.css`
 
-It's plain JavaScript, not TypeScript.
+It's written in TypeScript.
 
 ## The part I'm proud of
 
