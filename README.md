@@ -46,8 +46,7 @@ checking.
 - AI: Anthropic Claude. Haiku writes the raw itineraries, Sonnet tidies the descriptions and fills gaps
 - Places and routing: Google Places and Google Routes
 - Design: built from a Figma file, with design tokens in `src/styles/tokens.css`
-
-It's written in TypeScript.
+- Language: TypeScript throughout, front end and serverless functions
 
 ## The part I'm proud of
 
