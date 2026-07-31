@@ -330,7 +330,7 @@ export default function FinaliseSave() {
 
           <section className="finalise-section">
             <div className="finalise-section__header">
-              <span className="finalise-section__title">Trip Details</span>
+              <span className="finalise-section__title">Trip details</span>
               <button type="button" className="pill-button pill-button--outline" onClick={() => navigate('/trip-input')}>
                 Edit
               </button>
@@ -393,7 +393,7 @@ export default function FinaliseSave() {
                   <ClockIcon />
                 </span>
                 <div className="finalise-row__content">
-                  <span className="finalise-row__label">Trip Type</span>
+                  <span className="finalise-row__label">Trip type</span>
                   {/* The chosen variant's own label ("Packed & Varied" /
                       "Slow & Immersive"), the same string ComparisonView shows
                       on its pace tabs. Falls back for saved trips restored
