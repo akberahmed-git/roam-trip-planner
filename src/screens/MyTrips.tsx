@@ -1,4 +1,3 @@
-import { useState } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
 import { useTrip } from '../context/TripContext'
 import Header from '../components/Header'
@@ -6,13 +5,11 @@ import Footer from '../components/Footer'
 import { toLocalISODate } from '../utils/date'
 import { getSavedTrips } from '../utils/savedTrips'
 import { DEMO_TRIPS } from '../data/demoTrips'
-import type { SavedTrip } from '../types'
+import type { DemoTrip, SavedTrip } from '../types'
 
-// Dedicated "My trips" page (Figma node 273:16854). This is the last screen in
-// the plan-a-trip flow: Finalise & Save redirects here after the user saves,
-// so they land on their saved trip rather than being dropped back on the Home
-// carousel. Reuses the exact same list-row pattern, saved-trip data, and
-// open-trip behaviour as Home's "My trips" section, so the two stay identical.
+// Dedicated "My trips" page (Figma node 273:16854). Reuses the exact same
+// list-row pattern, saved-trip data, and open-trip behaviour as Home's "My
+// trips" section, so the two stay identical.
 
 function SparkleIcon() {
   return (
@@ -48,16 +45,14 @@ function ChevronIcon() {
 
 export default function MyTrips() {
   const navigate = useNavigate()
-  const { setTripParams, loadSavedItinerary } = useTrip()
-  // Read once on mount - real trips saved via Finalise & Save, newest first,
-  // ahead of the fixed demo entry. Same source and order as Home's "My trips".
-  const [savedTrips] = useState<SavedTrip[]>(() => [...getSavedTrips(), ...DEMO_TRIPS])
+  const { setTripParams, loadSavedItinerary, setSelectedVariant } = useTrip()
+  const savedTrips: Array<SavedTrip | DemoTrip> = [...getSavedTrips(), ...DEMO_TRIPS]
 
   // Mirrors Home.jsx's handleOpenSavedTrip. Dates/travellers/interests aren't
   // part of saved-trip data, so this uses the same defaults TripInput starts
   // with. A trip with a pre-captured result skips straight to Comparison; one
   // without starts a fresh generation from Accommodation.
-  function handleOpenSavedTrip(trip: SavedTrip) {
+  function handleOpenSavedTrip(trip: SavedTrip | DemoTrip) {
     const start = new Date()
     start.setDate(start.getDate() + 14)
     const end = new Date(start)
@@ -72,13 +67,14 @@ export default function MyTrips() {
       endDate: toLocalISODate(end),
       interests: trip.interests || [],
       budget: trip.budget || 'Standard',
-      transport: trip.transport || 'Car or taxi',
+      transport: ('transport' in trip && trip.transport) || 'Car or taxi',
       accommodation: trip.accommodation,
       accommodationDetails: trip.accommodationDetails,
     })
 
     if (trip.savedItinerary) {
       loadSavedItinerary(trip.savedItinerary)
+      if ('selectedVariant' in trip && trip.selectedVariant) setSelectedVariant(trip.selectedVariant)
       navigate('/comparison')
       return
     }
@@ -104,13 +100,13 @@ export default function MyTrips() {
                 <button
                   type="button"
                   className="list-row list-row--button"
-                  key={trip.savedAt ? `${trip.title}-${trip.savedAt}` : trip.title}
+                  key={'savedAt' in trip && trip.savedAt ? `${trip.destination}-${trip.savedAt}` : `demo-${trip.destination}`}
                   onClick={() => handleOpenSavedTrip(trip)}
                 >
                   <span style={{ alignSelf: 'flex-start', display: 'flex' }}><PinIcon /></span>
                   <div style={{ flex: 1 }}>
-                    <span className="list-row__title">{trip.title}</span>
-                    <span className="list-row__subtitle">{trip.subtitle}</span>
+                    <span className="list-row__title">{trip.destination}</span>
+                    {trip.subtitle && <span className="list-row__subtitle">{trip.subtitle}</span>}
                   </div>
                   <span className="list-row__chevron">
                     <ChevronIcon />

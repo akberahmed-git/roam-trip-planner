@@ -299,23 +299,16 @@ export default function FinaliseSave() {
       subtitle: (function() { var td = tripParams.startDate ? new Date(tripParams.startDate + 'T00:00:00') : null; var ds = td ? td.toLocaleDateString('en-US', { month: 'short', year: 'numeric' }) : ''; var sep = ' · '; var is = (tripParams.interests || []).join(sep); return [ds, is].filter(Boolean).join(sep); })(),
       destination: tripParams.destination,
       days: tripParams.days,
+      interests: tripParams.interests,
       savedItinerary: resolvedItinerary,
-      // Previously dropped on save entirely - reopening a saved trip from
-      // Home (see handleOpenSavedTrip) would always land back here showing
-      // "No accommodation was selected", even though picking one is
-      // mandatory earlier in the flow and the user genuinely had. It just
-      // never survived the round trip through localStorage.
+      selectedVariant: selectedVariant || variantKey,
       accommodation: tripParams.accommodation,
       accommodationDetails: tripParams.accommodationDetails,
       budget: tripParams.budget,
       transport: tripParams.transport,
     })
     setSaveState('saved')
-    // Land on the "Task complete" screen - the terminal screen of the flow.
-    // Makes it unmistakable to a test participant that the task is finished
-    // (it tells them to return to the UXtweak app). The trip is already
-    // persisted to localStorage just above, so it's in "My trips" regardless.
-    navigate('/complete')
+    navigate('/')
   }
 
   return (

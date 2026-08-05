@@ -9,7 +9,6 @@ import { getSavedTrips } from '../utils/savedTrips'
 import { DEMO_TRIPS } from '../data/demoTrips'
 import type { DemoTrip, SavedTrip, TrendingLocation } from '../types'
 
-
 const MENU_ITEMS = [
   { label: 'Settings', to: '/', icon: SettingsIcon },
   { label: 'Help', to: '/', icon: HelpIcon },
@@ -95,21 +94,22 @@ const TRANSITION_MS = 400
 
 export default function Home() {
   const navigate = useNavigate()
-  const { setTripParams, loadSavedItinerary } = useTrip()
+  const { setTripParams, loadSavedItinerary, setSelectedVariant } = useTrip()
   const [locations, setLocations] = useState<TrendingLocation[]>([])
   const [status, setStatus] = useState('loading') // loading | success | error
   const [activeIndex, setActiveIndex] = useState(0)
   const [prevIndex, setPrevIndex] = useState<number | null>(null)
-  // Read once on mount - real trips saved via Finalise & Save, newest first,
-  // shown ahead of the two fixed demo entries.
-  const [savedTrips] = useState<SavedTrip[]>(() => [...getSavedTrips(), ...DEMO_TRIPS])
+  // Re-read on every render so a trip saved on Finalise & Save shows up as
+  // soon as Home mounts after navigate('/'). Real saves first (max 1), then
+  // the fixed Tokyo demo - never more than two rows total.
+  const savedTrips: Array<SavedTrip | DemoTrip> = [...getSavedTrips(), ...DEMO_TRIPS]
   const timerRef = useRef<ReturnType<typeof setInterval> | null>(null)
   const transitionTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null)
 
   // Dates/travellers/interests aren't part of the saved-trip data (there's
   // nothing to restore them from), so both paths below use the same
   // defaults TripInput itself starts with.
-  function handleOpenSavedTrip(trip: SavedTrip) {
+  function handleOpenSavedTrip(trip: SavedTrip | DemoTrip) {
     const start = new Date()
     start.setDate(start.getDate() + 14)
     const end = new Date(start)
@@ -124,7 +124,7 @@ export default function Home() {
       endDate: toLocalISODate(end),
       interests: trip.interests || [],
       budget: trip.budget || 'Standard',
-      transport: trip.transport || 'Car or taxi',
+      transport: ('transport' in trip && trip.transport) || 'Car or taxi',
       // Undefined for trips saved before this was captured (including the
       // bundled Tokyo demo) - Finalise & Save's empty state handles that
       // honestly rather than implying nothing was ever chosen.
@@ -137,6 +137,7 @@ export default function Home() {
       // Real, pre-captured result - load it directly and skip straight to
       // Comparison, no live generation call, no accommodation re-pick.
       loadSavedItinerary(trip.savedItinerary)
+      if ('selectedVariant' in trip && trip.selectedVariant) setSelectedVariant(trip.selectedVariant)
       navigate('/comparison')
       return
     }
@@ -306,13 +307,13 @@ export default function Home() {
                 <button
                   type="button"
                   className="list-row list-row--button"
-                  key={trip.savedAt ? `${trip.title}-${trip.savedAt}` : trip.title}
+                  key={'savedAt' in trip && trip.savedAt ? `${trip.destination}-${trip.savedAt}` : `demo-${trip.destination}`}
                   onClick={() => handleOpenSavedTrip(trip)}
                 >
                   <span style={{ alignSelf: "flex-start", display: "flex" }}><PinIcon /></span>
                   <div style={{ flex: 1 }}>
-                    <span className="list-row__title">{trip.title}</span>
-                    <span className="list-row__subtitle">{trip.subtitle}</span>
+                    <span className="list-row__title">{trip.destination}</span>
+                    {trip.subtitle && <span className="list-row__subtitle">{trip.subtitle}</span>}
                   </div>
                   <span className="list-row__chevron">
                     <ChevronIcon direction="right" />
