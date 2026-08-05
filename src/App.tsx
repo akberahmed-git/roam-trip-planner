@@ -1,3 +1,4 @@
+import { Analytics } from '@vercel/analytics/react'
 import { BrowserRouter, Routes, Route, useLocation } from 'react-router-dom'
 import { TripProvider } from './context/TripContext'
 import ScrollToTop from './components/ScrollToTop'
@@ -44,6 +45,7 @@ function App() {
         <ScrollToTop />
         <AnimatedRoutes />
       </BrowserRouter>
+      <Analytics />
     </TripProvider>
   )
 }
