@@ -224,7 +224,7 @@ async function _runSearch(name, textQuery) {
         // hotelSearch.js's mask already carries both for the same reason.
         'X-Goog-FieldMask': 'places.id,places.displayName,places.formattedAddress,places.photos,places.location,places.types,places.addressComponents'
       },
-      body: JSON.stringify({ textQuery })
+      body: JSON.stringify({ textQuery, languageCode: 'en' })
     });
     data = await response.json();
   } catch (error) {
@@ -341,6 +341,12 @@ export async function findNearbyCandidates(name, type, near, radiusMeters = 2000
       },
       body: JSON.stringify({
         textQuery,
+        // Without this Google answers in the destination's own language, which
+        // put "国旗掲揚塔" and "鞍掛の松 伝承地" on an English itinerary. Asking for
+        // English gives the romanised or translated name where one exists and
+        // leaves the local name only where it genuinely has no other (Akber,
+        // 4 Sep 2026).
+        languageCode: 'en',
         locationBias: {
           circle: {
             center: { latitude: near.lat, longitude: near.lng },
@@ -373,7 +379,7 @@ export async function geocodeDestination(destination) {
         'X-Goog-Api-Key': process.env.GOOGLE_PLACES_API_KEY ?? '',
         'X-Goog-FieldMask': 'places.location'
       },
-      body: JSON.stringify({ textQuery: destination })
+      body: JSON.stringify({ textQuery: destination, languageCode: 'en' })
     });
     if (!response.ok) {
       return null;

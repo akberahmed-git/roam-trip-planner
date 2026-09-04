@@ -256,7 +256,7 @@ async function fetchTier(destination, tierQuery) {
         // Pro-tier only now. tierFor() falls back to the query tier without priceLevel.
         'places.id,places.displayName,places.formattedAddress,places.addressComponents,places.photos,places.types,places.location',
     },
-    body: JSON.stringify({ textQuery, includedType: 'lodging' }),
+    body: JSON.stringify({ textQuery, includedType: 'lodging', languageCode: 'en' }),
   });
 
   if (!response.ok) {

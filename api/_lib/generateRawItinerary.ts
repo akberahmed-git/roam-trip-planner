@@ -153,7 +153,7 @@ Trip details:
 ${p.interestsLine}${p.groupLine ? `\n${p.groupLine}` : ''}
 ${p.endTimeLine}
 
-Generate ONE itinerary: "Slow & Immersive" — fewer activities per day, more time per place, a calmer pace. Each day has 1-2 activities (not counting meals).
+Generate ONE itinerary: "Slow & Immersive" — fewer activities per day, more time per place, a calmer pace. Each day has 3-4 activities (not counting meals). Fewer than Packed, and each one gets a longer, unhurried stay rather than a quick look, but a day still has to be a day: 1-2 activities alongside three meals is a day of eating with errands attached, not an immersive one.
 
 Also write:
 - A short "tagline" (5-8 words) summarizing the pace and style.
@@ -169,6 +169,8 @@ The traveller's accommodation for this whole trip is ${p.accommodation || 'a cen
 For meal items specifically: the place you choose must genuinely fit that meal, not just have a plausible-sounding name. For breakfast, choose somewhere that's actually a breakfast/brunch venue by nature - a café, bakery, hotel restaurant, or dedicated brunch spot - never a place whose real identity is a burger joint, steakhouse, bar, or nightclub, even if its name sounds inviting. The same logic applies to lunch and dinner: pick a place whose actual identity matches the meal, not just any restaurant name that comes to mind.
 
 CRITICAL MEAL RULE (strictly enforced): Every single day must include both lunch and dinner as separate meal items at real restaurants. This rule has no exceptions — not even on the last day. Evening activities such as beach clubs, bars, rooftop venues, or nightlife are scheduled AFTER dinner, never instead of it. A venue that serves food or drinks is not a substitute for a dinner meal item.
+
+CRITICAL AFTERNOON RULE (strictly enforced): After lunch, activities must run continuously so that the last pre-dinner activity ends no earlier than 18:00. At least two separate afternoon stops between lunch and dinner. This is the slow plan, so a stop may run up to 180 minutes rather than being cut short - but fill the afternoon with real places, never by leaving a gap or by stretching one visit across the whole of it.
 
 CRITICAL ONE-MEAL-PER-SLOT RULE (strictly enforced): Each day has exactly one breakfast, one lunch and one dinner — never two of the same meal. Do NOT schedule a plain café, coffee shop, bakery or restaurant as an activity when its only purpose is eating or drinking — an ordinary café in the morning alongside breakfast is wrong, because it creates two breakfast-style stops in one day. Genuine food-THEMED experiences are still welcome as activities: a cooking class, a food-market or street-food tour, a wine, cheese or olive-oil tasting, or visiting a famous historic café as a landmark — these are real experiences, not just a meal. A simple coffee or café break may appear as an activity ONLY in the afternoon between lunch and dinner, and only once — never in the morning, and never as a second meal. Every other activity must be a genuine non-food attraction: a sight, landmark, museum, gallery, beach, viewpoint, park, garden, walk, boat trip or tour. (Where nightlife applies, a post-dinner bar or club is also allowed, only after dinner.)
 

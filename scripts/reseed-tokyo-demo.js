@@ -269,6 +269,7 @@ export const TOKYO_ACCOMMODATION = ${JSON.stringify(accommodation, null, 2)}
 // stops with longer stays, so holding both to the same minimum punishes the slow
 // variant for doing its job. It still has to move - a day inside 1.2 km is one
 // street, not a neighbourhood - just not as far.
+const MIN_ACTIVITIES_PER_DAY = 3;
 const MIN_DAY_SPREAD_KM = { packed: 2.5, slow: 1.2 };
 const MAX_DAY_SPREAD_KM = 30;
 
@@ -357,8 +358,14 @@ function auditDemo(itinerary) {
       const meals = items.filter((i) => i.mealType);
       const label = `${variant} day ${day.day}`;
 
-      if (activities.length < 2) {
-        problems.push(`${label}: only ${activities.length} activity stop(s), a day of meals is not an itinerary`);
+      // Packed asks for 4-5 activities, Slow for 3-4. Three is the floor for
+      // either: below that a day is three meals with something wedged between
+      // them, which is what the Slow variant was shipping.
+      if (activities.length < MIN_ACTIVITIES_PER_DAY) {
+        problems.push(
+          `${label}: only ${activities.length} activity stop(s), under the ${MIN_ACTIVITIES_PER_DAY} minimum - ` +
+            `a day of meals is not an itinerary`
+        );
       }
       if (!meals.some((m) => m.mealType === 'dinner')) {
         problems.push(`${label}: no dinner`);

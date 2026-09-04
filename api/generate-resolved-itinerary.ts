@@ -308,6 +308,7 @@ async function resolveMealPlaceholders(day, anchor, usedPlaceIds) {
         (c) =>
           c.location &&
           !usedPlaceIds.has(c.placeId) &&
+          hasReadableName(c.name) &&
           (!anchor || haversineMeters(anchor, c.location) <= MAX_BROAD_DISTANCE_METERS)
       );
       return preferWithPhoto(usable);
@@ -678,6 +679,82 @@ function sanitizeCategoryTags(days) {
   return fixed;
 }
 
+
+// A backfilled or straightened stop has to be somewhere a person would spend
+// an hour, not a thing they would walk past. Searching "landmark" near a point
+// and taking the first photographed result put five markers into the demo: a
+// flagpole, a playwright's birthplace plaque, the site of a legendary pine
+// tree, and two "Site of ... Residence" stones. Google files all of those as
+// landmarks, and it is not wrong, they are simply not somewhere you go
+// (Akber, 4 Sep 2026).
+//
+// Two filters, because neither is sufficient alone. The type whitelist demands
+// a real venue; the name patterns catch the commemorative markers that are
+// nonetheless typed as attractions.
+const SUBSTANTIAL_PLACE_TYPES = new Set([
+  'tourist_attraction',
+  'museum',
+  'art_gallery',
+  'park',
+  'garden',
+  'national_park',
+  'place_of_worship',
+  'church',
+  'hindu_temple',
+  'mosque',
+  'synagogue',
+  'shopping_mall',
+  'department_store',
+  'market',
+  'night_club',
+  'bar',
+  'amusement_park',
+  'amusement_center',
+  'aquarium',
+  'zoo',
+  'observation_deck',
+  'performing_arts_theater',
+  'movie_theater',
+  'library',
+  'stadium',
+  'spa',
+  'book_store',
+  'electronics_store',
+  'store',
+]);
+
+// Matched against the name. "Monument" is deliberately absent: plenty of major
+// attractions are monuments, and the whitelist above already excludes the ones
+// that are only a stone.
+const MARKER_NAME_PATTERNS = [
+  /\bsite of\b/i,
+  /\bformer site\b/i,
+  /\bbirthplace\b/i,
+  /\bplaque\b/i,
+  /\bmemorial stone\b/i,
+  /\bstele\b/i,
+  /\bcenotaph\b/i,
+  /\bflag ?pole\b/i,
+  /誕生の地/,
+  /伝承地/,
+  /掲揚塔/,
+  /\u8de1$/,
+];
+
+// The demo shipped names Google returned in Japanese. languageCode: 'en' fixes
+// that at the source, but a place with no English name at all still comes back
+// in the local script, and a stop a reader cannot pronounce or search for is
+// not much use on an English itinerary.
+function hasReadableName(name) {
+  return typeof name === 'string' && /[A-Za-z]/.test(name);
+}
+
+function isSubstantialActivity(candidate) {
+  if (!hasReadableName(candidate.name)) return false;
+  if (MARKER_NAME_PATTERNS.some((pattern) => pattern.test(candidate.name))) return false;
+  return (candidate.types || []).some((type) => SUBSTANTIAL_PLACE_TYPES.has(type));
+}
+
 // Interest chips ("Temples & Shrines", "Anime & Pop Culture") mostly work as a
 // Places text query as written. These are the few where the chip's wording and
 // what Google actually indexes differ enough to matter.
@@ -797,6 +874,7 @@ async function backfillOrDropActivities(day, anchor, usedPlaceIds, interests) {
           if (!candidate.availablePhotoUrl) return false;
           if (usedPlaceIds.has(candidate.placeId)) return false;
           if ((candidate.types || []).some((t) => FOOD_PLACE_TYPES.has(t))) return false;
+          if (!isSubstantialActivity(candidate)) return false;
           if (anchor && haversineMeters(anchor, candidate.location) > MAX_BROAD_DISTANCE_METERS) return false;
           return true;
         }) || null;
@@ -914,6 +992,7 @@ async function enforceDayRadius(day, anchor, usedPlaceIds, interests) {
         if (haversineMeters(candidate.location, centre) / 1000 > MAX_DAY_RADIUS_KM) return false;
         const isFood = (candidate.types || []).some((t) => FOOD_PLACE_TYPES.has(t));
         if (item.mealType ? !isFood : isFood) return false;
+        if (item.mealType ? !hasReadableName(candidate.name) : !isSubstantialActivity(candidate)) return false;
         if (anchor && haversineMeters(anchor, candidate.location) > MAX_BROAD_DISTANCE_METERS) return false;
         return true;
       }) || null;
@@ -1035,6 +1114,7 @@ async function fixBacktracking(day, anchor, usedPlaceIds, interests) {
         if (usedPlaceIds.has(candidate.placeId)) return false;
         const isFood = (candidate.types || []).some((t) => FOOD_PLACE_TYPES.has(t));
         if (item.mealType ? !isFood : isFood) return false;
+        if (item.mealType ? !hasReadableName(candidate.name) : !isSubstantialActivity(candidate)) return false;
         if (anchor && haversineMeters(anchor, candidate.location) > MAX_BROAD_DISTANCE_METERS) return false;
         // Only worth the swap if it actually straightens the route.
         const outbound = haversineMeters(before, candidate.location);
