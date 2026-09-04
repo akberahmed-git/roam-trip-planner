@@ -1176,6 +1176,38 @@ async function fixBacktracking(day, anchor, usedPlaceIds, interests) {
   return fixes;
 }
 
+// The prompt asks for the final night to end at the normal time, because the
+// traveller checks out and travels the next morning. It did not comply: a two
+// day trip came back with day 2 running to 01:10 (Akber, 4 Sep 2026). Prompt
+// wording has now been fixed, but the guarantee should not rest on the model
+// reading it, so enforce it here too.
+//
+// Only a post-dinner stop is eligible, and only if the day keeps enough
+// content without it - a day trimmed down to nothing is a worse outcome than a
+// late finish.
+const FINAL_NIGHT_CUTOFF_MINUTES = 21 * 60;
+const MIN_ACTIVITIES_AFTER_TRIM = 3;
+
+function trimFinalNight(day) {
+  const activities = day.items.filter((i) => i.type !== 'accommodation' && !i.mealType);
+  const dropped: string[] = [];
+
+  const late = activities.filter((item) => {
+    const start = timeToMinutes(item.startTime);
+    return start != null && start >= FINAL_NIGHT_CUTOFF_MINUTES;
+  });
+
+  for (const item of late) {
+    if (activities.length - dropped.length <= MIN_ACTIVITIES_AFTER_TRIM) break;
+    dropped.push(item.name);
+  }
+
+  if (dropped.length > 0) {
+    day.items = day.items.filter((i) => !dropped.includes(i.name) || i.type === 'accommodation' || i.mealType);
+  }
+  return dropped;
+}
+
 async function enforceDriveCap(day, transport, usedPlaceIds) {
   for (let i = 0; i < day.items.length - 1; i++) {
     const current = day.items[i];
@@ -1382,6 +1414,15 @@ async function resolveItinerary(itinerary, destination, anchor, transport, accom
       console.info(
         `[generate-resolved-itinerary] day ${day.day}: pulled ${pulled.length} outlying stop(s) back into the day: ${pulled.join('; ')}`
       );
+    }
+
+    if (day.day === itinerary.days.length) {
+      const trimmed = trimFinalNight(day);
+      if (trimmed.length > 0) {
+        console.info(
+          `[generate-resolved-itinerary] day ${day.day} is the last: trimmed ${trimmed.length} late stop(s) so the final night ends at the normal time: ${trimmed.join(', ')}`
+        );
+      }
     }
 
     const straightened = await fixBacktracking(day, anchor, usedPlaceIds, interests);
