@@ -253,6 +253,194 @@ export const TOKYO_ACCOMMODATION = ${JSON.stringify(accommodation, null, 2)}
 `;
 }
 
+// The demo is the only itinerary most visitors will ever see, and it is bundled
+// rather than generated, so a bad draft would sit on the home screen until
+// someone noticed. A previous re-seed shipped a "Slow" day 1 that was hotel,
+// restaurant, another restaurant 700 m away, hotel, ending at 15:25 with no
+// dinner and no activity at all, and it stayed there (Akber, 4 Sep 2026).
+//
+// So the script now refuses to write a fixture it would not defend. Every check
+// here is one a visitor could notice unaided.
+// A day that never leaves one pocket is not a day out, and a day spent crossing
+// the city is not one either. These bound both ends. Generous on purpose: the
+// re-seed costs a real generation each time it runs, so the audit should catch
+// the genuinely bad drafts, not bicker with the merely imperfect ones.
+const MIN_DAY_SPREAD_KM = 2.5;
+const MAX_DAY_SPREAD_KM = 30;
+
+// Backtracking. A day that runs Akihabara -> Shibuya -> back past Akihabara to
+// the Imperial Palace -> back west again to Shinjuku covers plenty of ground
+// and is still wrong: 20 km walked to cover 7.7 km of city, with a 178-degree
+// turn in the middle. Only long legs count, since a couple of hundred metres in
+// the "wrong" direction between two neighbouring stops is meaningless.
+const LONG_LEG_KM = 3;
+const REVERSAL_DEGREES = 120;
+
+function bearing(a, b) {
+  const toRad = (d) => (d * Math.PI) / 180;
+  const dLng = toRad(b.lng - a.lng);
+  const y = Math.sin(dLng) * Math.cos(toRad(b.lat));
+  const x =
+    Math.cos(toRad(a.lat)) * Math.sin(toRad(b.lat)) -
+    Math.sin(toRad(a.lat)) * Math.cos(toRad(b.lat)) * Math.cos(dLng);
+  return (Math.atan2(y, x) * 180 / Math.PI + 360) % 360;
+}
+
+function angleBetween(a, b) {
+  const raw = Math.abs(a - b);
+  return Math.min(raw, 360 - raw);
+}
+
+// Returns a description of each place the day doubles back on itself.
+function findBacktracking(stops) {
+  const pts = stops.filter((s) => s.location && s.location.lat != null);
+  if (pts.length < 3) return [];
+  const legs = [];
+  for (let k = 0; k < pts.length - 1; k++) {
+    const km = haversineKm(pts[k].location, pts[k + 1].location);
+    if (km >= LONG_LEG_KM) {
+      legs.push({ km, deg: bearing(pts[k].location, pts[k + 1].location), from: pts[k].name, to: pts[k + 1].name });
+    }
+  }
+  const found = [];
+  for (let k = 0; k < legs.length - 1; k++) {
+    const turn = angleBetween(legs[k].deg, legs[k + 1].deg);
+    if (turn > REVERSAL_DEGREES) {
+      found.push(
+        `${legs[k].from} to ${legs[k].to} (${legs[k].km.toFixed(1)} km) then doubles back ` +
+          `${legs[k + 1].from} to ${legs[k + 1].to} (${legs[k + 1].km.toFixed(1)} km), a ${Math.round(turn)}° turn`
+      );
+    }
+  }
+  return found;
+}
+
+function haversineKm(a, b) {
+  const R = 6371;
+  const toRad = (d) => (d * Math.PI) / 180;
+  const dLat = toRad(b.lat - a.lat);
+  const dLng = toRad(b.lng - a.lng);
+  const h =
+    Math.sin(dLat / 2) ** 2 +
+    Math.cos(toRad(a.lat)) * Math.cos(toRad(b.lat)) * Math.sin(dLng / 2) ** 2;
+  return 2 * R * Math.asin(Math.sqrt(h));
+}
+
+function auditDemo(itinerary) {
+  const problems = [];
+  const dayHoods = [];
+  const wantedInterests = TRIP.interests.map((i) => i.toLowerCase());
+  const seenInterestText = [];
+
+  for (const variant of ['packed', 'slow']) {
+    const days = itinerary[variant]?.days || [];
+    if (days.length !== TRIP.days) {
+      problems.push(`${variant}: expected ${TRIP.days} days, got ${days.length}`);
+    }
+
+    const districts = [];
+
+    for (const day of days) {
+      const items = day.items || [];
+      const activities = items.filter((i) => i.type !== 'accommodation' && !i.mealType);
+      const meals = items.filter((i) => i.mealType);
+      const label = `${variant} day ${day.day}`;
+
+      if (activities.length < 2) {
+        problems.push(`${label}: only ${activities.length} activity stop(s), a day of meals is not an itinerary`);
+      }
+      if (!meals.some((m) => m.mealType === 'dinner')) {
+        problems.push(`${label}: no dinner`);
+      }
+      const last = items[items.length - 1];
+      const endsAt = last && typeof last.startTime === 'string' ? last.startTime : null;
+      if (endsAt && Number(endsAt.split(':')[0]) < 19) {
+        problems.push(`${label}: day ends at ${endsAt}, far too early`);
+      }
+      const noPhoto = items.filter((i) => !i.photoUrl);
+      if (noPhoto.length > 0) {
+        problems.push(`${label}: ${noPhoto.length} stop(s) with no photo: ${noPhoto.map((i) => i.name).join(', ')}`);
+      }
+
+      for (const item of items) {
+        seenInterestText.push(`${item.name} ${item.categoryTag || ''} ${item.description || ''}`.toLowerCase());
+      }
+      // Does the day actually move? Two measures, because either can be
+      // missing: the neighbourhood half of categoryTag ("Museum · Roppongi"),
+      // and the raw spread of the stops on the ground. A day where every
+      // activity sits in one pocket is the thing this whole change is about.
+      const hoods = new Set(
+        activities
+          .map((i) => (typeof i.categoryTag === 'string' && i.categoryTag.includes('·')
+            ? i.categoryTag.split('·').pop().trim().toLowerCase()
+            : null))
+          .filter(Boolean)
+      );
+      const pts = activities.map((i) => i.location).filter((l) => l && l.lat != null);
+      let spreadKm = 0;
+      for (let a = 0; a < pts.length; a++) {
+        for (let b = a + 1; b < pts.length; b++) {
+          spreadKm = Math.max(spreadKm, haversineKm(pts[a], pts[b]));
+        }
+      }
+
+      // Distance, not neighbourhood count, is the honest test. Three adjacent
+      // Minato neighbourhoods spanning 2 km is nominally "three areas" and is
+      // still the same pocket - that exact day is what prompted this work.
+      if (pts.length >= 2 && spreadKm < MIN_DAY_SPREAD_KM) {
+        problems.push(
+          `${label}: activities span only ${spreadKm.toFixed(1)} km ` +
+            `(${hoods.size} neighbourhood(s)) - the day orbits instead of travelling`
+        );
+      }
+      if (spreadKm > MAX_DAY_SPREAD_KM) {
+        problems.push(`${label}: stops are ${spreadKm.toFixed(1)} km apart, that is a day of commuting`);
+      }
+
+      // Order, not just spread: the stops can cover the whole city and still be
+      // sequenced so the traveller crosses it three times.
+      for (const hop of findBacktracking(items.filter((i) => i.type !== 'accommodation'))) {
+        problems.push(`${label}: route doubles back - ${hop}`);
+      }
+
+      dayHoods.push(hoods);
+      if (day.theme) districts.push(String(day.theme).toLowerCase());
+    }
+
+    if (new Set(districts).size < districts.length) {
+      problems.push(`${variant}: two days share the same theme, so the trip circles one idea`);
+    }
+    for (let a = 0; a < dayHoods.length; a++) {
+      for (let b = a + 1; b < dayHoods.length; b++) {
+        const shared = [...dayHoods[a]].filter((h) => dayHoods[b].has(h));
+        if (dayHoods[a].size > 0 && shared.length === dayHoods[a].size) {
+          problems.push(`${variant}: days ${a + 1} and ${b + 1} cover the same neighbourhoods`);
+        }
+      }
+    }
+  }
+
+  // Interest coverage, checked with the words a person would actually look for
+  // rather than the chip's exact label, since no place is literally called
+  // "Temples & Shrines".
+  const INTEREST_EVIDENCE = {
+    'temples & shrines': ['temple', 'shrine', 'jinja', 'ji ', '-ji', 'taisha'],
+    'anime & pop culture': ['anime', 'manga', 'akihabara', 'game', 'pop culture', 'figure'],
+    nightlife: ['bar', 'club', 'nightlife', 'izakaya', 'golden-gai', 'live music'],
+    'modern architecture': ['architecture', 'tower', 'skytree', 'observation', 'museum', 'gallery', 'hills', 'midtown'],
+  };
+  const haystack = seenInterestText.join(' | ');
+  for (const interest of wantedInterests) {
+    const evidence = INTEREST_EVIDENCE[interest];
+    if (!evidence) continue;
+    if (!evidence.some((word) => haystack.includes(word))) {
+      problems.push(`interest "${interest}" appears nowhere in the trip`);
+    }
+  }
+
+  return problems;
+}
+
 async function main() {
   if (!BASE_URL || !/^https?:\/\//.test(BASE_URL)) {
     throw new Error(
@@ -298,6 +486,19 @@ async function main() {
       }
     }
   }
+
+  const problems = auditDemo(itinerary);
+  if (problems.length > 0) {
+    console.error('\nThis generation is not good enough to ship as the demo:\n');
+    for (const problem of problems) console.error(`  x ${problem}`);
+    console.error(
+      '\nNothing was written. The demo is the first thing every visitor sees, so a\n' +
+        'weak generation must not silently replace a good one. Re-run to get a\n' +
+        'different draft, or fix the pipeline if it keeps failing the same check.'
+    );
+    process.exit(1);
+  }
+  console.log('\nAudit passed: every day has activities, a dinner, photos and its interests.');
 
   console.log('Baking photos into public/demo/tokyo ...');
   const { downloaded, missing } = await bakePhotos(itinerary);

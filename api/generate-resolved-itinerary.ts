@@ -678,18 +678,154 @@ function sanitizeCategoryTags(days) {
   return fixed;
 }
 
-function dropUnresolvedActivities(day) {
+// Interest chips ("Temples & Shrines", "Anime & Pop Culture") mostly work as a
+// Places text query as written. These are the few where the chip's wording and
+// what Google actually indexes differ enough to matter.
+const INTEREST_SEARCH_QUERY = {
+  'temples & shrines': 'temple shrine',
+  'anime & pop culture': 'anime shop',
+  'modern architecture': 'modern architecture landmark',
+  'art galleries': 'art gallery',
+  'museums': 'museum',
+  'nature': 'park',
+  'beaches': 'beach',
+  'landmarks': 'landmark',
+  'shopping': 'shopping street',
+  'nightlife': 'bar',
+};
+
+// Interests delivered by the day's meals, not by an activity. Backfilling an
+// activity slot with a restaurant would create a second lunch and break the
+// one-meal-per-slot rule, so these never become an activity query.
+const MEAL_DELIVERED_INTERESTS = new Set(['cuisine', 'food tours', 'food & drink', 'food and drink']);
+
+// Types that make a place a meal rather than an activity. A backfilled stop
+// carrying any of these is rejected for the same reason as above.
+const FOOD_PLACE_TYPES = new Set([
+  'restaurant',
+  'cafe',
+  'coffee_shop',
+  'bakery',
+  'meal_takeaway',
+  'meal_delivery',
+  'fast_food_restaurant',
+]);
+
+function interestQuery(interest) {
+  if (typeof interest !== 'string') return null;
+  const key = interest.trim().toLowerCase();
+  if (MEAL_DELIVERED_INTERESTS.has(key)) return null;
+  return INTEREST_SEARCH_QUERY[key] || key.replace(/\s*&\s*/g, ' ');
+}
+
+// Describes a backfilled stop from Google's own data. Never inherits the
+// dropped item's description: that text was written about a different place,
+// and carrying it over is precisely the failure this pass exists to prevent.
+function describeAdoptedActivity(pick) {
+  const label = labelForTypes(pick.types);
+  if (!label) {
+    return pick.neighbourhood ? `A stop in ${pick.neighbourhood}.` : 'A stop on this day.';
+  }
+  return pick.neighbourhood ? `${label} in ${pick.neighbourhood}.` : `${label}.`;
+}
+
+// Removing a stop that never resolved is correct - an unverified stop must not
+// ship looking exactly like a verified one - but removal on its own lets a day
+// collapse. The bundled Tokyo demo shipped a Slow day 1 that was hotel,
+// restaurant, another restaurant 700 m away, hotel, ending at 15:25 with no
+// dinner and no activity at all, because several stops failed on the same day
+// and nothing took their place (Akber, 4 Sep 2026).
+//
+// So try to put a real place in the slot first, and drop only if that fails.
+// Deliberate choices here:
+//   - searched near an adjacent resolved stop, so the day's geography holds and
+//     a backfill can't fling the traveller across the city
+//   - a photo is REQUIRED, not preferred: the alternative is dropping, and a
+//     shorter day beats a grey placeholder card
+//   - food places are rejected, so a backfill can't become a second lunch
+//   - "Nightlife" is only used as a query after 19:00, since a bar at 10am is
+//     not what the chip meant
+async function backfillOrDropActivities(day, anchor, usedPlaceIds, interests) {
   const dropped: string[] = [];
+  const adopted: string[] = [];
+  const kept: any[] = [];
 
-  day.items = day.items.filter((item) => {
-    if (item.type === 'accommodation') return true;
-    if (item.mealType) return true;
-    if (item.location) return true;
-    dropped.push(item.name);
-    return false;
-  });
+  for (let i = 0; i < day.items.length; i++) {
+    const item = day.items[i];
 
-  return dropped;
+    if (item.type === 'accommodation' || item.mealType || item.location) {
+      kept.push(item);
+      continue;
+    }
+
+    // Nearest resolved neighbour, searching backwards first so a replacement
+    // lands beside where the traveller already is.
+    let near: any = null;
+    for (let j = i - 1; j >= 0 && !near; j--) {
+      if (day.items[j].location) near = day.items[j].location;
+    }
+    for (let j = i + 1; j < day.items.length && !near; j++) {
+      if (day.items[j].location) near = day.items[j].location;
+    }
+
+    const startMinutes = timeToMinutes(item.startTime);
+    const isEvening = startMinutes != null && startMinutes >= 19 * 60;
+    const usable = (Array.isArray(interests) ? interests : []).filter((interest) => {
+      const key = String(interest).trim().toLowerCase();
+      if (key === 'nightlife' && !isEvening) return false;
+      return Boolean(interestQuery(interest));
+    });
+
+    // The stop's own type first (a dropped museum should be replaced by a
+    // museum), then the trip's interests, then a generic attraction.
+    const queries: string[] = [];
+    const ownType = typeof item.categoryTag === 'string' ? item.categoryTag.split('·')[0].trim() : '';
+    if (ownType) queries.push(ownType.toLowerCase());
+    for (const interest of usable) {
+      const q = interestQuery(interest);
+      if (q && !queries.includes(q)) queries.push(q);
+    }
+    queries.push('tourist attraction');
+
+    let pick: any = null;
+    for (const query of queries) {
+      for (const loc of [near, anchor]) {
+        if (!loc || pick) continue;
+        const candidates = await findNearbyCandidates(query, null, loc).catch(() => []);
+        pick = candidates.find((candidate) => {
+          if (!candidate.location || !candidate.placeId) return false;
+          if (!candidate.availablePhotoUrl) return false;
+          if (usedPlaceIds.has(candidate.placeId)) return false;
+          if ((candidate.types || []).some((t) => FOOD_PLACE_TYPES.has(t))) return false;
+          if (anchor && haversineMeters(anchor, candidate.location) > MAX_BROAD_DISTANCE_METERS) return false;
+          return true;
+        }) || null;
+      }
+      if (pick) break;
+    }
+
+    if (!pick) {
+      dropped.push(item.name);
+      continue;
+    }
+
+    item.name = pick.name;
+    item.address = pick.address;
+    item.location = pick.location;
+    item.rating = null;
+    item.ratingCount = null;
+    item.photoUrl = pick.availablePhotoUrl || null;
+    item.hasHours = pick.hasHours || false;
+    item.weekdayDescriptions = pick.weekdayDescriptions || null;
+    item.description = describeAdoptedActivity(pick);
+    item.categoryTag = composeCategoryTag(item, pick) || item.categoryTag;
+    usedPlaceIds.add(pick.placeId);
+    adopted.push(pick.name);
+    kept.push(item);
+  }
+
+  day.items = kept;
+  return { dropped, adopted };
 }
 
 // stretchPreDinnerGap (afternoon gap-fill that keeps dinner parked in its
@@ -779,7 +915,7 @@ async function enforceDriveCap(day, transport, usedPlaceIds) {
   }
 }
 
-async function resolveItinerary(itinerary, destination, anchor, transport, accommodationDetails) {
+async function resolveItinerary(itinerary, destination, anchor, transport, accommodationDetails, interests) {
   const usedPlaceIds = new Set();
 
   // Slow & Immersive (pacingLabel 'Relaxed', set by computePacing in
@@ -897,14 +1033,19 @@ async function resolveItinerary(itinerary, destination, anchor, transport, accom
   // unverified stop can't ship looking exactly like a verified one. Runs after
   // the meal pass (which gives meals their own second chance) and before travel
   // times, so nothing routes through a stop that isn't there.
-  itinerary.days.forEach((day) => {
-    const dropped = dropUnresolvedActivities(day);
-    if (dropped.length > 0) {
-      console.warn(
-        `[generate-resolved-itinerary] day ${day.day}: dropped ${dropped.length} unresolved stop(s): ${dropped.join(', ')}`
+  for (const day of itinerary.days) {
+    const { dropped, adopted } = await backfillOrDropActivities(day, anchor, usedPlaceIds, interests);
+    if (adopted.length > 0) {
+      console.info(
+        `[generate-resolved-itinerary] day ${day.day}: backfilled ${adopted.length} unresolved stop(s): ${adopted.join(', ')}`
       );
     }
-  });
+    if (dropped.length > 0) {
+      console.warn(
+        `[generate-resolved-itinerary] day ${day.day}: dropped ${dropped.length} unresolved stop(s) with no replacement: ${dropped.join(', ')}`
+      );
+    }
+  }
 
   // Runs after the description audit, not before: refreshDescriptions can
   // rewrite a description, and a rewrite is just as capable of asserting a
@@ -1036,8 +1177,8 @@ export default async function handler(req, res) {
     // Resolve both variants in parallel - each is independent of the other,
     // so there's no reason to wait for packed before starting slow.
     await Promise.all([
-      raw.packed ? resolveItinerary(raw.packed, destination, anchor, transport, accommodationDetails) : Promise.resolve(),
-      raw.slow ? resolveItinerary(raw.slow, destination, anchor, transport, accommodationDetails) : Promise.resolve(),
+      raw.packed ? resolveItinerary(raw.packed, destination, anchor, transport, accommodationDetails, interests) : Promise.resolve(),
+      raw.slow ? resolveItinerary(raw.slow, destination, anchor, transport, accommodationDetails, interests) : Promise.resolve(),
     ]);
     res.status(200).json(raw);
   } catch (error) {
