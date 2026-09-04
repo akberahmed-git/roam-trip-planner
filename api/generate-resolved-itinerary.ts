@@ -8,6 +8,7 @@ import {
 } from './_lib/verifyPlace.js';
 import { computeTravelTimes, travelBetween } from './_lib/travelTime.js';
 import { refreshDescriptions } from './_lib/refreshDescriptions.js';
+import { sanitizeDescriptions } from './_lib/sanitizeDescriptions.js';
 import { checkRateLimit, rateLimitResponse } from './_lib/rateLimit.js';
 import {
   parseTravelMinutes,
@@ -260,6 +261,7 @@ async function resolveMealPlaceholders(day, anchor, usedPlaceIds) {
     item.photoUrl = null;
     item.hasHours = pick.hasHours || false;
     item.weekdayDescriptions = pick.weekdayDescriptions || null;
+    item.categoryTag = composeCategoryTag(item, pick);
     const label = item.mealType.charAt(0).toUpperCase() + item.mealType.slice(1);
     item.description = `${label} at ${pick.name}.`;
     usedPlaceIds.add(pick.placeId);
@@ -397,6 +399,90 @@ function pickSubstitute(suggestions, usedPlaceIds, anchor) {
   return null;
 }
 
+// categoryTag is the small grey line under a stop's name ("Museum · Indoor").
+// generateRawItinerary.js asks Claude for it in "Type · Descriptor" format, but
+// nothing ever checked what came back, and on a Valencia run it returned the
+// street number on three hotels out of three - "Hotel · 32" against an address
+// of "Pg. de l'Albereda, 32". Once a real place is attached, Google already
+// knows both halves better than the model does, so compose it here and treat
+// Claude's version as the fallback rather than the source.
+//
+// The type half maps Google's place types to something a person would say. The
+// list is deliberately short: it covers what actually shows up in itineraries,
+// and anything unmapped falls through to a title-cased version of the first
+// non-generic type, which reads fine for the long tail ("art_gallery" ->
+// "Art gallery").
+const PLACE_TYPE_LABELS = {
+  lodging: 'Hotel',
+  hotel: 'Hotel',
+  restaurant: 'Restaurant',
+  cafe: 'Café',
+  coffee_shop: 'Café',
+  bakery: 'Bakery',
+  bar: 'Bar',
+  night_club: 'Nightlife',
+  museum: 'Museum',
+  art_gallery: 'Gallery',
+  tourist_attraction: 'Landmark',
+  historical_landmark: 'Landmark',
+  historical_place: 'Landmark',
+  church: 'Landmark',
+  place_of_worship: 'Landmark',
+  park: 'Park',
+  national_park: 'Park',
+  garden: 'Garden',
+  botanical_garden: 'Garden',
+  beach: 'Beach',
+  zoo: 'Zoo',
+  aquarium: 'Aquarium',
+  market: 'Market',
+  shopping_mall: 'Shopping',
+  store: 'Shop',
+  stadium: 'Stadium',
+  amusement_park: 'Attraction',
+  spa: 'Spa',
+  movie_theater: 'Cinema',
+  performing_arts_theater: 'Theatre',
+};
+
+// Types Google attaches to almost everything - useless as a label on their own.
+const GENERIC_PLACE_TYPES = new Set([
+  'point_of_interest',
+  'establishment',
+  'food',
+  'tourist_destination',
+  'premise',
+  'geocode',
+]);
+
+function titleCaseType(type) {
+  const words = type.split('_').join(' ');
+  return words.charAt(0).toUpperCase() + words.slice(1);
+}
+
+function labelForTypes(types) {
+  if (!Array.isArray(types)) return null;
+  for (const type of types) {
+    if (PLACE_TYPE_LABELS[type]) return PLACE_TYPE_LABELS[type];
+  }
+  const firstUseful = types.find((type) => !GENERIC_PLACE_TYPES.has(type));
+  return firstUseful ? titleCaseType(firstUseful) : null;
+}
+
+// Falls back in stages rather than all-or-nothing: a real type with no
+// neighbourhood still beats Claude's guess, and Claude's guess still beats an
+// empty line. An accommodation always reads "Hotel" regardless of what Google
+// calls it, since that is what it is to this traveller.
+function composeCategoryTag(item, place) {
+  const typeLabel =
+    item.type === 'accommodation' ? 'Hotel' : labelForTypes(place?.types);
+  const area = place?.neighbourhood;
+
+  if (typeLabel && area) return `${typeLabel} · ${area}`;
+  if (typeLabel) return typeLabel;
+  return item.categoryTag || null;
+}
+
 function applyResolution(item, result, usedPlaceIds, anchor) {
   if (result.status === 'found') {
     // Same real place already used earlier in the trip? This happens when
@@ -419,6 +505,7 @@ function applyResolution(item, result, usedPlaceIds, anchor) {
     item.hasHours = result.hasHours;
     item.weekdayDescriptions = result.weekdayDescriptions;
     item.location = result.location;
+    item.categoryTag = composeCategoryTag(item, result);
     usedPlaceIds.add(result.placeId);
     return;
   }
@@ -435,6 +522,7 @@ function applyResolution(item, result, usedPlaceIds, anchor) {
     item.hasHours = substitute.hasHours;
     item.weekdayDescriptions = substitute.weekdayDescriptions;
     item.location = substitute.location;
+    item.categoryTag = composeCategoryTag(item, substitute);
     usedPlaceIds.add(substitute.placeId);
     return;
   }
@@ -695,6 +783,25 @@ async function resolveItinerary(itinerary, destination, anchor, transport, accom
       );
     }
   });
+
+  // Runs after the description audit, not before: refreshDescriptions can
+  // rewrite a description, and a rewrite is just as capable of asserting a
+  // travel time as the original was. This is the last thing to touch
+  // description text, so it is the only place the guarantee can hold.
+  const sanitized = sanitizeDescriptions(itinerary.days);
+  if (sanitized.changed > 0) {
+    console.info(
+      `[generate-resolved-itinerary] stripped unverified time/distance claims from ${sanitized.changed} description(s)`
+    );
+  }
+  if (sanitized.residual.length > 0) {
+    // Mid-sentence claims the anchored patterns cannot remove without leaving a
+    // fragment. Logged rather than mangled - the prompt rule is what should
+    // stop these, and this is the signal for whether it is working.
+    console.warn(
+      `[generate-resolved-itinerary] description still contains an unverified claim: ${sanitized.residual.join(', ')}`
+    );
+  }
 
   await Promise.all(
     itinerary.days.map((day) => computeTravelTimes(day.items, transport))

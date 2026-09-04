@@ -1,3 +1,4 @@
+import { neighbourhoodOf } from './placeAddress.js';
 // Real, Places-verified accommodation search. Every hotel shown here is a
 // real business with a real photo, rating and address, consistent with the
 // "every place shown is real" rule used for itinerary stops.
@@ -172,17 +173,25 @@ function typeLabelFor(place) {
   return 'Hotel';
 }
 
-function neighborhoodFrom(address) {
+// Last resort only, for a place Google returned with no addressComponents at
+// all. Kept deliberately crude: it takes the segment most likely to be an area
+// name while skipping anything that is purely a street number, which is the
+// specific failure the structured lookup exists to avoid.
+function neighborhoodFromAddress(address) {
   if (!address) return null;
-  // formattedAddress is "Street, Neighborhood/City, Country" - the first
-  // segment is usually the street, so prefer the second if present.
-  const parts = address.split(',').map((part) => part.trim()).filter(Boolean);
+  const parts = address
+    .split(',')
+    .map((part) => part.trim())
+    .filter(Boolean)
+    .filter((part) => !/^\d+[a-z]?$/i.test(part));
   return parts[1] || parts[0] || null;
 }
 
 function categoryTagFor(place) {
   const typeLabel = typeLabelFor(place);
-  const area = neighborhoodFrom(place.formattedAddress);
+  // Structured components first - see placeAddress.js for why the old
+  // comma-split produced "Hotel · 32" on Spanish addresses.
+  const area = neighbourhoodOf(place) || neighborhoodFromAddress(place.formattedAddress);
   return area ? `${typeLabel} · ${area}` : typeLabel;
 }
 

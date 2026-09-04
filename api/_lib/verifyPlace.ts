@@ -1,3 +1,4 @@
+import { neighbourhoodOf } from './placeAddress.js';
 const GENERIC_WORDS = new Set([
   'restaurant', 'restaurants', 'restorant', 'resto', 'bar', 'cafe',
   'taverna', 'tavern', 'bistro', 'grill', 'lounge', 'pub', 'hotel', 'house',
@@ -103,6 +104,8 @@ function toSuggestion(place) {
     // user may never see. The swap/suggestion UI handles a null photoUrl gracefully.
     photoUrl: null,
     location: locationOf(place),
+    types: place.types || [],
+    neighbourhood: neighbourhoodOf(place),
     ...hoursInfo(place)
   };
 }
@@ -204,7 +207,12 @@ async function _runSearch(name, textQuery) {
         // rating, userRatingCount and regularOpeningHours all removed — each one is an
         // Enterprise-tier field (~$0.025/request). This mask is now Pro-tier only.
         // hoursInfo() returns hasHours: false for all places as a result.
-        'X-Goog-FieldMask': 'places.id,places.displayName,places.formattedAddress,places.photos,places.location'
+        //
+        // types + addressComponents added for categoryTag composition (see
+        // composeCategoryTag in generate-resolved-itinerary.js). Both are Pro-tier,
+        // the same tier this mask already sits in, so they add no per-request cost -
+        // hotelSearch.js's mask already carries both for the same reason.
+        'X-Goog-FieldMask': 'places.id,places.displayName,places.formattedAddress,places.photos,places.location,places.types,places.addressComponents'
       },
       body: JSON.stringify({ textQuery })
     });
@@ -257,6 +265,8 @@ async function _runSearch(name, textQuery) {
     ratingCount: place.userRatingCount,
     photoUrl: photoUrlFor(place),
     location: locationOf(place),
+    types: place.types || [],
+    neighbourhood: neighbourhoodOf(place),
     ...hoursInfo(place)
   };
 }
@@ -315,8 +325,9 @@ export async function findNearbyCandidates(name, type, near, radiusMeters = 2000
         'Content-Type': 'application/json',
         'X-Goog-Api-Key': process.env.GOOGLE_PLACES_API_KEY ?? '',
         // rating, userRatingCount and regularOpeningHours removed — all Enterprise-tier.
-        // Pro-tier only now, same cost reason as runSearch.
-        'X-Goog-FieldMask': 'places.id,places.displayName,places.formattedAddress,places.photos,places.location'
+        // Pro-tier only now, same cost reason as runSearch. types +
+        // addressComponents are Pro-tier and feed composeCategoryTag.
+        'X-Goog-FieldMask': 'places.id,places.displayName,places.formattedAddress,places.photos,places.location,places.types,places.addressComponents'
       },
       body: JSON.stringify({
         textQuery,
