@@ -273,6 +273,12 @@ const MAX_DAY_SPREAD_KM = 30;
 // and is still wrong: 20 km walked to cover 7.7 km of city, with a 178-degree
 // turn in the middle. Only long legs count, since a couple of hundred metres in
 // the "wrong" direction between two neighbouring stops is meaningless.
+// A day may legitimately finish after midnight (the prompt allows 02:00 when
+// nightlife is among the interests), so any end time before 03:00 is read as a
+// late finish rather than an early one.
+const LATEST_WRAPPED_END_HOUR = 3;
+const EARLIEST_ACCEPTABLE_END_HOUR = 19;
+
 const LONG_LEG_KM = 3;
 const REVERSAL_DEGREES = 120;
 
@@ -352,10 +358,18 @@ function auditDemo(itinerary) {
       if (!meals.some((m) => m.mealType === 'dinner')) {
         problems.push(`${label}: no dinner`);
       }
+      // A day that finishes at 00:05 has run LATE, not early - with nightlife
+      // among the interests the prompt allows up to 02:00, so the clock wraps.
+      // Reading the bare hour called those days too early and rejected two
+      // perfectly good ones (Akber, 4 Sep 2026).
       const last = items[items.length - 1];
       const endsAt = last && typeof last.startTime === 'string' ? last.startTime : null;
-      if (endsAt && Number(endsAt.split(':')[0]) < 19) {
-        problems.push(`${label}: day ends at ${endsAt}, far too early`);
+      if (endsAt) {
+        const endHour = Number(endsAt.split(':')[0]);
+        const ranPastMidnight = endHour < LATEST_WRAPPED_END_HOUR;
+        if (!ranPastMidnight && endHour < EARLIEST_ACCEPTABLE_END_HOUR) {
+          problems.push(`${label}: day ends at ${endsAt}, far too early`);
+        }
       }
       const noPhoto = items.filter((i) => !i.photoUrl);
       if (noPhoto.length > 0) {
