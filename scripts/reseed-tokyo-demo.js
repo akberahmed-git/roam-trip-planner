@@ -4,6 +4,16 @@
 // Run against a deployment that already has the current pipeline on it:
 //   node scripts/reseed-tokyo-demo.js https://<your-preview>.vercel.app
 //
+// Preview deployments sit behind Vercel Authentication, so an unauthenticated
+// request gets a 401 with {"error":{"code":"401","message":"Protected
+// deployment"}} rather than an itinerary. Pass the project's automation bypass
+// secret (Vercel > Project > Settings > Deployment Protection > Protection
+// Bypass for Automation) and every request here carries it:
+//
+//   VERCEL_AUTOMATION_BYPASS_SECRET=... node scripts/reseed-tokyo-demo.js <url>
+//
+// Not needed when running against production, which is not protected.
+//
 // Talks to the deployed API over HTTP rather than importing the pipeline
 // directly. That is not a shortcut - it is the only thing that works. The
 // api/ modules are TypeScript that import each other with .js specifiers,
@@ -47,6 +57,18 @@ const FIXTURE_PATH = path.join(ROOT, 'src', 'data', 'savedTrips', 'tokyo.ts');
 const DEMO_TRIPS_PATH = path.join(ROOT, 'src', 'data', 'demoTrips.ts');
 
 const BASE_URL = (process.argv[2] || '').replace(/\/$/, '');
+const BYPASS_SECRET = process.env.VERCEL_AUTOMATION_BYPASS_SECRET || '';
+
+// x-vercel-set-bypass-cookie is left off deliberately: this is a one-shot
+// script, not a browser session, so there is no reason to have the deployment
+// hand back a cookie that would keep the bypass alive beyond this run.
+function requestHeaders(extra = {}) {
+  return BYPASS_SECRET
+    ? { ...extra, 'x-vercel-protection-bypass': BYPASS_SECRET }
+    : extra;
+}
+
+const HOTEL_NAME = 'Hotel Chinzanso Tokyo';
 
 // Must match DEMO_TRIPS[0] in src/data/demoTrips.js, otherwise the card's
 // subtitle would advertise a trip the fixture doesn't contain.
@@ -54,30 +76,75 @@ const TRIP = {
   destination: 'Tokyo',
   days: 2,
   budget: 'Standard',
-  accommodation: 'Hotel Chinzanso Tokyo',
-  accommodationDetails: {
-    name: 'Hotel Chinzanso Tokyo',
-    categoryTag: 'Hotel · Bunkyo City',
-    address: '2-chōme-10-8 Sekiguchi, Bunkyo City, Tokyo 112-8680, Japan',
-    rating: 4.4,
-    ratingCount: 10408,
-    photoUrl: null,
-    priceLevelLabel: null,
-    budget: 'Standard',
-    nights: 2,
-    priceRange: { min: 40000, max: 90000, currencyCode: 'JPY', estimated: true },
-    placeId: 'ChIJNxw8EQSNGGART8GbVls3c4A',
-    location: { lat: 35.7117779, lng: 139.7257143 },
-  },
+  accommodation: HOTEL_NAME,
   interests: ['Temples & Shrines', 'Anime & Pop Culture', 'Nightlife', 'Modern Architecture'],
   adults: 2,
   transport: 'Car or taxi',
+  // Dates only matter for the hotel lookup below; the itinerary itself is
+  // date-agnostic (the card's subtitle says "Feb 2026", written in demoTrips.js).
+  checkInDate: '2026-02-14',
+  checkOutDate: '2026-02-16',
 };
+
+
+// The accommodation is fetched rather than hardcoded, for the same reason the
+// itinerary is regenerated rather than hand-patched: a hardcoded photoUrl is a
+// Google photo reference, and those expire. Going through the real
+// accommodation endpoint gives a fresh reference that this script then bakes
+// into /public alongside the rest.
+//
+// A previous version of this script passed photoUrl: null here, which quietly
+// left all eight accommodation bookend stops (two a day, two variants) with no
+// image at all and left demoTrips.js pointing at the same dead reference the
+// whole re-seed exists to remove.
+async function fetchAccommodation() {
+  const response = await fetch(`${BASE_URL}/api/accommodation-options`, {
+    method: 'POST',
+    headers: requestHeaders({ 'Content-Type': 'application/json' }),
+    body: JSON.stringify({
+      destination: TRIP.destination,
+      checkInDate: TRIP.checkInDate,
+      checkOutDate: TRIP.checkOutDate,
+    }),
+  });
+
+  if (!response.ok) {
+    throw new Error(`Accommodation lookup failed (${response.status})`);
+  }
+
+  const { options, priceRangeByTier, destinationCurrency } = await response.json();
+  const tiered = options?.[TRIP.budget] || [];
+  const match =
+    tiered.find((option) => option.name === HOTEL_NAME) ||
+    Object.values(options || {})
+      .flat()
+      .find((option) => option.name === HOTEL_NAME) ||
+    tiered[0];
+
+  if (!match) {
+    throw new Error(`Could not find an accommodation option for ${TRIP.destination}`);
+  }
+
+  if (match.name !== HOTEL_NAME) {
+    console.warn(
+      `  ! ${HOTEL_NAME} was not in the results; using ${match.name} instead. ` +
+        'Update demoTrips.js accommodation/subtitle to match.'
+    );
+  }
+
+  return {
+    ...match,
+    budget: TRIP.budget,
+    nights: 2,
+    priceRange: priceRangeByTier?.[TRIP.budget] || null,
+    destinationCurrency,
+  };
+}
 
 // The deployment's own photo proxy already holds the API key, so this needs
 // no credentials locally - it just pulls the bytes the browser would.
 async function downloadPhoto(photoUrl, filename) {
-  const response = await fetch(BASE_URL + photoUrl);
+  const response = await fetch(BASE_URL + photoUrl, { headers: requestHeaders() });
   if (!response.ok) {
     console.warn(`  ! photo fetch failed (${response.status}) for ${filename}`);
     return null;
@@ -157,15 +224,28 @@ async function main() {
     );
   }
 
+  console.log('Looking up the accommodation ...');
+  const accommodationDetails = await fetchAccommodation();
+  console.log(`  ${accommodationDetails.name} - ${accommodationDetails.categoryTag}`);
+
   console.log(`Generating Tokyo demo via ${BASE_URL} ...`);
   const response = await fetch(`${BASE_URL}/api/generate-resolved-itinerary`, {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify(TRIP),
+    headers: requestHeaders({ 'Content-Type': 'application/json' }),
+    body: JSON.stringify({ ...TRIP, accommodationDetails }),
   });
 
   if (!response.ok) {
     const body = await response.text();
+    if (response.status === 401 && !BYPASS_SECRET) {
+      throw new Error(
+        'Generation failed (401): this deployment is behind Vercel Authentication.\n' +
+          'Get the secret from Vercel > Settings > Deployment Protection > Protection Bypass\n' +
+          'for Automation, then re-run as:\n' +
+          '  VERCEL_AUTOMATION_BYPASS_SECRET=... node scripts/reseed-tokyo-demo.js ' +
+          BASE_URL
+      );
+    }
     throw new Error(`Generation failed (${response.status}): ${body.slice(0, 400)}`);
   }
 
