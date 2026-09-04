@@ -73,7 +73,19 @@ export function TripProvider({ children }: { children: ReactNode }) {
 
       if (!response.ok) {
         const errorBody = await response.json().catch(() => ({}))
-        throw new Error(errorBody.error || `Request failed with status ${response.status}`)
+        const error = new Error(
+          errorBody.error || `Request failed with status ${response.status}`
+        ) as Error & { code?: string; scope?: string }
+        // The daily spend cap (api/_lib/rateLimit.js) is not a failure - the
+        // request was well-formed and the app is working, there just isn't
+        // budget left today. Tagged so Generating can show the example trip
+        // instead of the red "We hit a snag" error screen, which would read
+        // as broken to someone arriving from a link.
+        if (response.status === 429 && errorBody.code === 'RATE_LIMITED') {
+          error.code = 'RATE_LIMITED'
+          error.scope = errorBody.scope
+        }
+        throw error
       }
 
       const data = await response.json()

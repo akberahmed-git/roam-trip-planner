@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useTrip } from '../context/TripContext'
+import { DEMO_TRIPS } from '../data/demoTrips'
 import Header from '../components/Header'
 import Footer from '../components/Footer'
 import Checklist from '../components/Checklist'
@@ -32,9 +33,13 @@ const STEP_INTERVAL_MS = 3200
 
 export default function Generating() {
   const navigate = useNavigate()
-  const { tripParams, generateItinerary, status, errorMessage } = useTrip()
+  const { tripParams, generateItinerary, status, errorMessage, loadSavedItinerary } = useTrip()
   const hasStarted = useRef(false)
   const [activeStep, setActiveStep] = useState(0)
+  // Set when the daily spend cap turned the request away (see
+  // api/_lib/rateLimit.js). Kept separate from `status === 'error'` on
+  // purpose: nothing is broken, so this must not render as a failure.
+  const [limitedScope, setLimitedScope] = useState<string | null>(null)
 
   useEffect(() => {
     if (!tripParams) {
@@ -49,8 +54,12 @@ export default function Generating() {
 
     generateItinerary(tripParams)
       .then(() => navigate('/comparison'))
-      .catch(() => {
-        // Error state is surfaced below via `status`/`errorMessage`.
+      .catch((err) => {
+        // Everything except the daily cap is surfaced below via
+        // `status`/`errorMessage`.
+        if (err?.code === 'RATE_LIMITED') {
+          setLimitedScope(err.scope || 'ip')
+        }
       })
   }, [tripParams, generateItinerary, navigate])
 
@@ -64,6 +73,20 @@ export default function Generating() {
     return () => clearInterval(interval)
   }, [])
 
+  // Opens the bundled, pre-captured Tokyo itinerary. Deliberately an explicit
+  // choice rather than a silent swap: someone who asked for Lisbon and was
+  // shown Tokyo without being told would reasonably think the app was broken,
+  // or worse, not notice.
+  function handleSeeExample() {
+    const demo = DEMO_TRIPS[0]
+    if (!demo?.savedItinerary) {
+      navigate('/')
+      return
+    }
+    loadSavedItinerary(demo.savedItinerary)
+    navigate('/comparison')
+  }
+
   function handleRetry() {
     hasStarted.current = false
     setActiveStep(0)
@@ -71,6 +94,43 @@ export default function Generating() {
     generateItinerary(tripParams)
       .then(() => navigate('/comparison'))
       .catch(() => {})
+  }
+
+  // Checked before the error branch: a capped request also leaves status as
+  // 'error', and this is the more specific, more accurate thing to say.
+  if (limitedScope) {
+    return (
+      <div>
+        <Header />
+        <div className="screen">
+          <div className="container stack">
+            <h1>Roam is at today's limit</h1>
+            <p>
+              {limitedScope === 'global'
+                ? "Roam plans a fixed number of trips a day so it stays free to use, and today's are gone. Planning opens again tomorrow."
+                : "You've planned as many trips as Roam allows in one day. Your limit resets tomorrow."}
+            </p>
+            <p>
+              In the meantime you can look through a complete example trip, built by
+              the same pipeline and checked against real places.
+            </p>
+            <div className="stack" style={{ flexDirection: 'row', gap: 'var(--spacing-3)' }}>
+              <button type="button" className="button-primary" onClick={handleSeeExample}>
+                See an example trip
+              </button>
+              <button
+                type="button"
+                className="button-secondary"
+                onClick={() => navigate('/')}
+              >
+                Back to home
+              </button>
+            </div>
+          </div>
+        </div>
+        <Footer />
+      </div>
+    )
   }
 
   if (status === 'error') {

@@ -1,8 +1,17 @@
 import { searchAccommodations } from './_lib/hotelSearch.js';
+import { checkRateLimit, rateLimitResponse } from './_lib/rateLimit.js';
 
 export default async function handler(req, res) {
   if (req.method !== 'POST') {
     return res.status(405).json({ error: 'Method not allowed' });
+  }
+
+  // Cheaper per call than a full generation but far from free (a hotel search
+  // fans out across tiers), and it runs before every generation, so it carries
+  // its own looser ceiling rather than sharing the trip budget.
+  const limit = await checkRateLimit('hotel', req);
+  if (!limit.allowed) {
+    return rateLimitResponse(res, limit);
   }
 
   const destination = req.body.destination;

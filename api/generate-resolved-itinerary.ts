@@ -8,6 +8,7 @@ import {
 } from './_lib/verifyPlace.js';
 import { computeTravelTimes, travelBetween } from './_lib/travelTime.js';
 import { refreshDescriptions } from './_lib/refreshDescriptions.js';
+import { checkRateLimit, rateLimitResponse } from './_lib/rateLimit.js';
 import {
   parseTravelMinutes,
   addMinutesToTime,
@@ -447,6 +448,47 @@ function applyResolution(item, result, usedPlaceIds, anchor) {
   item.location = item.location || null;
 }
 
+// The non-meal counterpart to resolveMealPlaceholders above.
+//
+// Meals get substituted rather than dropped because one restaurant near where
+// you already are genuinely serves the same purpose as another. An activity
+// does not: swapping a museum for whatever attraction happens to be nearby
+// changes what the day is about, and findNearbyCandidates returns no editorial
+// text (see its Pro-tier field mask), so an adopted place would inherit the
+// description Claude wrote about the place it replaced. That is precisely the
+// failure this is meant to remove, so an activity that never resolved is
+// dropped instead.
+//
+// Why this exists: MapView only pins items with a real location ("never guess
+// a location"), so an unresolved stop was already invisible on the map - but it
+// still rendered as a full itinerary card with a time, a duration and a travel
+// leg, indistinguishable from a verified one. A Valencia day 2 shipped four of
+// these (a promenade, a marina, a museum that does not exist under that name,
+// and a beach club that is in Malaga), all reading as real plans.
+//
+// Dropping runs before travel times are computed, so the remaining stops route
+// against each other directly rather than through a hole. The day is left
+// shorter, which the existing stretchPreDinnerGap / realignScheduleTimes /
+// snapArrivalsToGrid passes already absorb - a shorter day of real places is
+// the honest outcome, and better than a full day that includes invented ones.
+//
+// Accommodation bookends are exempt: their location comes from the hotel the
+// traveller picked on the Accommodation screen, not from verification, and
+// applyAccommodationBookends already handles a missing one.
+function dropUnresolvedActivities(day) {
+  const dropped: string[] = [];
+
+  day.items = day.items.filter((item) => {
+    if (item.type === 'accommodation') return true;
+    if (item.mealType) return true;
+    if (item.location) return true;
+    dropped.push(item.name);
+    return false;
+  });
+
+  return dropped;
+}
+
 // stretchPreDinnerGap (afternoon gap-fill that keeps dinner parked in its
 // window while leaving no dead time) now lives in _lib/scheduleRealign.js so
 // the swap/reorder recompute path fills the pre-dinner gap identically.
@@ -641,6 +683,19 @@ async function resolveItinerary(itinerary, destination, anchor, transport, accom
     await resolveMealPlaceholders(day, anchor, usedPlaceIds);
   }
 
+  // Then remove any non-meal stop that never resolved to a real place, so an
+  // unverified stop can't ship looking exactly like a verified one. Runs after
+  // the meal pass (which gives meals their own second chance) and before travel
+  // times, so nothing routes through a stop that isn't there.
+  itinerary.days.forEach((day) => {
+    const dropped = dropUnresolvedActivities(day);
+    if (dropped.length > 0) {
+      console.warn(
+        `[generate-resolved-itinerary] day ${day.day}: dropped ${dropped.length} unresolved stop(s): ${dropped.join(', ')}`
+      );
+    }
+  });
+
   await Promise.all(
     itinerary.days.map((day) => computeTravelTimes(day.items, transport))
   );
@@ -680,6 +735,16 @@ async function resolveItinerary(itinerary, destination, anchor, transport, accom
 export default async function handler(req, res) {
   if (req.method !== 'POST') {
     return res.status(405).json({ error: 'Method not allowed' });
+  }
+
+  // Before anything billable. This is the single most expensive endpoint in
+  // the app (one Claude draft + a Places lookup per stop + a Routes call per
+  // leg, per variant), so the guard has to sit ahead of generateRawItinerary,
+  // not inside resolveItinerary. See _lib/rateLimit.js for the ceilings and
+  // why this fails open.
+  const limit = await checkRateLimit('trip', req);
+  if (!limit.allowed) {
+    return rateLimitResponse(res, limit);
   }
 
   const destination = req.body.destination;

@@ -91,3 +91,26 @@ export async function cached(namespace, key, fetcher, opts: { ttl?: number; shou
   }
   return result;
 }
+
+// Atomic daily counter used by rateLimit.js. INCR returns the new value, so
+// the first caller of a given key sees 1 and is the one that attaches the TTL
+// - every later caller in the same window skips the extra round trip. Keys are
+// date-suffixed by the caller, so even if that EXPIRE is lost to a race the
+// key simply stops being read at midnight rather than counting forever.
+//
+// Returns null when KV is disabled (local dev without Upstash credentials) or
+// when the command fails, which callers must treat as "no limit data" and let
+// the request through - a counter outage should never take the product down.
+export async function kvIncrementWithTtl(key, ttlSeconds) {
+  if (!KV_ENABLED) return null;
+  try {
+    const data = await kvCommand(['INCR', key]);
+    const count = data && data.result != null ? Number(data.result) : null;
+    if (count === 1) {
+      await kvCommand(['EXPIRE', key, ttlSeconds]);
+    }
+    return Number.isFinite(count) ? count : null;
+  } catch {
+    return null;
+  }
+}
