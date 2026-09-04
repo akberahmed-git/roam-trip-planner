@@ -367,8 +367,16 @@ function auditDemo(itinerary) {
       if (endsAt) {
         const endHour = Number(endsAt.split(':')[0]);
         const ranPastMidnight = endHour < LATEST_WRAPPED_END_HOUR;
+        const isFinalDay = day.day === TRIP.days;
         if (!ranPastMidnight && endHour < EARLIEST_ACCEPTABLE_END_HOUR) {
           problems.push(`${label}: day ends at ${endsAt}, far too early`);
+        }
+        // The last night ends at a normal hour whatever the interests say -
+        // the traveller checks out and travels the next morning.
+        if (isFinalDay && ranPastMidnight) {
+          problems.push(
+            `${label}: last day runs to ${endsAt}, but the final night should end at the standard time`
+          );
         }
       }
       const noPhoto = items.filter((i) => !i.photoUrl);
@@ -437,11 +445,16 @@ function auditDemo(itinerary) {
   // Interest coverage, checked with the words a person would actually look for
   // rather than the chip's exact label, since no place is literally called
   // "Temples & Shrines".
+  // Keyword matching is a blunt instrument and it has already been wrong once:
+  // a trip containing the Ghibli Museum was rejected for having no anime in it,
+  // because "Ghibli" was not on the list (Akber, 4 Sep 2026). Err towards
+  // accepting - a false rejection costs a whole real generation, while a false
+  // acceptance costs a look at the output, which happens anyway.
   const INTEREST_EVIDENCE = {
-    'temples & shrines': ['temple', 'shrine', 'jinja', 'ji ', '-ji', 'taisha'],
-    'anime & pop culture': ['anime', 'manga', 'akihabara', 'game', 'pop culture', 'figure'],
-    nightlife: ['bar', 'club', 'nightlife', 'izakaya', 'golden-gai', 'live music'],
-    'modern architecture': ['architecture', 'tower', 'skytree', 'observation', 'museum', 'gallery', 'hills', 'midtown'],
+    'temples & shrines': ['temple', 'shrine', 'jinja', 'taisha', 'sensō', 'senso-ji', 'zōjō', 'zojo', 'meiji', 'buddhist', 'shinto', 'pagoda'],
+    'anime & pop culture': ['anime', 'manga', 'ghibli', 'akihabara', 'nakano', 'pokemon', 'nintendo', 'gundam', 'otaku', 'cosplay', 'arcade', 'game', 'figure', 'character', 'pop culture', 'kawaii', 'harajuku', 'takeshita'],
+    nightlife: ['bar', 'club', 'nightlife', 'izakaya', 'golden', 'yokocho', 'live music', 'jazz', 'lounge', 'rooftop', 'kabukich'],
+    'modern architecture': ['architecture', 'tower', 'skytree', 'observation', 'observatory', 'museum', 'gallery', 'hills', 'midtown', 'forum', 'teamlab', 'skyscraper', 'building', 'deck'],
   };
   const haystack = seenInterestText.join(' | ');
   for (const interest of wantedInterests) {

@@ -23,10 +23,17 @@ function buildTripPreamble(params) {
   const interests = Array.isArray(params.interests) ? params.interests : [];
   const adults = typeof params.adults === 'number' ? params.adults : 1;
 
+  // Nightlife earns a 02:00 finish, but not on the way out. Whatever day the
+  // traveller flies home, they are packing and checking out the next morning,
+  // so the final night ends at the normal time (Akber, 4 Sep 2026). A one-day
+  // trip is the exception: its only night is also its last, and cutting that
+  // short would mean the interest never happens at all.
   const hasNightlife = interests.some(function(i) { return i.toLowerCase().includes('nightlife'); });
-  const endTimeLine = hasNightlife
-    ? '- End time: nightlife is a priority. Post-dinner activities (bars, clubs, live music) are expected. The last item of every day must end by 02:00. The traveller is back at the hotel by 02:00.'
-    : '- End time: the last item of every day must end by 22:30. The traveller must be back at the hotel by 22:30.';
+  const endTimeLine = !hasNightlife
+    ? '- End time: the last item of every day must end by 22:30. The traveller must be back at the hotel by 22:30.'
+    : days <= 1
+      ? '- End time: nightlife is a priority. Post-dinner activities (bars, clubs, live music) are expected. The last item of the day must end by 02:00. The traveller is back at the hotel by 02:00.'
+      : `- End time (strictly enforced, and it CHANGES on the last day): nightlife is a priority, so post-dinner activities (bars, clubs, live music) are expected on days 1 to ${days - 1}, and those days may run until 02:00. Day ${days} is the LAST day and must end by 22:30 instead, with no late-night venue after dinner, because the traveller checks out and travels the next morning. Do not schedule a bar or club as the final stop of day ${days}.`;
 
   const groupLine = adults > 1
     ? `- Group size: ${adults} people — prefer venues with group-friendly seating, activities that are more enjoyable with multiple people, and restaurants that handle walk-in groups of ${adults} without a long wait.`

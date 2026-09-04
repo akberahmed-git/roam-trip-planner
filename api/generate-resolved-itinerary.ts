@@ -845,6 +845,103 @@ async function backfillOrDropActivities(day, anchor, usedPlaceIds, interests) {
 // on grounded data, not a guess. Only one retry per offending pair - if a
 // closer alternative can't be found, the original stands rather than
 // risking a worse substitute or an infinite loop.
+// A day may not sprawl across the whole metro area. The model reasons about
+// places by name, not position, so it will cheerfully put the Ghibli Museum in
+// Mitaka and the Metropolitan Art Museum in Ueno on the same day: 20.5 km out,
+// 18.4 km back, a 177-degree turn, every individual leg still under the
+// 60-minute cap (Akber, 4 Sep 2026). No wording of the prompt fixed it, because
+// the model does not know where these places are relative to each other. We do,
+// once verification has attached real coordinates, so enforce it here.
+//
+// Measured from the day's MEDOID - the stop with the smallest total distance to
+// the others - rather than the mean. One far-flung outlier drags a mean towards
+// itself and can end up looking reasonable while pulling the whole day out of
+// shape; a medoid stays put.
+//
+// The accommodation is excluded from both the centre and the check: a hotel is
+// wherever it is, and the traveller has to start and end there regardless.
+const MAX_DAY_RADIUS_KM = 8;
+
+function medoidOf(points) {
+  let best = null;
+  let bestTotal = Infinity;
+  for (const candidate of points) {
+    let total = 0;
+    for (const other of points) total += haversineMeters(candidate, other);
+    if (total < bestTotal) {
+      bestTotal = total;
+      best = candidate;
+    }
+  }
+  return best;
+}
+
+async function enforceDayRadius(day, anchor, usedPlaceIds, interests) {
+  const movable = day.items.filter((i) => i.type !== 'accommodation' && i.location);
+  if (movable.length < 3) return [];
+
+  const centre = medoidOf(movable.map((i) => i.location));
+  if (!centre) return [];
+
+  const swapped: string[] = [];
+
+  for (const item of movable) {
+    const km = haversineMeters(item.location, centre) / 1000;
+    if (km <= MAX_DAY_RADIUS_KM) continue;
+
+    const queries = item.mealType
+      ? [MEAL_SEARCH_QUERY[item.mealType] || 'restaurant']
+      : (() => {
+          const list: string[] = [];
+          const own = typeof item.categoryTag === 'string' ? item.categoryTag.split('·')[0].trim() : '';
+          if (own) list.push(own.toLowerCase());
+          for (const interest of Array.isArray(interests) ? interests : []) {
+            const q = interestQuery(interest);
+            if (q && !list.includes(q)) list.push(q);
+          }
+          list.push('tourist attraction');
+          return list;
+        })();
+
+    let pick: any = null;
+    for (const query of queries) {
+      if (pick) break;
+      const candidates = await findNearbyCandidates(query, null, centre).catch(() => []);
+      pick = candidates.find((candidate) => {
+        if (!candidate.location || !candidate.placeId) return false;
+        if (!candidate.availablePhotoUrl) return false;
+        if (usedPlaceIds.has(candidate.placeId)) return false;
+        if (haversineMeters(candidate.location, centre) / 1000 > MAX_DAY_RADIUS_KM) return false;
+        const isFood = (candidate.types || []).some((t) => FOOD_PLACE_TYPES.has(t));
+        if (item.mealType ? !isFood : isFood) return false;
+        if (anchor && haversineMeters(anchor, candidate.location) > MAX_BROAD_DISTANCE_METERS) return false;
+        return true;
+      }) || null;
+    }
+
+    // No closer alternative: the original stands. A day slightly out of shape
+    // beats a day with a hole in it.
+    if (!pick) continue;
+
+    swapped.push(`${item.name} (${km.toFixed(1)} km out) -> ${pick.name}`);
+    item.name = pick.name;
+    item.address = pick.address;
+    item.location = pick.location;
+    item.rating = null;
+    item.ratingCount = null;
+    item.photoUrl = pick.availablePhotoUrl || null;
+    item.hasHours = pick.hasHours || false;
+    item.weekdayDescriptions = pick.weekdayDescriptions || null;
+    item.description = item.mealType
+      ? describeAdoptedMeal(pick, item.mealType)
+      : describeAdoptedActivity(pick);
+    item.categoryTag = composeCategoryTag(item, pick) || item.categoryTag;
+    usedPlaceIds.add(pick.placeId);
+  }
+
+  return swapped;
+}
+
 async function enforceDriveCap(day, transport, usedPlaceIds) {
   for (let i = 0; i < day.items.length - 1; i++) {
     const current = day.items[i];
@@ -1043,6 +1140,13 @@ async function resolveItinerary(itinerary, destination, anchor, transport, accom
     if (dropped.length > 0) {
       console.warn(
         `[generate-resolved-itinerary] day ${day.day}: dropped ${dropped.length} unresolved stop(s) with no replacement: ${dropped.join(', ')}`
+      );
+    }
+
+    const pulled = await enforceDayRadius(day, anchor, usedPlaceIds, interests);
+    if (pulled.length > 0) {
+      console.info(
+        `[generate-resolved-itinerary] day ${day.day}: pulled ${pulled.length} outlying stop(s) back into the day: ${pulled.join('; ')}`
       );
     }
   }
