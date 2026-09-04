@@ -238,12 +238,7 @@ async function resolveMealPlaceholders(day, anchor, usedPlaceIds) {
           !usedPlaceIds.has(c.placeId) &&
           (!anchor || haversineMeters(anchor, c.location) <= MAX_BROAD_DISTANCE_METERS)
       );
-      // Prefer a candidate that actually has a photo. Google already told us
-      // which ones do (findNearbyCandidates asks for places.photos), and that
-      // was being thrown away - so an adopted meal arrived real but imageless
-      // and fell back to a placeholder next to stops that all had photos.
-      // Ranking is otherwise unchanged, so this only breaks ties.
-      return usable.find((c) => c.availablePhotoUrl) || usable[0] || null;
+      return preferWithPhoto(usable);
     };
 
     // Prefer a place near the adjacent stop; fall back to the destination centre
@@ -381,26 +376,38 @@ function hasUsableRating(candidate) {
 // closes the gap where a substitute picked from suggestions skipped that
 // check entirely, which is how a real "Pearl Farm" match on the other side
 // of the country slipped through undetected.
+// Among candidates that already passed every correctness check, prefer one that
+// has a photo.
+//
+// findNearbyCandidates and runSearch both return their results already sorted
+// by qualityScore, so this only reorders within a set that is entirely
+// acceptable - it never lets a photo outrank the distance, rating or
+// duplicate checks, which run first. The effect is that a stop adopted as a
+// substitute arrives looking like every other stop instead of falling through
+// to the grey placeholder, which is the whole reason a real place was
+// substituted in the first place.
+//
+// Deliberately a preference, not a requirement: a genuinely better place with
+// no photo still gets used when nothing else qualifies.
+function preferWithPhoto(candidates) {
+  return candidates.find((candidate) => candidate.availablePhotoUrl) || candidates[0] || null;
+}
+
 function pickSubstitute(suggestions, usedPlaceIds, anchor) {
   if (!suggestions) {
     return null;
   }
-  for (const candidate of suggestions) {
-    if (!hasUsableRating(candidate)) {
-      continue;
-    }
-    if (usedPlaceIds.has(candidate.placeId)) {
-      continue;
-    }
+
+  const acceptable = suggestions.filter((candidate) => {
+    if (!hasUsableRating(candidate)) return false;
+    if (usedPlaceIds.has(candidate.placeId)) return false;
     if (anchor && candidate.location) {
-      const distance = haversineMeters(anchor, candidate.location);
-      if (distance > MAX_BROAD_DISTANCE_METERS) {
-        continue;
-      }
+      if (haversineMeters(anchor, candidate.location) > MAX_BROAD_DISTANCE_METERS) return false;
     }
-    return candidate;
-  }
-  return null;
+    return true;
+  });
+
+  return preferWithPhoto(acceptable);
 }
 
 // categoryTag is the small grey line under a stop's name ("Museum · Indoor").
@@ -654,8 +661,10 @@ async function enforceDriveCap(day, transport, usedPlaceIds) {
 
     // First try: find something close with the same name/type.
     let nearby = await findNearbyCandidates(next.name, next.type, current.location).catch(() => []);
-    let replacement = nearby.find(
-      (candidate) => hasUsableRating(candidate) && !usedPlaceIds.has(candidate.placeId)
+    let replacement = preferWithPhoto(
+      nearby.filter(
+        (candidate) => hasUsableRating(candidate) && !usedPlaceIds.has(candidate.placeId)
+      )
     );
 
     // Fallback: if the specific search found nothing, search by category alone
@@ -664,8 +673,10 @@ async function enforceDriveCap(day, transport, usedPlaceIds) {
     // same-named alternative exists nearby.
     if (!replacement && next.type) {
       const fallbackNearby = await findNearbyCandidates(next.type, next.type, current.location).catch(() => []);
-      replacement = fallbackNearby.find(
-        (candidate) => hasUsableRating(candidate) && !usedPlaceIds.has(candidate.placeId)
+      replacement = preferWithPhoto(
+        fallbackNearby.filter(
+          (candidate) => hasUsableRating(candidate) && !usedPlaceIds.has(candidate.placeId)
+        )
       );
     }
 
