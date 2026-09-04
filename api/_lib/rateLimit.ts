@@ -29,11 +29,24 @@ const DAY_SECONDS = 60 * 60 * 24;
 // cheaper per call but far from free, and it runs before every generation, so
 // it gets its own looser ceiling.
 //
-// perIp is deliberately generous enough to plan a real trip and change your
-// mind twice, and tight enough that a single visitor can't drain the day.
+// perIp is disabled (null). It was tuned for a stranger and kept catching the
+// person who owns the project: an honest user planning a trip, disliking the
+// pacing and changing the dates is three generations without doing anything
+// unusual, and a household, office or phone on CGNAT all present as a single
+// address, so a per-address ceiling punishes several people for one person's
+// use. It blocked real work here more often than it prevented anything.
+//
+// The global cap is the control that actually matters. It bounds the day's
+// spend no matter who shows up, which is the failure mode worth preventing:
+// credits running dry mid-week and the public link going dead. What is given up
+// by dropping perIp is that one determined visitor could consume the global
+// allowance alone. For a portfolio demo that is an acceptable trade - the bill
+// is still capped, only the day's availability is at risk.
+//
+// Set perIp to a number to turn it back on.
 export const LIMITS = {
-  trip: { perIp: 3, global: 150 },
-  hotel: { perIp: 10, global: 500 },
+  trip: { perIp: null, global: 150 },
+  hotel: { perIp: null, global: 500 },
 };
 
 // Vercel puts the real client address at the front of x-forwarded-for; the
@@ -83,21 +96,28 @@ export async function checkRateLimit(bucket, req) {
   }
 
   const stamp = todayStamp();
-  const ip = clientIp(req);
+
+  // The per-address counter is only incremented when it is actually enforced -
+  // counting something nothing reads would be a KV write per request for no
+  // reason.
+  const perIpEnabled = typeof limits.perIp === 'number';
+  const ip = perIpEnabled ? clientIp(req) : null;
 
   const [ipCount, globalCount] = await Promise.all([
-    kvIncrementWithTtl(`ratelimit:${bucket}:ip:${ip}:${stamp}`, DAY_SECONDS),
+    perIpEnabled
+      ? kvIncrementWithTtl(`ratelimit:${bucket}:ip:${ip}:${stamp}`, DAY_SECONDS)
+      : Promise.resolve(null),
     kvIncrementWithTtl(`ratelimit:${bucket}:global:${stamp}`, DAY_SECONDS),
   ]);
 
   if (globalCount !== null && globalCount > limits.global) {
     return { allowed: false, scope: 'global', count: globalCount, limit: limits.global };
   }
-  if (ipCount !== null && ipCount > limits.perIp) {
+  if (perIpEnabled && ipCount !== null && ipCount > limits.perIp) {
     return { allowed: false, scope: 'ip', count: ipCount, limit: limits.perIp };
   }
 
-  return { allowed: true, scope: null, count: ipCount, limit: limits.perIp };
+  return { allowed: true, scope: null, count: globalCount, limit: limits.global };
 }
 
 // One place to build the 429 body so both endpoints answer identically and the
