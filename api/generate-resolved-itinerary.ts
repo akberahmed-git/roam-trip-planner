@@ -214,6 +214,78 @@ const MEAL_SEARCH_QUERY = {
 // placeholder. If nothing suitable turns up (genuinely no nearby restaurant, or
 // the search fails), the honest "find a restaurant" text is left in place rather
 // than adopting a wrong or far-flung place.
+// A one-line description for a meal stop adopted from a nearby search, composed
+// from Google's own place types rather than written by the model.
+//
+// The previous line was `${label} at ${pick.name}.` - the stop's own name read
+// back at you, marketing suffix and all ("Breakfast at The Morning Folks
+// Oshiage | Coffee & American Breakfast."). Beside cards with real descriptions
+// it looked like something had failed.
+//
+// It says what kind of place it is, not what is good there. Google's types are
+// specific enough to be worth reading (ramen_restaurant, bakery, coffee_shop,
+// meze_restaurant), and every word of it is verified. Describing the food
+// itself would mean asking the model to infer from a name, which is exactly the
+// class of unverified claim sanitizeDescriptions exists to strip.
+//
+// Falls back to the meal label when Google offers nothing but the generic types
+// every business carries.
+const FOOD_TYPE_LABELS = {
+  coffee_shop: 'Coffee shop',
+  cafe: 'Café',
+  bakery: 'Bakery',
+  breakfast_restaurant: 'Breakfast spot',
+  brunch_restaurant: 'Brunch spot',
+  fast_food_restaurant: 'Fast food counter',
+  meal_takeaway: 'Takeaway counter',
+  ice_cream_shop: 'Ice cream shop',
+  dessert_shop: 'Dessert shop',
+  bar: 'Bar',
+  pub: 'Pub',
+  wine_bar: 'Wine bar',
+  steak_house: 'Steakhouse',
+  sushi_restaurant: 'Sushi restaurant',
+  ramen_restaurant: 'Ramen restaurant',
+  pizza_restaurant: 'Pizzeria',
+  seafood_restaurant: 'Seafood restaurant',
+  vegetarian_restaurant: 'Vegetarian restaurant',
+  vegan_restaurant: 'Vegan restaurant',
+  barbecue_restaurant: 'Barbecue restaurant',
+  sandwich_shop: 'Sandwich shop',
+  restaurant: 'Restaurant',
+};
+
+// Cuisine types follow a "<x>_restaurant" pattern that needs no lookup table -
+// turkish_restaurant reads as "Turkish restaurant" on its own.
+function foodLabelFor(type) {
+  if (FOOD_TYPE_LABELS[type]) return FOOD_TYPE_LABELS[type];
+  if (!type.endsWith('_restaurant')) return null;
+  const cuisine = type.slice(0, -'_restaurant'.length).split('_').join(' ');
+  if (!cuisine) return null;
+  return cuisine.charAt(0).toUpperCase() + cuisine.slice(1) + ' restaurant';
+}
+
+// Two labels at most, and never the bare "Restaurant" alongside something more
+// specific - "Ramen restaurant and restaurant" helps nobody.
+function describeAdoptedMeal(pick, mealType) {
+  const labels: string[] = [];
+  for (const type of pick.types || []) {
+    const label = foodLabelFor(type);
+    if (label && !labels.includes(label)) labels.push(label);
+    if (labels.length === 2) break;
+  }
+  const specific = labels.filter((l) => l !== 'Restaurant');
+  const chosen = (specific.length > 0 ? specific : labels).slice(0, 2);
+
+  const meal = mealType ? mealType.charAt(0).toUpperCase() + mealType.slice(1) : 'Meal';
+  if (chosen.length === 0) {
+    return pick.neighbourhood ? `${meal} in ${pick.neighbourhood}.` : `${meal} stop.`;
+  }
+
+  const what = chosen.length === 2 ? `${chosen[0]} and ${chosen[1].toLowerCase()}` : chosen[0];
+  return pick.neighbourhood ? `${what} in ${pick.neighbourhood}.` : `${what}.`;
+}
+
 async function resolveMealPlaceholders(day, anchor, usedPlaceIds) {
   for (let i = 0; i < day.items.length; i++) {
     const item = day.items[i];
@@ -261,8 +333,7 @@ async function resolveMealPlaceholders(day, anchor, usedPlaceIds) {
     item.hasHours = pick.hasHours || false;
     item.weekdayDescriptions = pick.weekdayDescriptions || null;
     item.categoryTag = composeCategoryTag(item, pick);
-    const label = item.mealType.charAt(0).toUpperCase() + item.mealType.slice(1);
-    item.description = `${label} at ${pick.name}.`;
+    item.description = describeAdoptedMeal(pick, item.mealType);
     usedPlaceIds.add(pick.placeId);
   }
 }

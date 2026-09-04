@@ -33,20 +33,24 @@ const DAY_SECONDS = 60 * 60 * 24;
 // person who owns the project: an honest user planning a trip, disliking the
 // pacing and changing the dates is three generations without doing anything
 // unusual, and a household, office or phone on CGNAT all present as a single
-// address, so a per-address ceiling punishes several people for one person's
-// use. It blocked real work here more often than it prevented anything.
+// address. Set it to a number to turn it back on.
 //
-// The global cap is the control that actually matters. It bounds the day's
-// spend no matter who shows up, which is the failure mode worth preventing:
-// credits running dry mid-week and the public link going dead. What is given up
-// by dropping perIp is that one determined visitor could consume the global
-// allowance alone. For a portfolio demo that is an acceptable trade - the bill
-// is still capped, only the day's availability is at risk.
+// The global cap is sized against Google, not Anthropic, because Google is the
+// binding constraint and the one with no hard stop. A fresh generation costs
+// roughly EUR 1.43 in Places and Routes (about EUR 0.50 when the destination's
+// places are already cached, which a public link mostly will not be), against a
+// EUR 40/month Google budget that only sends alerts - it does not halt billing.
+// Anthropic is gentler: prepaid, auto-reload off, so it simply stops.
 //
-// Set perIp to a number to turn it back on.
+// 20/day is therefore about EUR 29/day worst case, and makes the Anthropic
+// balance last roughly a fortnight. The earlier 150 would have spent the whole
+// month's Google budget before lunch on day one.
+//
+// Turning someone away is cheap here: the 429 renders as an example trip, not
+// an error, so a visitor past the cap still sees the product working.
 export const LIMITS = {
-  trip: { perIp: null, global: 150 },
-  hotel: { perIp: null, global: 500 },
+  trip: { perIp: null, global: 20 },
+  hotel: { perIp: null, global: 200 },
 };
 
 // Vercel puts the real client address at the front of x-forwarded-for; the
