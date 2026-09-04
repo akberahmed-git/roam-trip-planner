@@ -967,7 +967,12 @@ async function backfillOrDropActivities(day, anchor, usedPlaceIds, interests) {
 // travels the next morning. Only a post-dinner stop is eligible, and only while
 // the day keeps enough content without it.
 const FINAL_NIGHT_CUTOFF_MINUTES = 21 * 60;
-const MIN_ACTIVITIES_AFTER_TRIM = 3;
+// 2, not 3. At 3 this deadlocked against the audit's own 3-activity minimum:
+// a last day with exactly three activities and a late bar could not be trimmed
+// (the floor blocked it) and could not pass (the late finish failed), so no
+// number of re-runs would ever succeed. A departure day is legitimately lighter
+// than the rest of the trip (Akber, 4 Sep 2026).
+const MIN_ACTIVITIES_AFTER_TRIM = 2;
 
 function trimFinalNight(day) {
   const activities = day.items.filter((i) => i.type !== 'accommodation' && !i.mealType);

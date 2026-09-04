@@ -269,7 +269,11 @@ export const TOKYO_ACCOMMODATION = ${JSON.stringify(accommodation, null, 2)}
 // stops with longer stays, so holding both to the same minimum punishes the slow
 // variant for doing its job. It still has to move - a day inside 1.2 km is one
 // street, not a neighbourhood - just not as far.
+// The last day is a departure day: the traveller checks out and travels, and
+// the pipeline trims its late stops for exactly that reason. Holding it to the
+// same count as a full day deadlocked against that trim.
 const MIN_ACTIVITIES_PER_DAY = 3;
+const MIN_ACTIVITIES_FINAL_DAY = 2;
 // Raised: the goal is a day that crosses the city, not one that huddles.
 const MIN_DAY_SPREAD_KM = { packed: 4, slow: 2 };
 const MAX_DAY_SPREAD_KM = 30;
@@ -285,6 +289,7 @@ const MAX_DAY_SPREAD_KM = 30;
 const LATEST_WRAPPED_END_HOUR = 3;
 const EARLIEST_ACCEPTABLE_END_HOUR = 19;
 
+const MAX_KM_FROM_HOTEL = 15;
 const LONG_LEG_KM = 4;
 const REVERSAL_DEGREES = 140;
 
@@ -362,9 +367,10 @@ function auditDemo(itinerary) {
       // Packed asks for 4-5 activities, Slow for 3-4. Three is the floor for
       // either: below that a day is three meals with something wedged between
       // them, which is what the Slow variant was shipping.
-      if (activities.length < MIN_ACTIVITIES_PER_DAY) {
+      const minActivities = day.day === TRIP.days ? MIN_ACTIVITIES_FINAL_DAY : MIN_ACTIVITIES_PER_DAY;
+      if (activities.length < minActivities) {
         problems.push(
-          `${label}: only ${activities.length} activity stop(s), under the ${MIN_ACTIVITIES_PER_DAY} minimum - ` +
+          `${label}: only ${activities.length} activity stop(s), under the ${minActivities} minimum - ` +
             `a day of meals is not an itinerary`
         );
       }
@@ -437,6 +443,21 @@ function auditDemo(itinerary) {
       }
       if (spreadKm > MAX_DAY_SPREAD_KM) {
         problems.push(`${label}: stops are ${spreadKm.toFixed(1)} km apart, that is a day of commuting`);
+      }
+
+      // A stop far from the hotel ruins a day by selection, not by sequence:
+      // every day starts and ends at the accommodation, so a stop 22km out
+      // forces the journey twice and no reordering can help. Measured from the
+      // hotel, which never moves, rather than from the day's own centre.
+      const hotel = (items.find((i) => i.type === 'accommodation') || {}).location;
+      if (hotel) {
+        for (const item of items) {
+          if (item.type === 'accommodation' || !item.location) continue;
+          const out = haversineKm(hotel, item.location);
+          if (out > MAX_KM_FROM_HOTEL) {
+            problems.push(`${label}: ${item.name} is ${out.toFixed(1)} km from the hotel, too far out to belong in a day`);
+          }
+        }
       }
 
       // Order, not just spread: the stops can cover the whole city and still be
