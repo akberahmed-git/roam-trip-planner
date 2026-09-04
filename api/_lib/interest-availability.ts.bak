@@ -1,0 +1,19 @@
+// Retired. Was /api/interest-availability, replaced by /api/interest-suggestions
+// (see _lib/interestSuggestions.ts). For a while it stayed on as a stub that
+// returned 410, because the environment it was deprecated in could not delete
+// files.
+//
+// Moved out of api/ on 4 Sep 2026 because a stub is not free: Vercel's Hobby
+// plan builds at most 12 Serverless Functions per deployment, one per file in
+// api/, and this was holding a slot. Adding api/capacity.ts made it 13 and the
+// deploy failed after a clean build, at "Deploying outputs" with no compiler
+// error, which is a confusing way to learn about a quota.
+//
+// Anything under api/_lib is library code, not a route, so nothing here is
+// built as a function. Kept as .bak rather than deleted only because file
+// deletion still isn't available here; git history is the real record.
+//
+// If you need a 13th route, merge two rather than adding one.
+export default async function handler(req, res) {
+  res.status(410).json({ error: 'This endpoint has been replaced by /api/interest-suggestions.' });
+}
