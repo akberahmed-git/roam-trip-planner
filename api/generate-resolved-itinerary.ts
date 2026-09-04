@@ -309,7 +309,8 @@ async function resolveMealPlaceholders(day, anchor, usedPlaceIds) {
           c.location &&
           !usedPlaceIds.has(c.placeId) &&
           hasReadableName(c.name) &&
-          (!anchor || haversineMeters(anchor, c.location) <= MAX_BROAD_DISTANCE_METERS)
+          (!anchor || haversineMeters(anchor, c.location) <= MAX_BROAD_DISTANCE_METERS) &&
+          withinReachOfStay(c.location)
       );
       return preferWithPhoto(usable);
     };
@@ -489,6 +490,7 @@ function pickSubstitute(suggestions, usedPlaceIds, anchor) {
     if (usedPlaceIds.has(candidate.placeId)) return false;
     if (anchor && candidate.location) {
       if (haversineMeters(anchor, candidate.location) > MAX_BROAD_DISTANCE_METERS) return false;
+      if (!withinReachOfStay(candidate.location)) return false;
     }
     return true;
   });
@@ -894,6 +896,7 @@ async function backfillOrDropActivities(day, anchor, usedPlaceIds, interests) {
           if ((candidate.types || []).some((t) => FOOD_PLACE_TYPES.has(t))) return false;
           if (!isSubstantialActivity(candidate)) return false;
           if (anchor && haversineMeters(anchor, candidate.location) > MAX_BROAD_DISTANCE_METERS) return false;
+          if (!withinReachOfStay(candidate.location)) return false;
           return true;
         }) || null;
       }
@@ -1035,6 +1038,21 @@ function trimFinalNight(day) {
 // here, so the existing backfill fills the slot from a place near an adjacent
 // stop that IS in reach, or drops it if nothing suitable exists. Nothing is
 // silently swapped for something worse (Akber, 4 Sep 2026).
+// Every substitution path filtered candidates against the destination CENTRE
+// with a 50km tolerance, while markUnusableStops rejects the model's own stops
+// beyond 15km of the ACCOMMODATION. So the pass that exists to repair an
+// out-of-reach stop could, and did, replace it with another one: "Landmark
+// Plaza is 33.1 km from the hotel" was a stop this pipeline chose, not one the
+// model did (Akber, 4 Sep 2026).
+//
+// A replacement must clear the same bar as an original. Set once per request.
+let stayLocation: any = null;
+
+function withinReachOfStay(location) {
+  if (!stayLocation || !location) return true;
+  return haversineMeters(location, stayLocation) / 1000 <= MAX_KM_FROM_ACCOMMODATION;
+}
+
 const MAX_KM_FROM_ACCOMMODATION = 15;
 
 function markUnusableStops(day, accommodationLocation) {
@@ -1240,7 +1258,10 @@ async function enforceDriveCap(day, transport, usedPlaceIds) {
     let nearby = await findNearbyCandidates(next.name, next.type, current.location).catch(() => []);
     let replacement = preferWithPhoto(
       nearby.filter(
-        (candidate) => isUsableCandidate(candidate) && !usedPlaceIds.has(candidate.placeId)
+        (candidate) =>
+          isUsableCandidate(candidate) &&
+          !usedPlaceIds.has(candidate.placeId) &&
+          withinReachOfStay(candidate.location)
       )
     );
 
@@ -1252,7 +1273,10 @@ async function enforceDriveCap(day, transport, usedPlaceIds) {
       const fallbackNearby = await findNearbyCandidates(next.type, next.type, current.location).catch(() => []);
       replacement = preferWithPhoto(
         fallbackNearby.filter(
-          (candidate) => isUsableCandidate(candidate) && !usedPlaceIds.has(candidate.placeId)
+          (candidate) =>
+          isUsableCandidate(candidate) &&
+          !usedPlaceIds.has(candidate.placeId) &&
+          withinReachOfStay(candidate.location)
         )
       );
     }
@@ -1286,6 +1310,7 @@ async function enforceDriveCap(day, transport, usedPlaceIds) {
 }
 
 async function resolveItinerary(itinerary, destination, anchor, transport, accommodationDetails, interests) {
+  stayLocation = accommodationDetails?.location || null;
   const usedPlaceIds = new Set();
 
   // Slow & Immersive (pacingLabel 'Relaxed', set by computePacing in
