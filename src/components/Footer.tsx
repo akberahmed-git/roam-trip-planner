@@ -1,9 +1,15 @@
+import { Link } from 'react-router-dom'
+
 // Shared page footer, added below every screen in the latest Figma pass
 // (source: file Z6y8zocU1df1OAwxwEJT6n, e.g. node 313:30350 on the
-// Accommodation frame). Matches Figma's structure exactly: three static link
-// columns, a divider, and a copyright line. The columns aren't wired to real
-// navigation yet - Figma renders them as plain text, not links, and several
-// (Help, About, Settings) have no corresponding screen built yet.
+// Accommodation frame). Matches Figma's structure exactly: three link columns,
+// a divider, and a copyright line.
+//
+// "Plan a trip" and "Map view" are now real links - both have screens, and
+// rendering them as plain <span> meant they looked exactly like links, invited
+// a click, and did nothing. Help, About and Settings stay as spans because
+// they still have no screen behind them: a dead <Link> would be worse than
+// text that was never clickable.
 export default function Footer() {
   return (
     <footer className="app-footer">
@@ -16,8 +22,8 @@ export default function Footer() {
           <div className="app-footer__columns">
             <div className="app-footer__column">
               <span className="app-footer__heading">Explore</span>
-              <span className="app-footer__link">Plan a trip</span>
-              <span className="app-footer__link">Map view</span>
+              <Link className="app-footer__link" to="/trip-input">Plan a trip</Link>
+              <Link className="app-footer__link" to="/map">Map view</Link>
             </div>
             <div className="app-footer__column">
               <span className="app-footer__heading">Support</span>

@@ -230,8 +230,31 @@ export function roundStayDurations(day) {
 // drag dinner steadily later, whereas nearest cancels out and lets dinner keep
 // landing on its clean intended time.
 //
-// A real hop never collapses below 15 minutes, so no stop is ever shown as
-// being reached the same minute you left the last one.
+// Travel is snapped on its own, finer grid than stay durations. Both used to
+// share STAY_DURATION_INCREMENT_MINUTES, which meant every leg in the app was
+// either 15 or 30 minutes and nothing else - across three test days, 27 legs
+// produced exactly two distinct values. The floor did the damage: Jardin
+// Botanic and the restaurant inside it resolve 31 metres apart by their own
+// Places coordinates and were shown as a "15 minute walk", which is the kind of
+// number that makes a reader doubt every other number on the page.
+//
+// Arrivals now land on a 5-minute grid instead of 15. Stay durations keep their
+// 15-minute grid (roundStayDurations above is unchanged), so a stop still reads
+// "1h 30m" rather than "1h 27m"; only the clock times gain :05 / :10 / :20
+// positions. The arithmetic invariant is untouched - start + stay + travel
+// still adds up exactly to the next start - and the routed value now survives
+// contact with the grid instead of being rounded into meaninglessness.
+//
+// The floor cannot go below the grid without abandoning grid-aligned times
+// altogether: arrivals derive from it, so a 2-minute floor would put stops at
+// :02, :07, :19 and cascade through the day. 5 is the smallest floor that keeps
+// the clock readable. If a literal routed minute matters more than a tidy
+// clock, the change is to skip this pass entirely and let realignScheduleTimes'
+// exact times stand.
+export const TRAVEL_GRID_MINUTES = 5;
+
+// A real hop never collapses below TRAVEL_GRID_MINUTES, so no stop is ever
+// shown as being reached the same minute you left the last one.
 //
 // Missing travel legs get filled rather than skipped (per Akber's call,
 // 17 Jul 2026). A leg only ends up with no travel value when a place never
@@ -241,7 +264,7 @@ export function roundStayDurations(day) {
 // finished at a different moment, which showed up as an unexplained gap (or,
 // if the guessed times overlapped, two stops booked on top of each other) -
 // both of which read as a bug. So instead of leaving it, we assume a nominal
-// one-grid-unit hop (15 minutes, in the day's default mode) and cascade
+// one-grid-unit hop (TRAVEL_GRID_MINUTES, in the day's default mode) and cascade
 // through it like any other leg. The number is an admitted assumption, not a
 // routed value, but a continuous schedule that's a few minutes off on one
 // unroutable hop is far better than a visible hole in the day. The underlying
@@ -267,15 +290,14 @@ export function snapArrivalsToGrid(day, transport) {
     // schedule below stays continuous.
     const parsed = parseTravelMinutes(previous.travelToNext);
     const mode = parsed ? parsed.mode : defaultMode;
-    const baseMinutes = parsed ? parsed.minutes : STAY_DURATION_INCREMENT_MINUTES;
+    const baseMinutes = parsed ? parsed.minutes : TRAVEL_GRID_MINUTES;
 
     const previousEnd = previousStart + (previous.durationMinutes || 0);
     let arrival =
-      Math.round((previousEnd + baseMinutes) / STAY_DURATION_INCREMENT_MINUTES) *
-      STAY_DURATION_INCREMENT_MINUTES;
+      Math.round((previousEnd + baseMinutes) / TRAVEL_GRID_MINUTES) * TRAVEL_GRID_MINUTES;
     let gap = arrival - previousEnd;
-    if (gap < STAY_DURATION_INCREMENT_MINUTES) {
-      gap = STAY_DURATION_INCREMENT_MINUTES;
+    if (gap < TRAVEL_GRID_MINUTES) {
+      gap = TRAVEL_GRID_MINUTES;
       arrival = previousEnd + gap;
     }
 
