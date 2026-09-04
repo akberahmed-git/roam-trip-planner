@@ -723,10 +723,14 @@ const SUBSTANTIAL_PLACE_TYPES = new Set([
   'store',
 ]);
 
-// Matched against the name. "Monument" is deliberately absent: plenty of major
-// attractions are monuments, and the whitelist above already excludes the ones
-// that are only a stone.
+// Matched against the name. "Monument to X" and "X Monument" are now included:
+// I left them out on the theory that many real attractions are monuments, and
+// the production logs promptly returned "Nihonbashi Fish Market Monument" and
+// "Monument to Tokugawa Iemitsu" as replacements for Tokyo Skytree and Hoppy
+// Street. A named monument to a person or an event is a marker, not a visit.
 const MARKER_NAME_PATTERNS = [
+  /\bmonument to\b/i,
+  /\bmonument$/i,
   /\bsite of\b/i,
   /\bformer site\b/i,
   /\bbirthplace\b/i,
@@ -923,268 +927,45 @@ async function backfillOrDropActivities(day, anchor, usedPlaceIds, interests) {
 // on grounded data, not a guess. Only one retry per offending pair - if a
 // closer alternative can't be found, the original stands rather than
 // risking a worse substitute or an infinite loop.
-// A day may not sprawl across the whole metro area. The model reasons about
-// places by name, not position, so it will cheerfully put the Ghibli Museum in
-// Mitaka and the Metropolitan Art Museum in Ueno on the same day: 20.5 km out,
-// 18.4 km back, a 177-degree turn, every individual leg still under the
-// 60-minute cap (Akber, 4 Sep 2026). No wording of the prompt fixed it, because
-// the model does not know where these places are relative to each other. We do,
-// once verification has attached real coordinates, so enforce it here.
+// REMOVED: enforceDayRadius and fixBacktracking (4 Sep 2026).
 //
-// Measured from the day's MEDOID - the stop with the smallest total distance to
-// the others - rather than the mean. One far-flung outlier drags a mean towards
-// itself and can end up looking reasonable while pulling the whole day out of
-// shape; a medoid stays put.
+// Both tried to fix a day's geography by swapping individual stops for
+// whatever Google returned near a computed centre. Both made itineraries
+// worse, and the production logs are unambiguous about how:
 //
-// The accommodation is excluded from both the centre and the check: a hotel is
-// wherever it is, and the traveller has to start and end there regardless.
-// Raised from 8km. At 8 this pass was pulling perfectly good stops toward the
-// day's centre and producing exactly the blob it was meant to prevent: a hotel
-// alone in the north-east and everything else squeezed into Shibuya. The point
-// is to catch a genuine outlier - the Ghibli Museum 20km out - not to compress
-// a day that legitimately crosses the city (Akber, 4 Sep 2026).
-const MAX_DAY_RADIUS_KM = 15;
-
-function medoidOf(points) {
-  let best = null;
-  let bestTotal = Infinity;
-  for (const candidate of points) {
-    let total = 0;
-    for (const other of points) total += haversineMeters(candidate, other);
-    if (total < bestTotal) {
-      bestTotal = total;
-      best = candidate;
-    }
-  }
-  return best;
-}
-
-async function enforceDayRadius(day, anchor, usedPlaceIds, interests) {
-  const movable = day.items.filter((i) => i.type !== 'accommodation' && i.location);
-  if (movable.length < 3) return [];
-
-  const centre = medoidOf(movable.map((i) => i.location));
-  if (!centre) return [];
-
-  const swapped: string[] = [];
-
-  for (const item of movable) {
-    const km = haversineMeters(item.location, centre) / 1000;
-    if (km <= MAX_DAY_RADIUS_KM) continue;
-
-    const queries = item.mealType
-      ? [MEAL_SEARCH_QUERY[item.mealType] || 'restaurant']
-      : (() => {
-          const list: string[] = [];
-          const own = typeof item.categoryTag === 'string' ? item.categoryTag.split('·')[0].trim() : '';
-          if (own) list.push(own.toLowerCase());
-          for (const interest of Array.isArray(interests) ? interests : []) {
-            const q = interestQuery(interest);
-            if (q && !list.includes(q)) list.push(q);
-          }
-          list.push('tourist attraction');
-          return list;
-        })();
-
-    let pick: any = null;
-    for (const query of queries) {
-      if (pick) break;
-      const candidates = await findNearbyCandidates(query, null, centre).catch(() => []);
-      pick = candidates.find((candidate) => {
-        if (!candidate.location || !candidate.placeId) return false;
-        if (!candidate.availablePhotoUrl) return false;
-        if (usedPlaceIds.has(candidate.placeId)) return false;
-        if (haversineMeters(candidate.location, centre) / 1000 > MAX_DAY_RADIUS_KM) return false;
-        const isFood = (candidate.types || []).some((t) => FOOD_PLACE_TYPES.has(t));
-        if (item.mealType ? !isFood : isFood) return false;
-        if (item.mealType ? !hasReadableName(candidate.name) : !isSubstantialActivity(candidate)) return false;
-        if (anchor && haversineMeters(anchor, candidate.location) > MAX_BROAD_DISTANCE_METERS) return false;
-        return true;
-      }) || null;
-    }
-
-    // No closer alternative: the original stands. A day slightly out of shape
-    // beats a day with a hole in it.
-    if (!pick) continue;
-
-    swapped.push(`${item.name} (${km.toFixed(1)} km out) -> ${pick.name}`);
-    item.name = pick.name;
-    item.address = pick.address;
-    item.location = pick.location;
-    item.rating = null;
-    item.ratingCount = null;
-    item.photoUrl = pick.availablePhotoUrl || null;
-    item.hasHours = pick.hasHours || false;
-    item.weekdayDescriptions = pick.weekdayDescriptions || null;
-    item.description = item.mealType
-      ? describeAdoptedMeal(pick, item.mealType)
-      : describeAdoptedActivity(pick);
-    item.categoryTag = composeCategoryTag(item, pick) || item.categoryTag;
-    usedPlaceIds.add(pick.placeId);
-  }
-
-  return swapped;
-}
-
-// Backtracking: going a long way to a place and then a long way back past where
-// you started. The audit measures it as two consecutive long legs whose bearings
-// differ by more than 120 degrees.
+//   day 2: straightened 1 detour: Tokyo Skytree (4.8 km off route)
+//                                 -> Nihonbashi Fish Market Monument
+//   day 2: pulled 3 outlying stop(s) back into the day:
+//          Sensō-ji         (19.3 km out) -> Kuromon
+//          Hoppy Street     (19.1 km out) -> Monument to Tokugawa Iemitsu
+//          Tsukishima Monja (19.4 km out) -> Sumibiyaki Hiro
 //
-// Nothing upstream prevents this. verifyPlace checks a stop is real and roughly
-// in the right city; resolveMealPlaceholders only moves a meal that failed to
-// resolve at all; enforceDriveCap allows any leg under 60 minutes; and the day
-// radius above bounds sprawl, not order. A day can sit entirely inside an 8 km
-// circle and still cross it three times - "Roppongi Hills, 5.9 km west to a bar
-// in Sasazuka, 6.3 km back east for dinner in Roppongi" was live output with
-// every one of those guards passing (Akber, 4 Sep 2026).
+// That day had a real cluster of famous Asakusa stops in the north-east and
+// others in the west. The medoid landed in the west, so the entire Asakusa
+// group measured 19 km "out" and was replaced one stop at a time. The passes
+// deleted the two most recognisable places in Tokyo and substituted monuments.
 //
-// Rather than reorder the day, which would fight the meal windows and the
-// schedule invariant, replace the stop in the middle of the reversal with an
-// equivalent place near the midpoint of its two neighbours. The day keeps its
-// shape and its timing; the detour disappears.
-// Both raised. A day spread across the city has real turns in it, and at 3km /
-// 120 degrees this was firing on ordinary movement between distant districts
-// and dragging stops back onto a corridor. Only a genuine out-and-back should
-// trigger a repair - the cases that prompted this were 163, 169, 172 and 178
-// degrees, all comfortably above the new threshold.
-const REVERSAL_LONG_LEG_METERS = 4000;
-const REVERSAL_DEGREES = 140;
-const MAX_REVERSAL_PASSES = 5;
-
-function bearingBetween(a, b) {
-  const toRad = (d) => (d * Math.PI) / 180;
-  const dLng = toRad(b.lng - a.lng);
-  const y = Math.sin(dLng) * Math.cos(toRad(b.lat));
-  const x =
-    Math.cos(toRad(a.lat)) * Math.sin(toRad(b.lat)) -
-    Math.sin(toRad(a.lat)) * Math.cos(toRad(b.lat)) * Math.cos(dLng);
-  return ((Math.atan2(y, x) * 180) / Math.PI + 360) % 360;
-}
-
-function angleGap(a, b) {
-  const raw = Math.abs(a - b);
-  return Math.min(raw, 360 - raw);
-}
-
-// Locates the first reversal and returns the whole excursion, not a pivot.
+// The mistake was structural, not a tuning problem. A single stop's distance
+// from a centre says nothing about whether it belongs: a legitimate cluster far
+// from the middle looks identical to a stray outlier, and swapping stops one at
+// a time can only ever pull a day toward its own average, which is precisely the
+// clustering these were meant to prevent.
 //
-// The two long legs that reverse are often NOT adjacent: live output ran
-// Shibuya -> 7.9 km to Koami Shrine -> 0.4 km to a restaurant next door ->
-// 4.9 km back to Roppongi. 13.2 km walked to cover 2.8 km of city, with both
-// Nihonbashi stops 6.5 km off the direct line. Replacing a single pivot cannot
-// straighten that, because the detour is everything between the two long legs
-// (Akber, 4 Sep 2026).
+// Geography is now handled where it can be judged rather than computed: the
+// prompt asks for spread, prominence and a sensible order, and the re-seed audit
+// rejects a draft that ignores it. A rejected draft costs a re-run; a silent
+// swap costs Sensō-ji, on every live itinerary, with nobody watching.
 //
-// So: span is every stop from the far end of the outbound leg to the near end
-// of the return leg, and the corridor those stops should be near is the line
-// between the stop before the excursion and the stop after it.
-function findReversalSpan(stops) {
-  const legs: any[] = [];
-  for (let k = 0; k < stops.length - 1; k++) {
-    const metres = haversineMeters(stops[k].location, stops[k + 1].location);
-    if (metres >= REVERSAL_LONG_LEG_METERS) {
-      legs.push({ from: k, to: k + 1, deg: bearingBetween(stops[k].location, stops[k + 1].location) });
-    }
-  }
-  for (let k = 0; k < legs.length - 1; k++) {
-    if (angleGap(legs[k].deg, legs[k + 1].deg) > REVERSAL_DEGREES) {
-      return { spanStart: legs[k].to, spanEnd: legs[k + 1].from, before: legs[k].from, after: legs[k + 1].to };
-    }
-  }
-  return null;
-}
+// If this is revisited, reordering the stops is the approach that can work.
+// Replacing them is not.
 
-async function fixBacktracking(day, anchor, usedPlaceIds, interests) {
-  const fixes: string[] = [];
-
-  for (let pass = 0; pass < MAX_REVERSAL_PASSES; pass++) {
-    const stops = day.items.filter((i) => i.type !== 'accommodation' && i.location);
-    if (stops.length < 3) break;
-
-    const span = findReversalSpan(stops);
-    if (!span) break;
-
-    const before = stops[span.before].location;
-    const after = stops[span.after].location;
-    const corridor = { lat: (before.lat + after.lat) / 2, lng: (before.lng + after.lng) / 2 };
-
-    // Worst offender first. One stop per pass, so each swap is measurable and
-    // a span of several stops collapses over successive passes.
-    let item: any = null;
-    let worst = -1;
-    for (let k = span.spanStart; k <= span.spanEnd; k++) {
-      const away = haversineMeters(stops[k].location, corridor);
-      if (away > worst) {
-        worst = away;
-        item = stops[k];
-      }
-    }
-    if (!item) break;
-
-    const queries = item.mealType
-      ? [MEAL_SEARCH_QUERY[item.mealType] || 'restaurant']
-      : (() => {
-          const list: string[] = [];
-          const own = typeof item.categoryTag === 'string' ? item.categoryTag.split('·')[0].trim() : '';
-          if (own) list.push(own.toLowerCase());
-          for (const interest of Array.isArray(interests) ? interests : []) {
-            const q = interestQuery(interest);
-            if (q && !list.includes(q)) list.push(q);
-          }
-          list.push('tourist attraction');
-          return list;
-        })();
-
-    let pick: any = null;
-    for (const query of queries) {
-      if (pick) break;
-      const candidates = await findNearbyCandidates(query, null, corridor).catch(() => []);
-      pick = candidates.find((candidate) => {
-        if (!candidate.location || !candidate.placeId) return false;
-        if (!candidate.availablePhotoUrl) return false;
-        if (usedPlaceIds.has(candidate.placeId)) return false;
-        const isFood = (candidate.types || []).some((t) => FOOD_PLACE_TYPES.has(t));
-        if (item.mealType ? !isFood : isFood) return false;
-        if (item.mealType ? !hasReadableName(candidate.name) : !isSubstantialActivity(candidate)) return false;
-        if (anchor && haversineMeters(anchor, candidate.location) > MAX_BROAD_DISTANCE_METERS) return false;
-        // Only worth the swap if it actually pulls the stop back toward the
-        // corridor the day is otherwise travelling along.
-        return haversineMeters(candidate.location, corridor) < worst;
-      }) || null;
-    }
-
-    // Nothing better on offer. Leaving the detour beats leaving a hole, and
-    // breaking here stops the loop retrying the same span forever.
-    if (!pick) break;
-
-    fixes.push(`${item.name} (${(worst / 1000).toFixed(1)} km off route) -> ${pick.name}`);
-    item.name = pick.name;
-    item.address = pick.address;
-    item.location = pick.location;
-    item.rating = null;
-    item.ratingCount = null;
-    item.photoUrl = pick.availablePhotoUrl || null;
-    item.hasHours = pick.hasHours || false;
-    item.weekdayDescriptions = pick.weekdayDescriptions || null;
-    item.description = item.mealType
-      ? describeAdoptedMeal(pick, item.mealType)
-      : describeAdoptedActivity(pick);
-    item.categoryTag = composeCategoryTag(item, pick) || item.categoryTag;
-    usedPlaceIds.add(pick.placeId);
-  }
-
-  return fixes;
-}
-
-// The prompt asks for the final night to end at the normal time, because the
-// traveller checks out and travels the next morning. It did not comply: a two
-// day trip came back with day 2 running to 01:10 (Akber, 4 Sep 2026). Prompt
-// wording has now been fixed, but the guarantee should not rest on the model
-// reading it, so enforce it here too.
+// Kept, unlike the two passes above, because it only removes a late stop - it
+// never substitutes one place for another, so it cannot quietly turn Sensō-ji
+// into a monument.
 //
-// Only a post-dinner stop is eligible, and only if the day keeps enough
-// content without it - a day trimmed down to nothing is a worse outcome than a
-// late finish.
+// The final day ends at the normal time because the traveller checks out and
+// travels the next morning. Only a post-dinner stop is eligible, and only while
+// the day keeps enough content without it.
 const FINAL_NIGHT_CUTOFF_MINUTES = 21 * 60;
 const MIN_ACTIVITIES_AFTER_TRIM = 3;
 
@@ -1409,12 +1190,6 @@ async function resolveItinerary(itinerary, destination, anchor, transport, accom
       );
     }
 
-    const pulled = await enforceDayRadius(day, anchor, usedPlaceIds, interests);
-    if (pulled.length > 0) {
-      console.info(
-        `[generate-resolved-itinerary] day ${day.day}: pulled ${pulled.length} outlying stop(s) back into the day: ${pulled.join('; ')}`
-      );
-    }
 
     if (day.day === itinerary.days.length) {
       const trimmed = trimFinalNight(day);
@@ -1423,13 +1198,6 @@ async function resolveItinerary(itinerary, destination, anchor, transport, accom
           `[generate-resolved-itinerary] day ${day.day} is the last: trimmed ${trimmed.length} late stop(s) so the final night ends at the normal time: ${trimmed.join(', ')}`
         );
       }
-    }
-
-    const straightened = await fixBacktracking(day, anchor, usedPlaceIds, interests);
-    if (straightened.length > 0) {
-      console.info(
-        `[generate-resolved-itinerary] day ${day.day}: straightened ${straightened.length} detour(s): ${straightened.join('; ')}`
-      );
     }
   }
 
