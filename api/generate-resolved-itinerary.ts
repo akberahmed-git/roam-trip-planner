@@ -942,6 +942,130 @@ async function enforceDayRadius(day, anchor, usedPlaceIds, interests) {
   return swapped;
 }
 
+// Backtracking: going a long way to a place and then a long way back past where
+// you started. The audit measures it as two consecutive long legs whose bearings
+// differ by more than 120 degrees.
+//
+// Nothing upstream prevents this. verifyPlace checks a stop is real and roughly
+// in the right city; resolveMealPlaceholders only moves a meal that failed to
+// resolve at all; enforceDriveCap allows any leg under 60 minutes; and the day
+// radius above bounds sprawl, not order. A day can sit entirely inside an 8 km
+// circle and still cross it three times - "Roppongi Hills, 5.9 km west to a bar
+// in Sasazuka, 6.3 km back east for dinner in Roppongi" was live output with
+// every one of those guards passing (Akber, 4 Sep 2026).
+//
+// Rather than reorder the day, which would fight the meal windows and the
+// schedule invariant, replace the stop in the middle of the reversal with an
+// equivalent place near the midpoint of its two neighbours. The day keeps its
+// shape and its timing; the detour disappears.
+const REVERSAL_LONG_LEG_METERS = 3000;
+const REVERSAL_DEGREES = 120;
+const MAX_REVERSAL_PASSES = 3;
+
+function bearingBetween(a, b) {
+  const toRad = (d) => (d * Math.PI) / 180;
+  const dLng = toRad(b.lng - a.lng);
+  const y = Math.sin(dLng) * Math.cos(toRad(b.lat));
+  const x =
+    Math.cos(toRad(a.lat)) * Math.sin(toRad(b.lat)) -
+    Math.sin(toRad(a.lat)) * Math.cos(toRad(b.lat)) * Math.cos(dLng);
+  return ((Math.atan2(y, x) * 180) / Math.PI + 360) % 360;
+}
+
+function angleGap(a, b) {
+  const raw = Math.abs(a - b);
+  return Math.min(raw, 360 - raw);
+}
+
+// Index of the stop sitting at the elbow of the first reversal, or -1.
+function findReversalElbow(stops) {
+  const legs: any[] = [];
+  for (let k = 0; k < stops.length - 1; k++) {
+    const metres = haversineMeters(stops[k].location, stops[k + 1].location);
+    if (metres >= REVERSAL_LONG_LEG_METERS) {
+      legs.push({ from: k, to: k + 1, deg: bearingBetween(stops[k].location, stops[k + 1].location) });
+    }
+  }
+  for (let k = 0; k < legs.length - 1; k++) {
+    if (angleGap(legs[k].deg, legs[k + 1].deg) > REVERSAL_DEGREES) {
+      // The elbow is where the route turns around: the far end of the outbound
+      // leg, which is also where the return leg begins when they are adjacent.
+      return legs[k].to;
+    }
+  }
+  return -1;
+}
+
+async function fixBacktracking(day, anchor, usedPlaceIds, interests) {
+  const fixes: string[] = [];
+
+  for (let pass = 0; pass < MAX_REVERSAL_PASSES; pass++) {
+    const stops = day.items.filter((i) => i.type !== 'accommodation' && i.location);
+    if (stops.length < 3) break;
+
+    const elbow = findReversalElbow(stops);
+    if (elbow <= 0 || elbow >= stops.length - 1) break;
+
+    const item = stops[elbow];
+    const before = stops[elbow - 1].location;
+    const after = stops[elbow + 1].location;
+    const midpoint = { lat: (before.lat + after.lat) / 2, lng: (before.lng + after.lng) / 2 };
+
+    const queries = item.mealType
+      ? [MEAL_SEARCH_QUERY[item.mealType] || 'restaurant']
+      : (() => {
+          const list: string[] = [];
+          const own = typeof item.categoryTag === 'string' ? item.categoryTag.split('·')[0].trim() : '';
+          if (own) list.push(own.toLowerCase());
+          for (const interest of Array.isArray(interests) ? interests : []) {
+            const q = interestQuery(interest);
+            if (q && !list.includes(q)) list.push(q);
+          }
+          list.push('tourist attraction');
+          return list;
+        })();
+
+    let pick: any = null;
+    for (const query of queries) {
+      if (pick) break;
+      const candidates = await findNearbyCandidates(query, null, midpoint).catch(() => []);
+      pick = candidates.find((candidate) => {
+        if (!candidate.location || !candidate.placeId) return false;
+        if (!candidate.availablePhotoUrl) return false;
+        if (usedPlaceIds.has(candidate.placeId)) return false;
+        const isFood = (candidate.types || []).some((t) => FOOD_PLACE_TYPES.has(t));
+        if (item.mealType ? !isFood : isFood) return false;
+        if (anchor && haversineMeters(anchor, candidate.location) > MAX_BROAD_DISTANCE_METERS) return false;
+        // Only worth the swap if it actually straightens the route.
+        const outbound = haversineMeters(before, candidate.location);
+        const inbound = haversineMeters(candidate.location, after);
+        return outbound < haversineMeters(before, item.location) && inbound < haversineMeters(item.location, after);
+      }) || null;
+    }
+
+    // Nothing better on offer. Leaving the detour beats leaving a hole, and
+    // breaking here stops the loop retrying the same elbow forever.
+    if (!pick) break;
+
+    fixes.push(`${item.name} -> ${pick.name}`);
+    item.name = pick.name;
+    item.address = pick.address;
+    item.location = pick.location;
+    item.rating = null;
+    item.ratingCount = null;
+    item.photoUrl = pick.availablePhotoUrl || null;
+    item.hasHours = pick.hasHours || false;
+    item.weekdayDescriptions = pick.weekdayDescriptions || null;
+    item.description = item.mealType
+      ? describeAdoptedMeal(pick, item.mealType)
+      : describeAdoptedActivity(pick);
+    item.categoryTag = composeCategoryTag(item, pick) || item.categoryTag;
+    usedPlaceIds.add(pick.placeId);
+  }
+
+  return fixes;
+}
+
 async function enforceDriveCap(day, transport, usedPlaceIds) {
   for (let i = 0; i < day.items.length - 1; i++) {
     const current = day.items[i];
@@ -1147,6 +1271,13 @@ async function resolveItinerary(itinerary, destination, anchor, transport, accom
     if (pulled.length > 0) {
       console.info(
         `[generate-resolved-itinerary] day ${day.day}: pulled ${pulled.length} outlying stop(s) back into the day: ${pulled.join('; ')}`
+      );
+    }
+
+    const straightened = await fixBacktracking(day, anchor, usedPlaceIds, interests);
+    if (straightened.length > 0) {
+      console.info(
+        `[generate-resolved-itinerary] day ${day.day}: straightened ${straightened.length} detour(s): ${straightened.join('; ')}`
       );
     }
   }

@@ -265,7 +265,11 @@ export const TOKYO_ACCOMMODATION = ${JSON.stringify(accommodation, null, 2)}
 // the city is not one either. These bound both ends. Generous on purpose: the
 // re-seed costs a real generation each time it runs, so the audit should catch
 // the genuinely bad drafts, not bicker with the merely imperfect ones.
-const MIN_DAY_SPREAD_KM = 2.5;
+// "Packed & Varied" is meant to roam; "Slow & Immersive" is explicitly fewer
+// stops with longer stays, so holding both to the same minimum punishes the slow
+// variant for doing its job. It still has to move - a day inside 1.2 km is one
+// street, not a neighbourhood - just not as far.
+const MIN_DAY_SPREAD_KM = { packed: 2.5, slow: 1.2 };
 const MAX_DAY_SPREAD_KM = 30;
 
 // Backtracking. A day that runs Akihabara -> Shibuya -> back past Akihabara to
@@ -409,10 +413,11 @@ function auditDemo(itinerary) {
       // Distance, not neighbourhood count, is the honest test. Three adjacent
       // Minato neighbourhoods spanning 2 km is nominally "three areas" and is
       // still the same pocket - that exact day is what prompted this work.
-      if (pts.length >= 2 && spreadKm < MIN_DAY_SPREAD_KM) {
+      const minSpread = MIN_DAY_SPREAD_KM[variant] ?? 2.5;
+      if (pts.length >= 2 && spreadKm < minSpread) {
         problems.push(
-          `${label}: activities span only ${spreadKm.toFixed(1)} km ` +
-            `(${hoods.size} neighbourhood(s)) - the day orbits instead of travelling`
+          `${label}: activities span only ${spreadKm.toFixed(1)} km, under the ${minSpread} km ` +
+            `minimum for ${variant} (${hoods.size} neighbourhood(s)) - the day orbits instead of travelling`
         );
       }
       if (spreadKm > MAX_DAY_SPREAD_KM) {
