@@ -68,7 +68,16 @@ async function searchCandidate(name, destination) {
         'X-Goog-FieldMask':
           'places.id,places.displayName,places.formattedAddress,places.photos,places.location,places.types',
       },
-      body: JSON.stringify({ textQuery }),
+      body: JSON.stringify({
+      textQuery,
+      // Every other Places call in the codebase asks for English. Without it
+      // Google answers in the destination's own language, which is how
+      // "国旗掲揚塔" reached an English itinerary. This file was missed when the
+      // others were fixed, so the Swap screen still offered alternatives in
+      // local script - and adopting one wrote that name into the trip
+      // permanently (Akber, 4 Sep 2026).
+      languageCode: 'en',
+    }),
     });
   } catch {
     return null;

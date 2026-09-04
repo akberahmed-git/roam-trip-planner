@@ -437,8 +437,22 @@ async function verifyWithRetry(item, destination, anchor) {
   return result;
 }
 
-function hasUsableRating(candidate) {
-  return typeof candidate.rating === 'number';
+// Was hasUsableRating, checking typeof candidate.rating === 'number'. rating was
+// removed from the Places field mask as Enterprise-tier, so it has been
+// permanently undefined and this has returned false for every candidate since.
+// It gates three substitution paths, all of which have therefore been dead:
+// pickSubstitute, and both branches of enforceDriveCap - which means the
+// 60-minute leg cap the case study describes has not actually been running
+// (Akber, 4 Sep 2026).
+//
+// The point was to refuse a junk substitute. Rating is gone, so the test is now
+// the same one every other substitution path uses: a real photo, a name a
+// reader can use, and not a commemorative marker.
+function isUsableCandidate(candidate) {
+  if (!candidate.availablePhotoUrl) return false;
+  if (!hasReadableName(candidate.name)) return false;
+  if (MARKER_NAME_PATTERNS.some((pattern) => pattern.test(candidate.name))) return false;
+  return true;
 }
 
 // anchor is the destination's own geocoded center - a candidate real, well-
@@ -471,7 +485,7 @@ function pickSubstitute(suggestions, usedPlaceIds, anchor) {
   }
 
   const acceptable = suggestions.filter((candidate) => {
-    if (!hasUsableRating(candidate)) return false;
+    if (!isUsableCandidate(candidate)) return false;
     if (usedPlaceIds.has(candidate.placeId)) return false;
     if (anchor && candidate.location) {
       if (haversineMeters(anchor, candidate.location) > MAX_BROAD_DISTANCE_METERS) return false;
@@ -983,15 +997,222 @@ function trimFinalNight(day) {
     return start != null && start >= FINAL_NIGHT_CUTOFF_MINUTES;
   });
 
+  // Identity, not name. Two stops can legitimately share a name - the
+  // substantial-type whitelist admits stores, malls and markets, which repeat -
+  // and a name filter would delete both while the floor check had counted one.
+  const removing = new Set();
   for (const item of late) {
-    if (activities.length - dropped.length <= MIN_ACTIVITIES_AFTER_TRIM) break;
+    if (activities.length - removing.size <= MIN_ACTIVITIES_AFTER_TRIM) break;
+    removing.add(item);
     dropped.push(item.name);
   }
 
-  if (dropped.length > 0) {
-    day.items = day.items.filter((i) => !dropped.includes(i.name) || i.type === 'accommodation' || i.mealType);
+  if (removing.size > 0) {
+    day.items = day.items.filter((i) => !removing.has(i));
   }
   return dropped;
+}
+
+// A stop far from the accommodation ruins a day by selection, not by sequence.
+// Every day starts and ends at the hotel, so a stop 22km out is travelled twice
+// and no reordering can help: the best possible ordering of one such day still
+// left a 159 degree turn and 53km of travel.
+//
+// The prompt asks the model not to do this and the model does it anyway - it
+// picked the Ghibli Museum and Inokashira Park, both 22km out, the very next
+// run after the rule was added. It is not being disobedient; it reasons about
+// places by name and has no idea how far apart they are. So this is enforced
+// here, where the distance is known.
+//
+// Measured from the ACCOMMODATION, which is the one fixed point of the day.
+// That distinction matters: an earlier version measured from the day's own
+// medoid, which moved with whatever the model chose, and it deleted Sensō-ji as
+// an "outlier" because the rest of that day happened to sit west. From this
+// hotel Sensō-ji is 1.8km and Ghibli is 22km, which is the discrimination a
+// moving centre could never make.
+//
+// Out-of-reach and photoless stops are marked unresolved rather than replaced
+// here, so the existing backfill fills the slot from a place near an adjacent
+// stop that IS in reach, or drops it if nothing suitable exists. Nothing is
+// silently swapped for something worse (Akber, 4 Sep 2026).
+const MAX_KM_FROM_ACCOMMODATION = 15;
+
+function markUnusableStops(day, accommodationLocation) {
+  const flagged: string[] = [];
+
+  for (const item of day.items) {
+    if (item.type === 'accommodation' || !item.location) continue;
+
+    if (accommodationLocation) {
+      const km = haversineMeters(item.location, accommodationLocation) / 1000;
+      if (km > MAX_KM_FROM_ACCOMMODATION) {
+        flagged.push(`${item.name} (${km.toFixed(1)} km out)`);
+        item.location = null;
+        item.photoUrl = null;
+        continue;
+      }
+    }
+
+    // A stop with no photo renders as a grey placeholder among cards that all
+    // have images, and every substitution path already requires one. The
+    // model's own verified stops were the one route by which a photoless card
+    // could still ship, which is why the audit kept having to catch them.
+    if (!item.photoUrl) {
+      flagged.push(`${item.name} (no photo)`);
+      item.location = null;
+    }
+  }
+
+  return flagged;
+}
+
+// Reordering, not replacing.
+//
+// The two earlier repair passes tried to fix a day's shape by swapping stops
+// out, and deleted Sensō-ji and Tokyo Skytree doing it. This does the one thing
+// that cannot lose a place: it keeps every stop the model chose and only
+// changes the order they are visited in.
+//
+// It is the other half of the reach limit, and neither covers the other:
+//   - a stop 22km from the hotel ruins a day whatever the order, because every
+//     day starts and ends there. Reach handles that; reordering cannot.
+//   - four stops all within reach can still be interleaved into an out-and-back
+//     (Shinjuku, Ikebukuro, Ikebukuro, Shinjuku, a 170 degree turn). Reordering
+//     fixes that one to 122 degrees and saves 6km; reach cannot see it at all.
+//
+// Meals stay at their own index in the sequence, so lunch remains the fourth
+// stop if that is where it was, and every meal keeps the time the meal-window
+// passes already gave it. Only the activities move, into the slots the meals
+// are not using. That is why this needs no rescheduling of its own: the cascade
+// in realignScheduleTimes recomputes activity times from real travel later,
+// and the meals it has to respect have not moved.
+//
+// Brute force over the activity slots. A day has at most a handful, and the
+// cost of 5040 distance sums is nothing next to one Places call.
+const EVENING_PIN_MINUTES = 19 * 60;
+const MAX_REORDER_ACTIVITIES = 7;
+const REORDER_LONG_LEG_METERS = 4000;
+const REORDER_REVERSAL_DEGREES = 140;
+
+function bearingBetween(a, b) {
+  const toRad = (d) => (d * Math.PI) / 180;
+  const dLng = toRad(b.lng - a.lng);
+  const y = Math.sin(dLng) * Math.cos(toRad(b.lat));
+  const x =
+    Math.cos(toRad(a.lat)) * Math.sin(toRad(b.lat)) -
+    Math.sin(toRad(a.lat)) * Math.cos(toRad(b.lat)) * Math.cos(dLng);
+  return ((Math.atan2(y, x) * 180) / Math.PI + 360) % 360;
+}
+
+function angleGap(a, b) {
+  const raw = Math.abs(a - b);
+  return Math.min(raw, 360 - raw);
+}
+
+// Worst reversal in a sequence, and how far it walks. Ranked in that order: a
+// day that doubles back is worse than a day that is merely a little longer.
+function shapeOf(locations) {
+  let path = 0;
+  const longBearings: number[] = [];
+  for (let k = 0; k < locations.length - 1; k++) {
+    const metres = haversineMeters(locations[k], locations[k + 1]);
+    path += metres;
+    if (metres >= REORDER_LONG_LEG_METERS) {
+      longBearings.push(bearingBetween(locations[k], locations[k + 1]));
+    }
+  }
+  let worstTurn = 0;
+  for (let k = 0; k < longBearings.length - 1; k++) {
+    worstTurn = Math.max(worstTurn, angleGap(longBearings[k], longBearings[k + 1]));
+  }
+  return { worstTurn, path };
+}
+
+function permutations(items) {
+  if (items.length <= 1) return [items];
+  const out: any[] = [];
+  for (let i = 0; i < items.length; i++) {
+    const rest = items.slice(0, i).concat(items.slice(i + 1));
+    for (const tail of permutations(rest)) out.push([items[i], ...tail]);
+  }
+  return out;
+}
+
+function reorderDayGeographically(day) {
+  const middleIndexes: number[] = [];
+  day.items.forEach((item, index) => {
+    if (item.type !== 'accommodation' && item.location) middleIndexes.push(index);
+  });
+  if (middleIndexes.length < 3) return null;
+
+  // Meals are pinned by definition. Evening activities are pinned too: a
+  // post-dinner bar is in that slot because of the hour, not the geography, and
+  // the optimiser would happily move it to 09:30 if that shaved a few degrees
+  // off the worst turn. backfillOrDropActivities already refuses to use a
+  // nightlife query before 19:00 for the same reason; reordering must not undo
+  // that care (Akber, 4 Sep 2026).
+  const activitySlots = middleIndexes.filter((index) => {
+    const item = day.items[index];
+    if (item.mealType) return false;
+    const start = timeToMinutes(item.startTime);
+    return !(start != null && start >= EVENING_PIN_MINUTES);
+  });
+  const activities = activitySlots.map((index) => day.items[index]);
+  if (activities.length < 2 || activities.length > MAX_REORDER_ACTIVITIES) return null;
+
+  // Two different measurements, deliberately.
+  //
+  // The turn is measured WITHOUT the accommodation bookends, because that is
+  // what the audit measures and because a commute out from a hotel on the edge
+  // of the city is not the day doubling back on itself, it is just the commute.
+  // Optimising the bookended shape minimised a quantity nothing else cared
+  // about and left the audit still failing.
+  //
+  // The distance is measured WITH them, since the traveller really does make
+  // those journeys and a shorter day is a better day.
+  const opening = day.items.find((i) => i.type === 'accommodation' && i.location) || null;
+  const bare = (ordered) => ordered.map((i) => i.location);
+  const framed = (ordered) => {
+    const locs = bare(ordered);
+    return opening ? [opening.location, ...locs, opening.location] : locs;
+  };
+  const measure = (ordered) => ({
+    worstTurn: shapeOf(bare(ordered)).worstTurn,
+    path: shapeOf(framed(ordered)).path,
+  });
+
+  const sequenceFor = (arrangement) => {
+    const byIndex = new Map();
+    activitySlots.forEach((slot, i) => byIndex.set(slot, arrangement[i]));
+    return middleIndexes.map((index) => byIndex.get(index) || day.items[index]);
+  };
+
+  const current = sequenceFor(activities);
+  const currentShape = measure(current);
+
+  let best = current;
+  let bestShape = currentShape;
+  for (const arrangement of permutations(activities)) {
+    const candidate = sequenceFor(arrangement);
+    const shape = measure(candidate);
+    if (shape.worstTurn < bestShape.worstTurn ||
+        (shape.worstTurn === bestShape.worstTurn && shape.path < bestShape.path)) {
+      best = candidate;
+      bestShape = shape;
+    }
+  }
+
+  if (best === current) return null;
+
+  middleIndexes.forEach((index, i) => {
+    day.items[index] = best[i];
+  });
+
+  return {
+    fromTurn: Math.round(currentShape.worstTurn),
+    toTurn: Math.round(bestShape.worstTurn),
+    savedKm: (currentShape.path - bestShape.path) / 1000,
+  };
 }
 
 async function enforceDriveCap(day, transport, usedPlaceIds) {
@@ -1019,7 +1240,7 @@ async function enforceDriveCap(day, transport, usedPlaceIds) {
     let nearby = await findNearbyCandidates(next.name, next.type, current.location).catch(() => []);
     let replacement = preferWithPhoto(
       nearby.filter(
-        (candidate) => hasUsableRating(candidate) && !usedPlaceIds.has(candidate.placeId)
+        (candidate) => isUsableCandidate(candidate) && !usedPlaceIds.has(candidate.placeId)
       )
     );
 
@@ -1031,7 +1252,7 @@ async function enforceDriveCap(day, transport, usedPlaceIds) {
       const fallbackNearby = await findNearbyCandidates(next.type, next.type, current.location).catch(() => []);
       replacement = preferWithPhoto(
         fallbackNearby.filter(
-          (candidate) => hasUsableRating(candidate) && !usedPlaceIds.has(candidate.placeId)
+          (candidate) => isUsableCandidate(candidate) && !usedPlaceIds.has(candidate.placeId)
         )
       );
     }
@@ -1183,7 +1404,25 @@ async function resolveItinerary(itinerary, destination, anchor, transport, accom
   // the meal pass (which gives meals their own second chance) and before travel
   // times, so nothing routes through a stop that isn't there.
   for (const day of itinerary.days) {
+    // Before the backfill, not after: a stop out of reach of the hotel is
+    // treated exactly like one that never resolved, so the same pass replaces
+    // it with something near the rest of the day or drops it.
+    const unusable = markUnusableStops(day, accommodationDetails?.location);
+    if (unusable.length > 0) {
+      console.info(
+        `[generate-resolved-itinerary] day ${day.day}: ${unusable.length} stop(s) sent back for replacement: ${unusable.join('; ')}`
+      );
+    }
+
     const { dropped, adopted } = await backfillOrDropActivities(day, anchor, usedPlaceIds, interests);
+
+    // backfillOrDropActivities deliberately skips meals, so a meal that
+    // markUnusableStops just invalidated (too far from the hotel, or no photo)
+    // would otherwise ship with a real name, no location and no image: a grey
+    // card, invisible on the map, with the legs either side of it nulled.
+    // resolveMealPlaceholders is exactly the pass that repairs that, so run it
+    // again now that the day's activities are settled (Akber, 4 Sep 2026).
+    await resolveMealPlaceholders(day, anchor, usedPlaceIds);
     if (adopted.length > 0) {
       console.info(
         `[generate-resolved-itinerary] day ${day.day}: backfilled ${adopted.length} unresolved stop(s): ${adopted.join(', ')}`
@@ -1196,14 +1435,16 @@ async function resolveItinerary(itinerary, destination, anchor, transport, accom
     }
 
 
-    if (day.day === itinerary.days.length) {
-      const trimmed = trimFinalNight(day);
-      if (trimmed.length > 0) {
-        console.info(
-          `[generate-resolved-itinerary] day ${day.day} is the last: trimmed ${trimmed.length} late stop(s) so the final night ends at the normal time: ${trimmed.join(', ')}`
-        );
-      }
+    // After the backfill and the reach pass, so it orders the stops that will
+    // actually ship, and before travel times, so the cascade recomputes against
+    // the new order.
+    const reordered = reorderDayGeographically(day);
+    if (reordered) {
+      console.info(
+        `[generate-resolved-itinerary] day ${day.day}: reordered stops, worst turn ${reordered.fromTurn}° -> ${reordered.toTurn}°, ${reordered.savedKm.toFixed(1)} km saved`
+      );
     }
+
   }
 
   // Runs after the description audit, not before: refreshDescriptions can
@@ -1253,6 +1494,29 @@ async function resolveItinerary(itinerary, destination, anchor, transport, accom
   // so this is the one place the displayed schedule gets reconciled with
   // them.
   itinerary.days.forEach((day) => realignScheduleTimes(day));
+
+  // Only now, with the schedule reconciled against real travel times, do the
+  // start times mean anything. Trimming inside the day loop read the times the
+  // model had guessed, and after reorderDayGeographically had shuffled the
+  // activities those times belonged to different stops entirely, so the wrong
+  // one could be dropped. The realign below puts the schedule straight again
+  // once something has been removed (Akber, 4 Sep 2026).
+  const lastDay = itinerary.days[itinerary.days.length - 1];
+  if (lastDay) {
+    const trimmed = trimFinalNight(lastDay);
+    if (trimmed.length > 0) {
+      console.info(
+        `[generate-resolved-itinerary] day ${lastDay.day} is the last: trimmed ${trimmed.length} late stop(s) so the final night ends at the normal time: ${trimmed.join(', ')}`
+      );
+      // The stop before the gap still holds the leg that was routed TO the stop
+      // just removed, and nothing downstream touches geography - realign and
+      // snapArrivalsToGrid both derive their arithmetic from that stale value,
+      // so the hotel return would show a travel time for a leg that was never
+      // routed. Re-route the day before reconciling the clock.
+      await computeTravelTimes(lastDay.items, transport);
+      realignScheduleTimes(lastDay);
+    }
+  }
 
   // All variants: absorb any pre-dinner gap by extending the last afternoon
   // Stretch the last pre-dinner activity to fill any gap, then re-cascade so

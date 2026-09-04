@@ -159,10 +159,19 @@ function tierFor(place, queryTier) {
   return PRICE_LEVEL_TIER[place.priceLevel] || queryTier;
 }
 
+// Second copy of the same dead function that was in verifyPlace. It scored
+// rating * log(userRatingCount + 1), and both fields were removed from this
+// file's own field mask as Enterprise-tier (see the comment on the mask, which
+// records the removal), so every hotel has scored 0 since and the two sorts
+// below have been no-ops. Hotels came back in raw Google order, which is how
+// the Tokyo demo ended up in a hotel 10km from everything it then visited: it
+// was not chosen, it was simply first (Akber, 4 Sep 2026).
+//
+// Photo count is the popularity signal that survives at Pro tier and is already
+// in the mask. A hotel people actually stay in has a gallery; an obscure one has
+// two pictures. Capped so a 40-photo listing cannot swamp everything else.
 function qualityScore(place) {
-  const rating = place.rating || 0;
-  const count = place.userRatingCount || 0;
-  return rating * Math.log(count + 1);
+  return Math.min((place.photos || []).length, 12);
 }
 
 function typeLabelFor(place) {
