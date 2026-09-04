@@ -103,6 +103,16 @@ function toSuggestion(place) {
     // their photos would trigger a Place Details Photos charge for images the
     // user may never see. The swap/suggestion UI handles a null photoUrl gracefully.
     photoUrl: null,
+    // The same URL, offered separately for the one case where a candidate stops
+    // being a maybe: when a caller ADOPTS it as the actual stop (a substituted
+    // activity, or a meal placeholder resolved to a real restaurant). That stop
+    // will definitely be rendered, so its photo is worth exactly what any other
+    // stop's photo is worth, and leaving it null was the reason adopted stops
+    // showed a placeholder while every stop around them had an image.
+    //
+    // Kept out of photoUrl so merely *listing* candidates still costs nothing -
+    // opting in is the caller's decision, not a side effect of searching.
+    availablePhotoUrl: photoUrlFor(place),
     location: locationOf(place),
     types: place.types || [],
     neighbourhood: neighbourhoodOf(place),

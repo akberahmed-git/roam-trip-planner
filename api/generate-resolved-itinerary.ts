@@ -232,14 +232,18 @@ async function resolveMealPlaceholders(day, anchor, usedPlaceIds) {
     const pickNear = async (loc) => {
       if (!loc) return null;
       const candidates = await findNearbyCandidates(query, null, loc).catch(() => []);
-      return (
-        candidates.find(
-          (c) =>
-            c.location &&
-            !usedPlaceIds.has(c.placeId) &&
-            (!anchor || haversineMeters(anchor, c.location) <= MAX_BROAD_DISTANCE_METERS)
-        ) || null
+      const usable = candidates.filter(
+        (c) =>
+          c.location &&
+          !usedPlaceIds.has(c.placeId) &&
+          (!anchor || haversineMeters(anchor, c.location) <= MAX_BROAD_DISTANCE_METERS)
       );
+      // Prefer a candidate that actually has a photo. Google already told us
+      // which ones do (findNearbyCandidates asks for places.photos), and that
+      // was being thrown away - so an adopted meal arrived real but imageless
+      // and fell back to a placeholder next to stops that all had photos.
+      // Ranking is otherwise unchanged, so this only breaks ties.
+      return usable.find((c) => c.availablePhotoUrl) || usable[0] || null;
     };
 
     // Prefer a place near the adjacent stop; fall back to the destination centre
@@ -258,7 +262,7 @@ async function resolveMealPlaceholders(day, anchor, usedPlaceIds) {
     item.location = pick.location;
     item.rating = null;
     item.ratingCount = null;
-    item.photoUrl = null;
+    item.photoUrl = pick.availablePhotoUrl || null;
     item.hasHours = pick.hasHours || false;
     item.weekdayDescriptions = pick.weekdayDescriptions || null;
     item.categoryTag = composeCategoryTag(item, pick);
@@ -518,7 +522,9 @@ function applyResolution(item, result, usedPlaceIds, anchor) {
     item.address = substitute.address;
     item.rating = substitute.rating;
     item.ratingCount = substitute.ratingCount;
-    item.photoUrl = substitute.photoUrl;
+    // substitute.photoUrl is null by design (see toSuggestion); a candidate that
+    // is actually adopted gets the real URL, same as any other resolved stop.
+    item.photoUrl = substitute.availablePhotoUrl || substitute.photoUrl || null;
     item.hasHours = substitute.hasHours;
     item.weekdayDescriptions = substitute.weekdayDescriptions;
     item.location = substitute.location;
@@ -671,7 +677,7 @@ async function enforceDriveCap(day, transport, usedPlaceIds) {
     next.address = replacement.address;
     next.rating = replacement.rating;
     next.ratingCount = replacement.ratingCount;
-    next.photoUrl = replacement.photoUrl;
+    next.photoUrl = replacement.availablePhotoUrl || replacement.photoUrl || null;
     next.hasHours = replacement.hasHours;
     next.weekdayDescriptions = replacement.weekdayDescriptions;
     next.location = replacement.location;
