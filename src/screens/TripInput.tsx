@@ -8,6 +8,7 @@ import DestinationAutocomplete from '../components/DestinationAutocomplete'
 import DateRangePicker from '../components/DateRangePicker'
 import SegmentedControl from '../components/SegmentedControl'
 import { toLocalISODate, MAX_TRIP_DAYS } from '../utils/date'
+import LimitReached from '../components/LimitReached'
 
 // Always shown first, in this order, for every destination - the only
 // categories universal enough that they never need a per-destination call
@@ -72,6 +73,38 @@ export default function TripInput() {
   // (see Home.jsx), explicitly asking for a different destination than
   // whatever was there before. Falls back to a blank form only when neither
   // applies (first time on this screen this session).
+  // Roam runs on a fixed daily planning budget. Generating.jsx already
+  // handles the 429 when generation itself is turned away, but by then a
+  // visitor has filled this whole form and picked a hotel - a wasted
+  // accommodation lookup and the most annoying possible moment to be told
+  // no. /api/capacity peeks at the same counter without incrementing it, so
+  // asking costs nothing, and this screen can say so up front instead.
+  //
+  // Undefined until the check answers: the form renders immediately either
+  // way, so a slow or dead check never delays or blocks planning. Only an
+  // explicit "not available" swaps the screen; anything else fails open and
+  // lets the request go through to the real limiter, which is authoritative.
+  const [limitedScope, setLimitedScope] = useState<string | null>(null)
+
+  useEffect(() => {
+    let cancelled = false
+
+    fetch('/api/capacity')
+      .then((response) => (response.ok ? response.json() : null))
+      .then((data) => {
+        if (cancelled || !data || data.available !== false) return
+        setLimitedScope(typeof data.scope === 'string' ? data.scope : 'global')
+      })
+      .catch(() => {
+        // Fail open, deliberately. A capacity check that can't be reached
+        // is not evidence the budget is gone.
+      })
+
+    return () => {
+      cancelled = true
+    }
+  }, [])
+
   const cameFromTrendingCard = Boolean(location.state?.destination)
   const [destination, setDestination] = useState(
     location.state?.destination || tripParams?.destination || ''
@@ -247,6 +280,8 @@ export default function TripInput() {
 
     navigate('/accommodation')
   }
+
+  if (limitedScope) return <LimitReached scope={limitedScope} />
 
   return (
     <div className="app-page">

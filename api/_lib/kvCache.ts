@@ -114,3 +114,23 @@ export async function kvIncrementWithTtl(key, ttlSeconds) {
     return null;
   }
 }
+
+// Reads a counter without touching it. Separate from kvIncrementWithTtl because
+// a "can I still do this?" question must never itself consume the allowance -
+// otherwise merely opening the page would spend budget, and a visitor who never
+// planned anything would use up someone else's trip.
+//
+// Returns 0 for a key that does not exist yet (nothing counted today), and null
+// when KV is off or the read fails, which callers treat as "unknown" and let
+// through - same fail-open posture as the counter itself.
+export async function kvReadCount(key) {
+  if (!KV_ENABLED) return null;
+  try {
+    const data = await kvCommand(['GET', key]);
+    if (!data || data.result == null) return 0;
+    const count = Number(data.result);
+    return Number.isFinite(count) ? count : null;
+  } catch {
+    return null;
+  }
+}

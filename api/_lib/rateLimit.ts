@@ -1,4 +1,4 @@
-import { kvIncrementWithTtl, KV_ENABLED } from './kvCache.js';
+import { kvIncrementWithTtl, kvReadCount, KV_ENABLED } from './kvCache.js';
 
 // Spend guard for the two endpoints that actually cost money per call.
 //
@@ -122,6 +122,33 @@ export async function checkRateLimit(bucket, req) {
   }
 
   return { allowed: true, scope: null, count: globalCount, limit: limits.global };
+}
+
+// The same question checkRateLimit answers, without spending anything to ask.
+//
+// Exists so the app can tell someone the day's planning is gone BEFORE they
+// fill in a destination, pick dates and choose a hotel. Previously the cap was
+// only discovered at the generation step, which meant a visitor did all that
+// work, burned a real hotel search, and only then hit the wall - the most
+// annoying possible order.
+//
+// Reads only, so calling it on every page load costs a KV GET and nothing else.
+// Unknown (KV off, read failed) reports as available: better to let someone
+// start and hit the real check than to turn away a visitor over a cache blip.
+export async function peekRateLimit(bucket) {
+  const limits = LIMITS[bucket];
+  if (!limits || !KV_ENABLED) {
+    return { available: true, scope: null };
+  }
+
+  const count = await kvReadCount(`ratelimit:${bucket}:global:${todayStamp()}`);
+  if (count === null) {
+    return { available: true, scope: null };
+  }
+
+  return count >= limits.global
+    ? { available: false, scope: 'global' }
+    : { available: true, scope: null };
 }
 
 // One place to build the 429 body so both endpoints answer identically and the
