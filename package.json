@@ -8,7 +8,8 @@
     "build": "tsc --noEmit && vite build",
     "lint": "oxlint",
     "preview": "vite preview",
-    "typecheck": "tsc --noEmit"
+    "typecheck": "tsc --noEmit",
+    "health": "node scripts/healthcheck.js"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.110.0",
