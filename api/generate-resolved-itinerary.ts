@@ -9,7 +9,7 @@ import {
 import { computeTravelTimes, travelBetween } from './_lib/travelTime.js';
 import { refreshDescriptions } from './_lib/refreshDescriptions.js';
 import { sanitizeDescriptions } from './_lib/sanitizeDescriptions.js';
-import { checkRateLimit, rateLimitResponse } from './_lib/rateLimit.js';
+import { checkRateLimit, rateLimitResponse, isCapacityError } from './_lib/rateLimit.js';
 import {
   parseTravelMinutes,
   addMinutesToTime,
@@ -941,6 +941,20 @@ export default async function handler(req, res) {
     raw = rawResult;
     anchor = anchorResult;
   } catch (error) {
+    // Out of Anthropic credit is not a bug and must not render as one. It is
+    // reported here as the same shape the daily cap uses, so the client shows
+    // the example trip rather than "We hit a snag" - see Generating.jsx.
+    // Logged at error level regardless, because from the operator's side this
+    // absolutely is something to act on.
+    if (isCapacityError(error)) {
+      console.error('[generate-resolved-itinerary] upstream capacity exhausted:', error.message);
+      return res.status(429).json({
+        error:
+          "Roam has reached its planning limit for now. Here's an example trip in the meantime.",
+        code: 'RATE_LIMITED',
+        scope: 'capacity',
+      });
+    }
     if (error.rawText) {
       return res.status(500).json({ error: error.message, raw: error.rawText });
     }
@@ -956,6 +970,17 @@ export default async function handler(req, res) {
     ]);
     res.status(200).json(raw);
   } catch (error) {
+    // Same treatment for the resolution half: the place, route and description
+    // passes each call out too, so credit can run dry after the draft succeeds.
+    if (isCapacityError(error)) {
+      console.error('[generate-resolved-itinerary] upstream capacity exhausted:', error.message);
+      return res.status(429).json({
+        error:
+          "Roam has reached its planning limit for now. Here's an example trip in the meantime.",
+        code: 'RATE_LIMITED',
+        scope: 'capacity',
+      });
+    }
     res.status(500).json({ error: error.message });
   }
 }

@@ -104,9 +104,13 @@ export default function Generating() {
         <Header />
         <div className="screen">
           <div className="container stack">
-            <h1>Roam is at today's limit</h1>
+            <h1>
+              {limitedScope === 'capacity' ? 'Roam is at capacity' : "Roam is at today's limit"}
+            </h1>
             <p>
-              {limitedScope === 'global'
+              {limitedScope === 'capacity'
+                ? 'Roam is a side project running on a fixed budget, and it has reached it for now. Planning will be back.'
+                : limitedScope === 'global'
                 ? "Roam plans a fixed number of trips a day so it stays free to use, and today's are gone. Planning opens again tomorrow."
                 : "You've planned as many trips as Roam allows in one day. Your limit resets tomorrow."}
             </p>

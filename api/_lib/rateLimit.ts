@@ -135,3 +135,32 @@ export function rateLimitResponse(res, result) {
     scope: result.scope,
   });
 }
+
+// Recognises the upstream failures that mean "no budget left", as opposed to a
+// bug. The Anthropic account this runs on is prepaid with auto-reload off, so
+// running dry is not a hypothetical - it is the expected end state of a busy
+// week, and the difference between handling it and not is whether a visitor
+// arriving from a link sees a working product or a red error screen.
+//
+// Matching is deliberately broad and message-based. The SDK reports a spent
+// balance as a 400 with "credit balance is too low" rather than a distinct
+// error type, and the exact wording is not part of any contract, so a narrow
+// match would silently stop working after an upstream copy change. A false
+// positive here costs a friendlier error message than the truth; a false
+// negative costs the red screen, which is the worse trade.
+const CAPACITY_PATTERNS = [
+  /credit balance/i,
+  /insufficient (?:credit|funds|quota|balance)/i,
+  /quota (?:exceeded|exhausted)/i,
+  /billing/i,
+  /rate limit/i,
+  /overloaded/i,
+];
+
+export function isCapacityError(error) {
+  if (!error) return false;
+  const status = error.status ?? error.statusCode;
+  if (status === 429) return true;
+  const message = String(error.message || '');
+  return CAPACITY_PATTERNS.some((pattern) => pattern.test(message));
+}
