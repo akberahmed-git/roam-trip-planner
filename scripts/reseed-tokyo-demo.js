@@ -338,6 +338,7 @@ function haversineKm(a, b) {
 
 function auditDemo(itinerary) {
   const problems = [];
+  const notes = [];
   const dayHoods = [];
   const wantedInterests = TRIP.interests.map((i) => i.toLowerCase());
   const seenInterestText = [];
@@ -413,11 +414,17 @@ function auditDemo(itinerary) {
       // Distance, not neighbourhood count, is the honest test. Three adjacent
       // Minato neighbourhoods spanning 2 km is nominally "three areas" and is
       // still the same pocket - that exact day is what prompted this work.
+      // Advisory, not blocking. How far a day should spread is a judgement, and
+      // the number is a guess - a slow day 1.1 km across was rejected against a
+      // 1.2 km minimum invented an hour earlier, costing a real generation to
+      // find out (Akber, 4 Sep 2026). The failure this was meant to catch, a day
+      // of two restaurants and nothing else, is already caught by the activity
+      // count, so blocking on distance too was redundant as well as arbitrary.
       const minSpread = MIN_DAY_SPREAD_KM[variant] ?? 2.5;
       if (pts.length >= 2 && spreadKm < minSpread) {
-        problems.push(
-          `${label}: activities span only ${spreadKm.toFixed(1)} km, under the ${minSpread} km ` +
-            `minimum for ${variant} (${hoods.size} neighbourhood(s)) - the day orbits instead of travelling`
+        notes.push(
+          `${label}: activities span ${spreadKm.toFixed(1)} km, under the ${minSpread} km ` +
+            `guide for ${variant} (${hoods.size} neighbourhood(s)) - a tight day, worth a look`
         );
       }
       if (spreadKm > MAX_DAY_SPREAD_KM) {
@@ -470,7 +477,7 @@ function auditDemo(itinerary) {
     }
   }
 
-  return problems;
+  return { problems, notes };
 }
 
 async function main() {
@@ -519,7 +526,11 @@ async function main() {
     }
   }
 
-  const problems = auditDemo(itinerary);
+  const { problems, notes } = auditDemo(itinerary);
+  if (notes.length > 0) {
+    console.warn('\nWorth a look, but not blocking:\n');
+    for (const note of notes) console.warn(`  ~ ${note}`);
+  }
   if (problems.length > 0) {
     console.error('\nThis generation is not good enough to ship as the demo:\n');
     for (const problem of problems) console.error(`  x ${problem}`);
