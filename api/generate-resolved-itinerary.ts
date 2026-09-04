@@ -563,6 +563,37 @@ function applyResolution(item, result, usedPlaceIds, anchor) {
 // Accommodation bookends are exempt: their location comes from the hotel the
 // traveller picked on the Accommodation screen, not from verification, and
 // applyAccommodationBookends already handles a missing one.
+// Last line of defence on categoryTag, in the same spirit as
+// sanitizeDescriptions: composeCategoryTag now runs on every path that attaches
+// a real place, but the field is a plain string that several passes can touch,
+// and one stale value slipping through renders as "Landmark · 3" - a street
+// number where a neighbourhood should be, which is exactly the tell that makes
+// the rest of a card look untrustworthy.
+//
+// Rather than track down every writer, this checks the finished value: if the
+// descriptor half is missing or reads like a number ("3", "12", "1-chōme"), the
+// type half is kept on its own. "Landmark" alone is honest and unremarkable;
+// "Landmark · 3" is neither.
+function sanitizeCategoryTags(days) {
+  let fixed = 0;
+
+  for (const day of days) {
+    for (const item of day.items) {
+      const tag = item.categoryTag;
+      if (typeof tag !== 'string' || !tag.includes('·')) continue;
+
+      const [type, ...rest] = tag.split('·');
+      const descriptor = rest.join('·').trim();
+      if (descriptor && !/^\d/.test(descriptor)) continue;
+
+      item.categoryTag = type.trim() || null;
+      fixed += 1;
+    }
+  }
+
+  return fixed;
+}
+
 function dropUnresolvedActivities(day) {
   const dropped: string[] = [];
 
@@ -644,6 +675,9 @@ async function enforceDriveCap(day, transport, usedPlaceIds) {
     next.hasHours = replacement.hasHours;
     next.weekdayDescriptions = replacement.weekdayDescriptions;
     next.location = replacement.location;
+    // The stop is now a different place, so its tag has to be rebuilt from the
+    // new one. Without this it kept the tag belonging to the place it replaced.
+    next.categoryTag = composeCategoryTag(next, replacement);
     usedPlaceIds.add(replacement.placeId);
 
     current.travelToNext = await travelBetween(current.location, next.location, transport).catch(() => null);
@@ -788,6 +822,13 @@ async function resolveItinerary(itinerary, destination, anchor, transport, accom
   // rewrite a description, and a rewrite is just as capable of asserting a
   // travel time as the original was. This is the last thing to touch
   // description text, so it is the only place the guarantee can hold.
+  const retagged = sanitizeCategoryTags(itinerary.days);
+  if (retagged > 0) {
+    console.info(
+      `[generate-resolved-itinerary] stripped a numeric descriptor from ${retagged} categoryTag(s)`
+    );
+  }
+
   const sanitized = sanitizeDescriptions(itinerary.days);
   if (sanitized.changed > 0) {
     console.info(
