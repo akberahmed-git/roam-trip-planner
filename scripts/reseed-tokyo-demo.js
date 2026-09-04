@@ -270,7 +270,8 @@ export const TOKYO_ACCOMMODATION = ${JSON.stringify(accommodation, null, 2)}
 // variant for doing its job. It still has to move - a day inside 1.2 km is one
 // street, not a neighbourhood - just not as far.
 const MIN_ACTIVITIES_PER_DAY = 3;
-const MIN_DAY_SPREAD_KM = { packed: 2.5, slow: 1.2 };
+// Raised: the goal is a day that crosses the city, not one that huddles.
+const MIN_DAY_SPREAD_KM = { packed: 4, slow: 2 };
 const MAX_DAY_SPREAD_KM = 30;
 
 // Backtracking. A day that runs Akihabara -> Shibuya -> back past Akihabara to
@@ -284,8 +285,8 @@ const MAX_DAY_SPREAD_KM = 30;
 const LATEST_WRAPPED_END_HOUR = 3;
 const EARLIEST_ACCEPTABLE_END_HOUR = 19;
 
-const LONG_LEG_KM = 3;
-const REVERSAL_DEGREES = 120;
+const LONG_LEG_KM = 4;
+const REVERSAL_DEGREES = 140;
 
 function bearing(a, b) {
   const toRad = (d) => (d * Math.PI) / 180;

@@ -61,10 +61,39 @@ export function nameSimilarity(queryName, resultName) {
   return Math.max(fullScore, coreScore);
 }
 
+// Ranks candidates so the famous option beats the obscure one.
+//
+// This has been inert since the Places field mask was cut to Pro tier: it
+// scored rating * log(userRatingCount + 1), and both of those fields were
+// removed as Enterprise-tier, so every place scored 0 * log(1) = 0 and the
+// sort did nothing. Candidates came back in raw Google order, which is why a
+// commemorative plaque could outrank Sensō-ji (Akber, 4 Sep 2026).
+//
+// Photo count is the popularity signal that survives at Pro tier. Google holds
+// dozens of photos for a landmark people actually visit and one or two for a
+// roadside marker, so it separates the two well without costing a tier. Capped
+// so a place with 40 photos does not swamp the type signal, and combined with
+// it: a museum with ten photos should beat a shop with twelve.
+const PROMINENT_TYPES = new Set([
+  'tourist_attraction',
+  'museum',
+  'art_gallery',
+  'place_of_worship',
+  'park',
+  'national_park',
+  'amusement_park',
+  'aquarium',
+  'zoo',
+  'observation_deck',
+  'shopping_mall',
+  'historical_landmark',
+]);
+
 function qualityScore(place) {
-  const rating = place.rating || 0;
-  const count = place.userRatingCount || 0;
-  return rating * Math.log(count + 1);
+  const photoCount = Math.min((place.photos || []).length, 10);
+  const types = place.types || [];
+  const prominent = types.some((type) => PROMINENT_TYPES.has(type)) ? 5 : 0;
+  return photoCount + prominent;
 }
 
 function hoursInfo(place) {

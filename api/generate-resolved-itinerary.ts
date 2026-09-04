@@ -938,7 +938,12 @@ async function backfillOrDropActivities(day, anchor, usedPlaceIds, interests) {
 //
 // The accommodation is excluded from both the centre and the check: a hotel is
 // wherever it is, and the traveller has to start and end there regardless.
-const MAX_DAY_RADIUS_KM = 8;
+// Raised from 8km. At 8 this pass was pulling perfectly good stops toward the
+// day's centre and producing exactly the blob it was meant to prevent: a hotel
+// alone in the north-east and everything else squeezed into Shibuya. The point
+// is to catch a genuine outlier - the Ghibli Museum 20km out - not to compress
+// a day that legitimately crosses the city (Akber, 4 Sep 2026).
+const MAX_DAY_RADIUS_KM = 15;
 
 function medoidOf(points) {
   let best = null;
@@ -1037,9 +1042,14 @@ async function enforceDayRadius(day, anchor, usedPlaceIds, interests) {
 // schedule invariant, replace the stop in the middle of the reversal with an
 // equivalent place near the midpoint of its two neighbours. The day keeps its
 // shape and its timing; the detour disappears.
-const REVERSAL_LONG_LEG_METERS = 3000;
-const REVERSAL_DEGREES = 120;
-const MAX_REVERSAL_PASSES = 3;
+// Both raised. A day spread across the city has real turns in it, and at 3km /
+// 120 degrees this was firing on ordinary movement between distant districts
+// and dragging stops back onto a corridor. Only a genuine out-and-back should
+// trigger a repair - the cases that prompted this were 163, 169, 172 and 178
+// degrees, all comfortably above the new threshold.
+const REVERSAL_LONG_LEG_METERS = 4000;
+const REVERSAL_DEGREES = 140;
+const MAX_REVERSAL_PASSES = 5;
 
 function bearingBetween(a, b) {
   const toRad = (d) => (d * Math.PI) / 180;
@@ -1056,8 +1066,19 @@ function angleGap(a, b) {
   return Math.min(raw, 360 - raw);
 }
 
-// Index of the stop sitting at the elbow of the first reversal, or -1.
-function findReversalElbow(stops) {
+// Locates the first reversal and returns the whole excursion, not a pivot.
+//
+// The two long legs that reverse are often NOT adjacent: live output ran
+// Shibuya -> 7.9 km to Koami Shrine -> 0.4 km to a restaurant next door ->
+// 4.9 km back to Roppongi. 13.2 km walked to cover 2.8 km of city, with both
+// Nihonbashi stops 6.5 km off the direct line. Replacing a single pivot cannot
+// straighten that, because the detour is everything between the two long legs
+// (Akber, 4 Sep 2026).
+//
+// So: span is every stop from the far end of the outbound leg to the near end
+// of the return leg, and the corridor those stops should be near is the line
+// between the stop before the excursion and the stop after it.
+function findReversalSpan(stops) {
   const legs: any[] = [];
   for (let k = 0; k < stops.length - 1; k++) {
     const metres = haversineMeters(stops[k].location, stops[k + 1].location);
@@ -1067,12 +1088,10 @@ function findReversalElbow(stops) {
   }
   for (let k = 0; k < legs.length - 1; k++) {
     if (angleGap(legs[k].deg, legs[k + 1].deg) > REVERSAL_DEGREES) {
-      // The elbow is where the route turns around: the far end of the outbound
-      // leg, which is also where the return leg begins when they are adjacent.
-      return legs[k].to;
+      return { spanStart: legs[k].to, spanEnd: legs[k + 1].from, before: legs[k].from, after: legs[k + 1].to };
     }
   }
-  return -1;
+  return null;
 }
 
 async function fixBacktracking(day, anchor, usedPlaceIds, interests) {
@@ -1082,13 +1101,25 @@ async function fixBacktracking(day, anchor, usedPlaceIds, interests) {
     const stops = day.items.filter((i) => i.type !== 'accommodation' && i.location);
     if (stops.length < 3) break;
 
-    const elbow = findReversalElbow(stops);
-    if (elbow <= 0 || elbow >= stops.length - 1) break;
+    const span = findReversalSpan(stops);
+    if (!span) break;
 
-    const item = stops[elbow];
-    const before = stops[elbow - 1].location;
-    const after = stops[elbow + 1].location;
-    const midpoint = { lat: (before.lat + after.lat) / 2, lng: (before.lng + after.lng) / 2 };
+    const before = stops[span.before].location;
+    const after = stops[span.after].location;
+    const corridor = { lat: (before.lat + after.lat) / 2, lng: (before.lng + after.lng) / 2 };
+
+    // Worst offender first. One stop per pass, so each swap is measurable and
+    // a span of several stops collapses over successive passes.
+    let item: any = null;
+    let worst = -1;
+    for (let k = span.spanStart; k <= span.spanEnd; k++) {
+      const away = haversineMeters(stops[k].location, corridor);
+      if (away > worst) {
+        worst = away;
+        item = stops[k];
+      }
+    }
+    if (!item) break;
 
     const queries = item.mealType
       ? [MEAL_SEARCH_QUERY[item.mealType] || 'restaurant']
@@ -1107,7 +1138,7 @@ async function fixBacktracking(day, anchor, usedPlaceIds, interests) {
     let pick: any = null;
     for (const query of queries) {
       if (pick) break;
-      const candidates = await findNearbyCandidates(query, null, midpoint).catch(() => []);
+      const candidates = await findNearbyCandidates(query, null, corridor).catch(() => []);
       pick = candidates.find((candidate) => {
         if (!candidate.location || !candidate.placeId) return false;
         if (!candidate.availablePhotoUrl) return false;
@@ -1116,18 +1147,17 @@ async function fixBacktracking(day, anchor, usedPlaceIds, interests) {
         if (item.mealType ? !isFood : isFood) return false;
         if (item.mealType ? !hasReadableName(candidate.name) : !isSubstantialActivity(candidate)) return false;
         if (anchor && haversineMeters(anchor, candidate.location) > MAX_BROAD_DISTANCE_METERS) return false;
-        // Only worth the swap if it actually straightens the route.
-        const outbound = haversineMeters(before, candidate.location);
-        const inbound = haversineMeters(candidate.location, after);
-        return outbound < haversineMeters(before, item.location) && inbound < haversineMeters(item.location, after);
+        // Only worth the swap if it actually pulls the stop back toward the
+        // corridor the day is otherwise travelling along.
+        return haversineMeters(candidate.location, corridor) < worst;
       }) || null;
     }
 
     // Nothing better on offer. Leaving the detour beats leaving a hole, and
-    // breaking here stops the loop retrying the same elbow forever.
+    // breaking here stops the loop retrying the same span forever.
     if (!pick) break;
 
-    fixes.push(`${item.name} -> ${pick.name}`);
+    fixes.push(`${item.name} (${(worst / 1000).toFixed(1)} km off route) -> ${pick.name}`);
     item.name = pick.name;
     item.address = pick.address;
     item.location = pick.location;
