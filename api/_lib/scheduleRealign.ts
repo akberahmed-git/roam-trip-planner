@@ -197,10 +197,24 @@ export function realignScheduleTimes(day) {
 // recompute path gets identical treatment to initial generation - a swapped
 // day should read exactly the same as a freshly generated one.
 export const STAY_DURATION_INCREMENT_MINUTES = 15;
+// The prompt specifies durationMinutes in a 45-150 range and nothing enforced
+// it. A generation came back with a 240-minute stay at a nightclub starting at
+// 23:10, which carried that day's hotel return to 03:35 - past even the 02:00
+// nightlife cutoff, and flagged by the audit as "ends far too early" because the
+// clock had wrapped (Akber, 7 Sep 2026).
+//
+// Clamped here rather than in the itinerary route so the swap and reorder
+// recompute paths get the same treatment as a fresh generation, which is the
+// reason rounding lives here too.
+export const MAX_STAY_MINUTES = 150;
+export const MIN_STAY_MINUTES = 45;
+
 export function roundStayDurations(day) {
   for (const item of day.items) {
     if (item.type === 'accommodation') continue;
     if (item.durationMinutes == null) continue;
+    if (item.durationMinutes > MAX_STAY_MINUTES) item.durationMinutes = MAX_STAY_MINUTES;
+    if (item.durationMinutes < MIN_STAY_MINUTES) item.durationMinutes = MIN_STAY_MINUTES;
     let rounded =
       Math.round(item.durationMinutes / STAY_DURATION_INCREMENT_MINUTES) *
       STAY_DURATION_INCREMENT_MINUTES;
