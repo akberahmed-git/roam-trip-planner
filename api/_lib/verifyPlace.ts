@@ -152,6 +152,10 @@ function toSuggestion(place) {
     address: place.formattedAddress,
     rating: place.rating,
     ratingCount: place.userRatingCount,
+    // Free with the mask above, and the only price signal the app has. Read by
+    // budgetFit.ts so a substituted restaurant respects the band the traveller
+    // chose - which, outside accommodation, nothing used to do.
+    priceLevel: place.priceLevel ?? null,
     // photoUrl intentionally omitted for suggestions — these are fallback
     // candidates shown when the primary place can't be verified. Fetching
     // their photos would trigger a Place Details Photos charge for images the
@@ -293,7 +297,7 @@ async function _runSearch(name, textQuery) {
         // composeCategoryTag in generate-resolved-itinerary.js). Both are Pro-tier,
         // the same tier this mask already sits in, so they add no per-request cost -
         // hotelSearch.js's mask already carries both for the same reason.
-        'X-Goog-FieldMask': 'places.id,places.displayName,places.formattedAddress,places.photos,places.location,places.types,places.addressComponents,places.rating,places.userRatingCount,places.regularOpeningHours'
+        'X-Goog-FieldMask': 'places.id,places.displayName,places.formattedAddress,places.photos,places.location,places.types,places.addressComponents,places.rating,places.userRatingCount,places.regularOpeningHours,places.priceLevel'
       },
       body: JSON.stringify({ textQuery, languageCode: 'en' })
     });
@@ -339,6 +343,7 @@ async function _runSearch(name, textQuery) {
   return {
     status: 'found',
     nameMatchScore: Math.round(score * 100) / 100,
+    priceLevel: place.priceLevel ?? null,
     placeId: place.id,
     name: place.displayName?.text,
     address: place.formattedAddress,
@@ -401,7 +406,7 @@ export async function findNearbyCandidates(name, type, near, radiusMeters = 2000
         // Enterprise-tier field mask, same as the primary search above.
         // Pro-tier only now, same cost reason as runSearch. types +
         // addressComponents are Pro-tier and feed composeCategoryTag.
-        'X-Goog-FieldMask': 'places.id,places.displayName,places.formattedAddress,places.photos,places.location,places.types,places.addressComponents,places.rating,places.userRatingCount,places.regularOpeningHours'
+        'X-Goog-FieldMask': 'places.id,places.displayName,places.formattedAddress,places.photos,places.location,places.types,places.addressComponents,places.rating,places.userRatingCount,places.regularOpeningHours,places.priceLevel'
       },
       body: JSON.stringify({
         textQuery,

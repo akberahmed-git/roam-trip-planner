@@ -20,6 +20,7 @@ import {
   dayCutoffMinutes
 } from './_lib/scheduleRealign.js';
 import { applyFixedSchedule, dedupeMeals, starvedBlocks, unsuitableStops, roomForAnotherStop, eveningInsertPoint } from './_lib/fixedSchedule.js';
+import { sortByBudgetFit } from './_lib/budgetFit.js';
 import { uncoveredInterests, satisfiesInterest, isEveningInterest } from './_lib/interestCoverage.js';
 import { weekdayForDay } from './_lib/openingHours.js';
 import { shapeOf, REORDER_REVERSAL_DEGREES } from './_lib/routeShape.js';
@@ -292,7 +293,7 @@ function describeAdoptedMeal(pick, mealType) {
   return pick.neighbourhood ? `${what} in ${pick.neighbourhood}.` : `${what}.`;
 }
 
-async function resolveMealPlaceholders(day, anchor, usedPlaceIds, stay, usedBrands) {
+async function resolveMealPlaceholders(day, anchor, usedPlaceIds, stay, usedBrands, budget) {
   for (let i = 0; i < day.items.length; i++) {
     const item = day.items[i];
     if (!item.mealType) continue;
@@ -324,7 +325,11 @@ async function resolveMealPlaceholders(day, anchor, usedPlaceIds, stay, usedBran
           (!anchor || haversineMeters(anchor, c.location) <= MAX_BROAD_DISTANCE_METERS) &&
           withinReachOfStay(c.location, stay)
       );
-      return preferWellKnown(usable.filter((c) => c.availablePhotoUrl)) || preferWithPhoto(usable);
+      // Budget first, then fame. Reordering rather than filtering, so a band
+      // with nothing nearby still gets the best available place instead of
+      // nothing (see budgetFit.ts).
+      const ranked = sortByBudgetFit(usable, budget);
+      return preferWellKnown(ranked.filter((c) => c.availablePhotoUrl)) || preferWithPhoto(ranked);
     };
 
     // Prefer a place near the adjacent stop; fall back to the destination centre
@@ -348,6 +353,7 @@ async function resolveMealPlaceholders(day, anchor, usedPlaceIds, stay, usedBran
     // shipped demo carried a rating on 4 of its 21 stops.
     item.rating = pick.rating ?? null;
     item.ratingCount = pick.ratingCount ?? null;
+    item.priceLevel = pick.priceLevel ?? null;
     item.photoUrl = pick.availablePhotoUrl || null;
     item.hasHours = pick.hasHours || false;
     item.weekdayDescriptions = pick.weekdayDescriptions || null;
@@ -555,7 +561,7 @@ function preferWithPhoto(candidates) {
   return candidates.find((candidate) => candidate.availablePhotoUrl) || candidates[0] || null;
 }
 
-function pickSubstitute(suggestions, usedPlaceIds, anchor, stay) {
+function pickSubstitute(suggestions, usedPlaceIds, anchor, stay, budget) {
   if (!suggestions) {
     return null;
   }
@@ -570,7 +576,10 @@ function pickSubstitute(suggestions, usedPlaceIds, anchor, stay) {
     return true;
   });
 
-  return preferWithPhoto(acceptable);
+  // A substitution happens long after the model that read the budget band is
+  // gone, so this is the only place the band can still be honoured for the
+  // replacement.
+  return preferWithPhoto(sortByBudgetFit(acceptable, budget));
 }
 
 // categoryTag is the small grey line under a stop's name ("Museum · Indoor").
@@ -657,7 +666,7 @@ function composeCategoryTag(item, place) {
   return item.categoryTag || null;
 }
 
-function applyResolution(item, result, usedPlaceIds, anchor, stay) {
+function applyResolution(item, result, usedPlaceIds, anchor, stay, budget) {
   if (result.status === 'found') {
     // Same real place already used earlier in the trip? This happens when
     // Claude proposes two distinct-sounding stops that Google resolves to the
@@ -675,6 +684,7 @@ function applyResolution(item, result, usedPlaceIds, anchor, stay) {
     item.address = result.address;
     item.rating = result.rating;
     item.ratingCount = result.ratingCount;
+    item.priceLevel = result.priceLevel ?? null;
     item.photoUrl = result.photoUrl;
     item.hasHours = result.hasHours;
     item.weekdayDescriptions = result.weekdayDescriptions;
@@ -690,13 +700,14 @@ function applyResolution(item, result, usedPlaceIds, anchor, stay) {
   }
 
   const suggestions = result.status === 'not_found' ? result.suggestions : null;
-  const substitute = pickSubstitute(suggestions, usedPlaceIds, anchor, stay);
+  const substitute = pickSubstitute(suggestions, usedPlaceIds, anchor, stay, budget);
 
   if (substitute) {
     item.name = substitute.name;
     item.address = substitute.address;
     item.rating = substitute.rating;
     item.ratingCount = substitute.ratingCount;
+    item.priceLevel = substitute.priceLevel ?? null;
     // substitute.photoUrl is null by design (see toSuggestion); a candidate that
     // is actually adopted gets the real URL, same as any other resolved stop.
     item.photoUrl = substitute.availablePhotoUrl || substitute.photoUrl || null;
@@ -1030,6 +1041,7 @@ async function backfillOrDropActivities(day, anchor, usedPlaceIds, interests, st
     // shipped demo carried a rating on 4 of its 21 stops.
     item.rating = pick.rating ?? null;
     item.ratingCount = pick.ratingCount ?? null;
+    item.priceLevel = pick.priceLevel ?? null;
     item.photoUrl = pick.availablePhotoUrl || null;
     item.hasHours = pick.hasHours || false;
     item.weekdayDescriptions = pick.weekdayDescriptions || null;
@@ -1414,6 +1426,7 @@ function buildAdoptedStop(pick, durationMinutes) {
     // Carried through, not nulled: see the note on the adoption paths above.
     rating: pick.rating ?? null,
     ratingCount: pick.ratingCount ?? null,
+    priceLevel: pick.priceLevel ?? null,
     hasHours: pick.hasHours || false,
     weekdayDescriptions: pick.weekdayDescriptions || null,
   };
@@ -1673,6 +1686,7 @@ async function repositionStrandedMeals(day, anchor, usedPlaceIds, stay) {
     // shipped demo carried a rating on 4 of its 21 stops.
     item.rating = pick.rating ?? null;
     item.ratingCount = pick.ratingCount ?? null;
+    item.priceLevel = pick.priceLevel ?? null;
     item.photoUrl = pick.availablePhotoUrl || null;
     item.hasHours = pick.hasHours || false;
     item.weekdayDescriptions = pick.weekdayDescriptions || null;
@@ -1753,6 +1767,7 @@ async function enforceDriveCap(day, transport, usedPlaceIds, stay) {
     next.address = replacement.address;
     next.rating = replacement.rating;
     next.ratingCount = replacement.ratingCount;
+    next.priceLevel = replacement.priceLevel ?? null;
     next.photoUrl = replacement.availablePhotoUrl || replacement.photoUrl || null;
     next.hasHours = replacement.hasHours;
     next.weekdayDescriptions = replacement.weekdayDescriptions;
@@ -1773,7 +1788,7 @@ async function enforceDriveCap(day, transport, usedPlaceIds, stay) {
   }
 }
 
-async function resolveItinerary(itinerary, destination, anchor, transport, accommodationDetails, interests, checkInDate) {
+async function resolveItinerary(itinerary, destination, anchor, transport, accommodationDetails, interests, checkInDate, budget) {
   const stay = accommodationDetails?.location || null;
   const usedPlaceIds = new Set();
   // Beside usedPlaceIds and for the same reason: per request, never module-level,
@@ -1850,7 +1865,7 @@ async function resolveItinerary(itinerary, destination, anchor, transport, accom
   );
 
   allItems.forEach((item, index) => {
-    applyResolution(item, results[index], usedPlaceIds, anchor, stay);
+    applyResolution(item, results[index], usedPlaceIds, anchor, stay, budget);
   });
 
   // Remove any stop applyResolution flagged as a duplicate real place (two
@@ -1916,7 +1931,7 @@ async function resolveItinerary(itinerary, destination, anchor, transport, accom
   // placeholder (Akber, 1 Aug 2026). Sequential, not Promise.all, so the shared
   // usedPlaceIds stays consistent and two days can't adopt the same restaurant.
   for (const day of itinerary.days) {
-    await resolveMealPlaceholders(day, anchor, usedPlaceIds, stay, usedBrands);
+    await resolveMealPlaceholders(day, anchor, usedPlaceIds, stay, usedBrands, budget);
   }
 
   // Then remove any non-meal stop that never resolved to a real place, so an
@@ -1942,7 +1957,7 @@ async function resolveItinerary(itinerary, destination, anchor, transport, accom
     // card, invisible on the map, with the legs either side of it nulled.
     // resolveMealPlaceholders is exactly the pass that repairs that, so run it
     // again now that the day's activities are settled (Akber, 4 Sep 2026).
-    await resolveMealPlaceholders(day, anchor, usedPlaceIds, stay, usedBrands);
+    await resolveMealPlaceholders(day, anchor, usedPlaceIds, stay, usedBrands, budget);
     if (adopted.length > 0) {
       console.info(
         `[generate-resolved-itinerary] day ${day.day}: backfilled ${adopted.length} unresolved stop(s): ${adopted.join(', ')}`
@@ -2283,8 +2298,8 @@ export default async function handler(req, res) {
     // Resolve both variants in parallel - each is independent of the other,
     // so there's no reason to wait for packed before starting slow.
     await Promise.all([
-      raw.packed ? resolveItinerary(raw.packed, destination, anchor, transport, accommodationDetails, interests, checkInDate) : Promise.resolve(),
-      raw.slow ? resolveItinerary(raw.slow, destination, anchor, transport, accommodationDetails, interests, checkInDate) : Promise.resolve(),
+      raw.packed ? resolveItinerary(raw.packed, destination, anchor, transport, accommodationDetails, interests, checkInDate, budget) : Promise.resolve(),
+      raw.slow ? resolveItinerary(raw.slow, destination, anchor, transport, accommodationDetails, interests, checkInDate, budget) : Promise.resolve(),
     ]);
     res.status(200).json(raw);
   } catch (error) {
