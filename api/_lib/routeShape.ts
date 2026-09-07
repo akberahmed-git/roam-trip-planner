@@ -43,19 +43,32 @@ export function angleGap(a, b) {
 // day that doubles back is worse than a day that is merely a little longer.
 export function shapeOf(locations) {
   let path = 0;
-  const longBearings: number[] = [];
+  const longLegs: { bearing: number; from: number }[] = [];
   for (let k = 0; k < locations.length - 1; k++) {
     const metres = haversineMeters(locations[k], locations[k + 1]);
     path += metres;
     if (metres >= REORDER_LONG_LEG_METERS) {
-      longBearings.push(bearingBetween(locations[k], locations[k + 1]));
+      longLegs.push({ bearing: bearingBetween(locations[k], locations[k + 1]), from: k });
     }
   }
+  // worstAt is the stop the day turns around on: the point shared by the two
+  // legs that reverse. Reported because knowing a day doubles back is not much
+  // use on its own - the repair needs to know which stop to replace, and the
+  // stop furthest from the day's centre is often not it. A Shinjuku nightclub
+  // 2.6 km from the centre, between two Roppongi stops, was inside every
+  // distance test and still turned the day 174 degrees (Akber, 7 Sep 2026).
   let worstTurn = 0;
-  for (let k = 0; k < longBearings.length - 1; k++) {
-    worstTurn = Math.max(worstTurn, angleGap(longBearings[k], longBearings[k + 1]));
+  let worstAt = -1;
+  for (let k = 0; k < longLegs.length - 1; k++) {
+    const turn = angleGap(longLegs[k].bearing, longLegs[k + 1].bearing);
+    if (turn > worstTurn) {
+      worstTurn = turn;
+      // Only meaningful when the two legs actually meet; otherwise the reversal
+      // is spread across the day and no single stop is at fault.
+      worstAt = longLegs[k + 1].from === longLegs[k].from + 1 ? longLegs[k + 1].from : -1;
+    }
   }
-  return { worstTurn, path };
+  return { worstTurn, worstAt, path };
 }
 
 // The same measurement taken straight off a day's items, for callers that

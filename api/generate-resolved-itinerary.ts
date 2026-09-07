@@ -1680,8 +1680,15 @@ async function repositionStrandedStops(day, anchor, usedPlaceIds, stay) {
   const activities = located.filter((i) => !i.mealType);
   if (activities.length < 2) return [];
 
-  let worst = shapeOf(located.map((i) => i.location)).worstTurn;
+  const shape = shapeOf(located.map((i) => i.location));
+  let worst = shape.worstTurn;
   if (worst <= REORDER_REVERSAL_DEGREES) return [];
+
+  // The stop the day turns around on. It is eligible whatever its distance from
+  // the centre, because the leash test below measures the wrong thing for this
+  // failure: a stop can sit comfortably inside the day and still be the reason
+  // the day goes out and comes straight back.
+  const pivot = shape.worstAt >= 0 ? located[shape.worstAt] : null;
 
   const centre = medoidOfLocations(activities.map((i) => i.location));
   if (!centre) return [];
@@ -1689,7 +1696,7 @@ async function repositionStrandedStops(day, anchor, usedPlaceIds, stay) {
   const moved: string[] = [];
 
   for (const item of located) {
-    if (haversineMeters(item.location, centre) / 1000 <= MEAL_LEASH_KM) continue;
+    if (item !== pivot && haversineMeters(item.location, centre) / 1000 <= MEAL_LEASH_KM) continue;
 
     // Meals were the only thing this moved, on the assumption that a restaurant
     // is the interchangeable stop and an activity is the reason to travel. Two
@@ -1722,6 +1729,9 @@ async function repositionStrandedStops(day, anchor, usedPlaceIds, stay) {
       if (!item.mealType && (candidate.types || []).some((t) => FOOD_PLACE_TYPES.has(t))) return false;
       if (!withinReachOfStay(candidate.location, stay)) return false;
       if (anchor && haversineMeters(anchor, candidate.location) > MAX_BROAD_DISTANCE_METERS) return false;
+      // For the pivot the test is whether the day straightens, checked below, not
+      // whether the replacement is nearer the centre - it is already near it.
+      if (item === pivot) return true;
       return haversineMeters(candidate.location, centre) < haversineMeters(item.location, centre);
     });
     const pick = preferWellKnown(acceptable);
