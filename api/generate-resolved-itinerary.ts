@@ -17,10 +17,13 @@ import {
   fillMissingTravelTimes,
   realignScheduleTimes,
   clampStayDurations,
+  dayCutoffMinutes,
+  trimTailForDinner,
   roundStayDurations,
   snapArrivalsToGrid,
   stretchPreDinnerGap
 } from './_lib/scheduleRealign.js';
+import { describeAdoptedStops, stripAdoptionMarkers } from './_lib/describeAdoptedStops.js';
 
 // Fixed meal windows and the "day can't start before 9am" rule, per Akber's
 // call (9 Jul 2026). Enforced here rather than trusted to the prompt alone
@@ -313,7 +316,7 @@ async function resolveMealPlaceholders(day, anchor, usedPlaceIds, stay) {
           (!anchor || haversineMeters(anchor, c.location) <= MAX_BROAD_DISTANCE_METERS) &&
           withinReachOfStay(c.location, stay)
       );
-      return preferWithPhoto(usable);
+      return preferWellKnown(usable.filter((c) => c.availablePhotoUrl)) || preferWithPhoto(usable);
     };
 
     // Prefer a place near the adjacent stop; fall back to the destination centre
@@ -337,6 +340,7 @@ async function resolveMealPlaceholders(day, anchor, usedPlaceIds, stay) {
     item.weekdayDescriptions = pick.weekdayDescriptions || null;
     item.categoryTag = composeCategoryTag(item, pick);
     item.description = describeAdoptedMeal(pick, item.mealType);
+    item.adoptedFrom = { neighbourhood: pick.neighbourhood, types: pick.types };
     usedPlaceIds.add(pick.placeId);
   }
 }
@@ -477,6 +481,21 @@ function isUsableCandidate(candidate) {
 //
 // Deliberately a preference, not a requirement: a genuinely better place with
 // no photo still gets used when nothing else qualifies.
+// Restaurants and cafés get no prominence bonus from qualityScore, because
+// neither type is in PROMINENT_TYPES - correctly, since a good local restaurant
+// is not a landmark. But it left meals ranked on photo count alone with no
+// floor, so a substitution could land on somewhere nobody has heard of while a
+// far better-known option sat further down the list.
+//
+// A preference, never a requirement: try for a well-photographed place first,
+// and fall back to the best available rather than leaving a hole (Akber, 7 Sep
+// 2026).
+const WELL_KNOWN_PHOTO_COUNT = 5;
+
+function preferWellKnown(candidates) {
+  return candidates.find((c) => (c.photoCount || 0) >= WELL_KNOWN_PHOTO_COUNT) || candidates[0] || null;
+}
+
 function preferWithPhoto(candidates) {
   return candidates.find((candidate) => candidate.availablePhotoUrl) || candidates[0] || null;
 }
@@ -918,6 +937,7 @@ async function backfillOrDropActivities(day, anchor, usedPlaceIds, interests, st
     item.hasHours = pick.hasHours || false;
     item.weekdayDescriptions = pick.weekdayDescriptions || null;
     item.description = describeAdoptedActivity(pick);
+    item.adoptedFrom = { neighbourhood: pick.neighbourhood, types: pick.types };
     item.categoryTag = composeCategoryTag(item, pick) || item.categoryTag;
     usedPlaceIds.add(pick.placeId);
     adopted.push(pick.name);
@@ -1204,14 +1224,64 @@ function mealsStillInOrder(dayItems, middleIndexes, candidate) {
 // lunch that pass finds nothing to extend and silently returns, so a day that
 // had an afternoon must keep one.
 function afternoonSurvives(dayItems, middleIndexes, candidate) {
+  return spanSurvives(dayItems, middleIndexes, candidate, 'lunch', 'dinner');
+}
+
+// The same protection for the morning, and the reason it now exists: nothing
+// stopped the reorder pulling lunch straight up against breakfast, because
+// geographically that is often the shortest path and no rule said otherwise.
+// Both Slow days shipped that way - a 09:00 breakfast followed immediately by
+// lunch, with every activity crammed between lunch and dinner (Akber, 7 Sep
+// 2026). A day that started with something to do in the morning has to keep it.
+function morningSurvives(dayItems, middleIndexes, candidate) {
+  return spanSurvives(dayItems, middleIndexes, candidate, 'breakfast', 'lunch');
+}
+
+// A reorder may not empty a span of the day that had something in it. Written
+// once for both ends because the failure is identical at either: an empty span
+// means two meals back to back, which reads as a mistake and leaves the
+// stretch pass with nothing to work with. Where the span is already empty
+// before the reorder, this allows anything - the reorder is not obliged to
+// invent a stop it was never given.
+// Breakfast is the first thing the traveller does, not merely something that
+// happens before lunch. mealsStillInOrder only ranks the three meals against
+// each other, so nothing objected when the reorder put two sights in front of
+// breakfast: hotel to Skytree to the river walk to a cafe in Asakusa is a clean
+// line on a map, and it served breakfast at 12:20 and lunch at 15:05 (Akber,
+// 7 Sep 2026). Pinning it to the front costs one position; the rest of the day
+// still optimises freely.
+function breakfastLeadsDay(dayItems, middleIndexes, candidate) {
+  const merged = [...dayItems];
+  middleIndexes.forEach((index, i) => { merged[index] = candidate[i]; });
+
+  const breakfast = merged.findIndex((item) => item.mealType === 'breakfast');
+  // No breakfast item at all means it is taken at the accommodation and handled
+  // by breakfastTime, so there is nothing to place. A breakfast that IS the
+  // accommodation stop is the day's opening bookend and already leads the day -
+  // and it is pinned, so comparing it against the first non-accommodation stop
+  // would reject every candidate and silently switch the whole reorder off.
+  if (breakfast < 0) return true;
+  if (merged[breakfast].type === 'accommodation') return true;
+
+  const first = merged.findIndex((item) => item.type !== 'accommodation');
+  if (first < 0) return true;
+  return breakfast === first;
+}
+
+function spanSurvives(dayItems, middleIndexes, candidate, fromMeal, toMeal) {
   const merged = [...dayItems];
   middleIndexes.forEach((index, i) => { merged[index] = candidate[i]; });
 
   const gapFor = (items) => {
-    const lunch = items.findIndex((i) => i.mealType === 'lunch');
-    const dinner = items.findIndex((i) => i.mealType === 'dinner');
-    if (lunch < 0 || dinner < 0 || dinner < lunch) return 0;
-    return items.slice(lunch + 1, dinner).filter((i) => !i.mealType && i.type !== 'accommodation').length;
+    const from = items.findIndex((i) => i.mealType === fromMeal);
+    const to = items.findIndex((i) => i.mealType === toMeal);
+    if (to < 0) return 0;
+    // A missing opening meal is not a missing span: breakfast may be taken at
+    // the accommodation, in which case the morning simply runs from the start
+    // of the day.
+    const start = from >= 0 ? from : 0;
+    if (to < start) return 0;
+    return items.slice(start + 1, to).filter((i) => !i.mealType && i.type !== 'accommodation').length;
   };
   return gapFor(dayItems) === 0 || gapFor(merged) > 0;
 }
@@ -1283,6 +1353,8 @@ function reorderDayGeographically(day) {
       const candidate = sequenceFor(arrangement);
       if (!mealsStillInOrder(day.items, middleIndexes, candidate)) continue;
       if (!afternoonSurvives(day.items, middleIndexes, candidate)) continue;
+      if (!morningSurvives(day.items, middleIndexes, candidate)) continue;
+      if (!breakfastLeadsDay(day.items, middleIndexes, candidate)) continue;
       const shape = measure(candidate);
       if (better(shape)) {
         best = candidate;
@@ -1304,6 +1376,8 @@ function reorderDayGeographically(day) {
           const candidate = sequenceFor(trial);
           if (!mealsStillInOrder(day.items, middleIndexes, candidate)) continue;
           if (!afternoonSurvives(day.items, middleIndexes, candidate)) continue;
+          if (!morningSurvives(day.items, middleIndexes, candidate)) continue;
+          if (!breakfastLeadsDay(day.items, middleIndexes, candidate)) continue;
           const shape = measure(candidate);
           if (better(shape)) {
             arrangement = trial;
@@ -1370,7 +1444,7 @@ async function repositionStrandedMeals(day, anchor, usedPlaceIds, stay) {
       centre
     ).catch(() => []);
 
-    const pick = candidates.find((candidate) => {
+    const acceptable = candidates.filter((candidate) => {
       if (!candidate.location || !candidate.placeId) return false;
       if (!candidate.availablePhotoUrl) return false;
       if (usedPlaceIds.has(candidate.placeId)) return false;
@@ -1380,6 +1454,7 @@ async function repositionStrandedMeals(day, anchor, usedPlaceIds, stay) {
       if (anchor && haversineMeters(anchor, candidate.location) > MAX_BROAD_DISTANCE_METERS) return false;
       return haversineMeters(candidate.location, centre) < haversineMeters(item.location, centre);
     });
+    const pick = preferWellKnown(acceptable);
     if (!pick) continue;
 
     // Only keep the swap if the day is actually straighter for it.
@@ -1406,6 +1481,7 @@ async function repositionStrandedMeals(day, anchor, usedPlaceIds, stay) {
     item.hasHours = pick.hasHours || false;
     item.weekdayDescriptions = pick.weekdayDescriptions || null;
     item.description = describeAdoptedMeal(pick, item.mealType);
+    item.adoptedFrom = { neighbourhood: pick.neighbourhood, types: pick.types };
     item.categoryTag = composeCategoryTag(item, pick) || item.categoryTag;
     usedPlaceIds.add(pick.placeId);
   }
@@ -1725,6 +1801,27 @@ async function resolveItinerary(itinerary, destination, anchor, transport, accom
   // Synchronous and last - every day's travelToNext values are now final,
   // so this is the one place the displayed schedule gets reconciled with
   // them.
+  // Real copy for every substituted stop, replacing the category-and-postcode
+  // line each substitution path leaves behind. Runs before the scheduling tail
+  // because activityCeiling reads item.description to decide how long a stop can
+  // plausibly hold, so a stop described as a park or a museum earns its longer
+  // ceiling here rather than being treated as an unrecognised neutral one.
+  //
+  // Best-effort by design: a failure leaves every stop on the synthesised line
+  // it already had, which is the current behaviour, so this can improve the
+  // result but never break it. The markers are stripped either way.
+  try {
+    const described = await describeAdoptedStops(itinerary.days, destination);
+    if (described > 0) {
+      console.info(
+        `[generate-resolved-itinerary] wrote real descriptions for ${described} substituted stop(s)`
+      );
+    }
+  } catch (error) {
+    console.warn('[generate-resolved-itinerary] description pass failed, keeping synthesised lines:', error);
+  }
+  stripAdoptionMarkers(itinerary.days);
+
   itinerary.days.forEach((day) => realignScheduleTimes(day));
 
   // Only now, with the schedule reconciled against real travel times, do the
@@ -1750,16 +1847,42 @@ async function resolveItinerary(itinerary, destination, anchor, transport, accom
     }
   }
 
-  // All variants: absorb any pre-dinner gap by extending the last afternoon
-  // Stretch the last pre-dinner activity to fill any gap, then re-cascade so
-  // dinner and hotel return reflect the updated duration. Applies to all pacing
-  // variants (Packed and Relaxed alike).
-  itinerary.days.forEach((day) => {
-    stretchPreDinnerGap(day);
+  // Dinner is an anchor, not a leftover. Each day is measured against its own
+  // real cutoff - 02:00 on a nightlife day, 22:30 on the last one - and any day
+  // too full for dinner to reach a normal hour loses stops off its tail until it
+  // can. Then the stops before dinner are lengthened or shortened to land it on
+  // the target. Applies to all pacing variants.
+  for (let index = 0; index < itinerary.days.length; index++) {
+    const day = itinerary.days[index];
+    const cutoff = dayCutoffMinutes(index, itinerary.days.length, interests);
+
+    const { removed, moved } = trimTailForDinner(day, cutoff);
+    if (removed.length > 0 || moved.length > 0) {
+      if (moved.length > 0) {
+        console.info(
+          `[generate-resolved-itinerary] day ${day.day}: moved ${moved.length} stop(s) to before dinner so dinner could reach a normal hour: ${moved.join(', ')}`
+        );
+      }
+      if (removed.length > 0) {
+        console.info(
+          `[generate-resolved-itinerary] day ${day.day}: dropped ${removed.length} post-dinner stop(s) so dinner could reach a normal hour: ${removed.join(', ')}`
+        );
+      }
+      // Same reason as trimFinalNight above: the stop before the removed one
+      // still holds a leg routed to somewhere that is no longer on the day.
+      await computeTravelTimes(day.items, transport);
+      realignScheduleTimes(day);
+    }
+
+    // Rounded BEFORE the stretch, not after: the stretch measures the day
+    // against its cutoff, and rounding afterwards added minutes it had not
+    // accounted for. It now moves in whole 15-minute steps of its own, so what
+    // it measures is what ships.
     roundStayDurations(day);
+    stretchPreDinnerGap(day, cutoff);
     realignScheduleTimes(day);
     snapArrivalsToGrid(day, transport);
-  });
+  }
 
   return itinerary;
 }

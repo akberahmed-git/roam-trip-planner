@@ -178,11 +178,25 @@ export function realignScheduleTimes(day) {
     // than the AI assumed and the cascade would put the meal well BEFORE its
     // planned time - where holding it at the later planned time keeps it
     // reading as the right time of day and still never precedes the prior stop.
-    if (candidateMinutes >= plannedMinutes - MEAL_DRIFT_TOLERANCE_MINUTES) {
+    // A cascade that lands inside the meal's own window is always accepted,
+    // whatever the model had planned. The planned time is only a proxy for "the
+    // right time of day", and the window is the real thing: holding a 12:15
+    // cascade back to a 13:30 plan protects nothing and costs the day a
+    // reconciled hop. This also stops the drift check fighting stretchToMeal,
+    // which exists precisely to walk a meal into this window.
+    const window = MEAL_WINDOWS[current.mealType];
+    const insideWindow =
+      window && candidateMinutes >= window.start && candidateMinutes <= window.end;
+
+    if (insideWindow || candidateMinutes >= plannedMinutes - MEAL_DRIFT_TOLERANCE_MINUTES) {
       current.startTime = candidateStart;
     }
-    // else: cascade is far earlier than planned (an unusually fast day); keep
-    // the meal at its later, AI-planned time.
+    // else: cascade is far earlier than planned AND outside the window (an
+    // unusually fast day); keep the meal at its later, AI-planned time. Note
+    // that snapArrivalsToGrid runs after this on the generation path and
+    // recascades every start time, so this fallback shapes the intermediate
+    // schedule rather than the shipped one. It is stretchToMeal, not this,
+    // that keeps a meal in its window on the finished plan.
   }
 }
 
@@ -209,6 +223,28 @@ export const STAY_DURATION_INCREMENT_MINUTES = 15;
 export const MAX_STAY_MINUTES = 150;
 export const MIN_STAY_MINUTES = 45;
 
+// The meal windows the prompt already states, restated here as the numbers the
+// scheduler actually enforces. Up to now these existed only as English inside
+// the prompt: nothing downstream ever checked a meal against them, so a day
+// whose cascade drifted simply shipped drifted. realignScheduleTimes compared a
+// meal to the model's OWN planned time, which is no help when the model's plan
+// was already outside the window, and snapArrivalsToGrid then overwrote the
+// result unconditionally (Akber, 7 Sep 2026: lunch at 11:25 straight after a
+// 09:00 breakfast, dinner at 18:10 on one day and 21:20 on the next).
+export const MEAL_WINDOWS = {
+  breakfast: { start: 9 * 60, end: 10 * 60 + 30 },
+  lunch: { start: 12 * 60, end: 14 * 60 },
+  dinner: { start: 19 * 60, end: 21 * 60 }
+};
+
+// A meal is not an activity and must not be clamped like one. The global
+// MIN/MAX band above is sized for sightseeing, so a model that returned 120 for
+// every stop on a Slow day got a two-hour BREAKFAST waved through - and since
+// each stop's start cascades from the one before, that single number is what
+// pushed lunch to 11:25, an hour and a half before its window even opens. The
+// upper bounds here are what each meal can plausibly run to on a slow trip; the
+// lower bound stays MIN_STAY_MINUTES for all three.
+
 // Split out of roundStayDurations, which runs at the very end of the pipeline.
 // Clamping there undid stretchPreDinnerGap: that pass deliberately extends the
 // last afternoon stop, up to 240 minutes for somewhere worth lingering, to
@@ -220,7 +256,12 @@ export const MIN_STAY_MINUTES = 45;
 // anything has deliberately extended a stay.
 export function clampStayDurations(day) {
   for (const item of day.items) {
-    if (item.type === 'accommodation') continue;
+    // An accommodation stop with a mealType is a real breakfast that happens to
+    // be at the hotel, and its duration cascades into the rest of the day like
+    // any other. Only the pure bookends (arrive/depart, durationMinutes null)
+    // are structural and exempt. Skipping the whole type is what let a 120
+    // minute hotel breakfast through and pushed lunch to 11:25.
+    if (item.type === 'accommodation' && !item.mealType) continue;
     if (item.durationMinutes == null) continue;
     if (item.durationMinutes > MAX_STAY_MINUTES) item.durationMinutes = MAX_STAY_MINUTES;
     if (item.durationMinutes < MIN_STAY_MINUTES) item.durationMinutes = MIN_STAY_MINUTES;
@@ -392,91 +433,351 @@ function activityCeiling(item) {
 // that stop then runs long. The real cure for that case is the generator handing
 // this step enough stops to spread across, not something the schedule can invent
 // its way out of.
-export function stretchPreDinnerGap(day) {
-  const dinnerIndex = day.items.findIndex((item) => item.mealType === 'dinner');
-  if (dinnerIndex <= 0) return;
+// Where dinner should land on every day of the trip, so a traveller is not
+// eating at 17:55 on Monday and 20:35 on Tuesday. Before this, dinner was simply
+// wherever the day's cascade happened to leave it, which is how those two times
+// shipped side by side (Akber, 7 Sep 2026).
+//
+// It is a target, not a promise. The day's real cutoff can force it earlier, and
+// so can the plain fact that the afternoon has only so much stretch in it; see
+// stretchToMeal for what happens when it cannot be reached.
+export const DINNER_TARGET_MINUTES = 20 * 60 + 30;
 
-  const dinner = day.items[dinnerIndex];
-  if (!dinner.startTime) return;
+function dayEndMinutes(day) {
+  const items = day.items;
+  const first = items.find((item) => item.startTime);
+  const last = [...items].reverse().find((item) => item.startTime);
+  if (!first || !last) return null;
+  const start = timeToMinutes(first.startTime);
+  let end = timeToMinutes(last.startTime);
+  if (start == null || end == null) return null;
+  end += last.durationMinutes || 0;
+  // A nightlife day legitimately runs past midnight, so a smaller end than
+  // start is a wrap, not an error.
+  while (end < start) end += 24 * 60;
+  return end;
+}
 
-  // Collect only activities that fall AFTER lunch and before dinner. Stretching
-  // morning activities (before lunch) causes an impossible schedule: if a morning
-  // activity is extended past lunchtime, realignScheduleTimes pushes lunch forward
-  // but the drift-tolerance guard snaps it back to its original time, leaving a
-  // phantom gap where the card shows you at lunch before you've left the morning
-  // stop. Restricting to post-lunch activities means only genuinely free afternoon
-  // time gets filled.
-  const lunchIndex = day.items.findIndex((item) => item.mealType === 'lunch');
-  const afternoonStart = lunchIndex >= 0 ? lunchIndex + 1 : 0;
-  // Loosely-typed itinerary items flow through this whole module as plain
-  // objects (the `day` params are untyped), and this array is read back inside
-  // closures below, so annotate it explicitly rather than let it infer never[].
-  const afternoonActivities: any[] = [];
-  for (let i = afternoonStart; i < dinnerIndex; i++) {
+// How much later a meal can be pushed before the day overruns its cutoff. The
+// whole tail moves with the meal, so this is simply the room left at the end of
+// the day. Returns null when there is no cutoff to respect.
+export function latestMealStart(day, mealIndex, cutoffMinutes) {
+  if (cutoffMinutes == null) return null;
+  const end = dayEndMinutes(day);
+  const meal = day.items[mealIndex];
+  if (end == null || !meal?.startTime) return null;
+  const mealStart = timeToMinutes(meal.startTime);
+  if (mealStart == null) return null;
+  return mealStart + (cutoffMinutes - end);
+}
+
+// Moves one meal onto a target time by changing the length of the stops BEFORE
+// it, never by moving the meal directly and never by inventing a gap. Everything
+// after the meal shifts with it, which is why the caller has to supply the day's
+// cutoff.
+//
+// Two directions. A meal that lands too early (the 17:55 dinner) is reached by
+// lengthening the stops in front of it, up to what each kind of place can
+// plausibly hold - see activityCeiling. A meal that lands too late is reached by
+// shortening them, down to MIN_STAY_MINUTES.
+//
+// The target is always reduced to what the stops can actually absorb before
+// anything is changed. That is the guarantee the whole pass rests on: the day
+// stays continuous, no card ever shows dead time, and no single stop is ever
+// blown out to four hours to paper over a target it could not reach. A day that
+// cannot get dinner to 20:30 gets it as close as it honestly can.
+function stretchToMeal(day, mealType, fromIndex, targetMinutes, cutoffMinutes, pullBack) {
+  const mealIndex = day.items.findIndex((item) => item.mealType === mealType);
+  if (mealIndex <= 0 || mealIndex <= fromIndex) return;
+
+  const meal = day.items[mealIndex];
+  if (!meal.startTime) return;
+
+  const mealStartMinutes = timeToMinutes(meal.startTime);
+  if (mealStartMinutes == null) return;
+
+  // Stops between the previous meal and this one. Anything outside that span
+  // belongs to a different part of the day and must not absorb this gap: an
+  // afternoon stop stretched to fix breakfast would push lunch, and so on down
+  // the day.
+  const stretchable: any[] = [];
+  for (let i = fromIndex + 1; i < mealIndex; i++) {
     const item = day.items[i];
     if (item.type !== 'meal' && item.type !== 'accommodation' && item.startTime && item.durationMinutes) {
-      afternoonActivities.push(item);
+      stretchable.push(item);
     }
   }
-  if (afternoonActivities.length === 0) return;
+  if (stretchable.length === 0) return;
 
-  const lastActivity = afternoonActivities[afternoonActivities.length - 1];
-  const travelParsed = parseTravelMinutes(lastActivity.travelToNext);
+  // With no target of its own a meal simply wants to be inside its window: the
+  // clamp leaves it exactly where it is whenever it already is, and pulls it to
+  // the nearest edge when it is not. Lunch is the case for both directions -
+  // 11:25 on one day and 15:05 on another, in the same generation.
+  const window = MEAL_WINDOWS[mealType];
+  let target = targetMinutes != null ? targetMinutes : mealStartMinutes;
+  if (window) target = Math.min(Math.max(target, window.start), window.end);
+  // Pulling an over-late meal back drags the whole rest of the day with it, and
+  // the day may not be able to give the time back. See stretchPreDinnerGap.
+  if (!pullBack && target < mealStartMinutes) target = mealStartMinutes;
+
+  // The cutoff caps how late, and the room in front caps how far either way.
+  const latest = latestMealStart(day, mealIndex, cutoffMinutes);
+  if (latest != null) target = Math.min(target, latest);
+
+  const headroom = stretchable.reduce(
+    (total, a) => total + Math.max(0, activityCeiling(a) - a.durationMinutes), 0);
+  const shrinkroom = stretchable.reduce(
+    (total, a) => total + Math.max(0, a.durationMinutes - MIN_STAY_MINUTES), 0);
+
+  const last = stretchable[stretchable.length - 1];
+  const travelParsed = parseTravelMinutes(last.travelToNext);
   const travelMinutes = travelParsed ? travelParsed.minutes : 0;
+  const lastEnd = timeToMinutes(last.startTime) + last.durationMinutes;
 
-  const activityEndMinutes = timeToMinutes(lastActivity.startTime) + lastActivity.durationMinutes;
-  const dinnerStartMinutes = timeToMinutes(dinner.startTime);
-  const gap = dinnerStartMinutes - activityEndMinutes - travelMinutes;
+  let gap = target - lastEnd - travelMinutes;
+  gap = gap > 0 ? Math.min(gap, headroom) : Math.max(gap, -shrinkroom);
 
-  if (gap < MIN_GAP_TO_STRETCH_MINUTES) return;
+  // Half an hour is the point at which dead time is worth rearranging the day
+  // for. A day running past its cutoff is worth correcting at any size, though:
+  // leaving 15 minutes of overrun in place because it was under the threshold
+  // is how Slow day 2 finished at 22:45 against a 22:30 cutoff.
+  const overrunning = cutoffMinutes != null && (dayEndMinutes(day) || 0) > cutoffMinutes;
+  const threshold = gap < 0 && overrunning ? STAY_DURATION_INCREMENT_MINUTES : MIN_GAP_TO_STRETCH_MINUTES;
+  if (Math.abs(gap) < threshold) return;
 
-  // Share the gap out in even portions across the afternoon stops. Each stop can
-  // absorb up to its own plausible ceiling (activityCeiling); whenever a stop
-  // hits its ceiling, the leftover is redistributed across the stops that still
-  // have room on the next pass. This keeps a long afternoon spread over two or
-  // three natural stops instead of ballooning one, while still respecting that
-  // some places (a castle) can hold far more time than others (a wine bar). The
-  // total added equals the gap unless nothing can absorb it, so dinner still
-  // cascades onto its window.
-  const fillable = afternoonActivities
-    .map((activity) => ({ activity, headroom: activityCeiling(activity) - activity.durationMinutes }))
-    .filter((entry) => entry.headroom > 0);
+  // Share the change out in even portions across the stops. Each stop takes up
+  // to its own limit - its plausible ceiling when lengthening, MIN_STAY_MINUTES
+  // when shortening - and whatever one stop cannot take redistributes across
+  // the ones that still have room on the next pass. That keeps a long afternoon
+  // spread over two or three natural stops instead of ballooning one, while
+  // still respecting that some places (a castle) hold far more time than others
+  // (a wine bar).
+  const roomFor = (activity) =>
+    gap > 0
+      ? Math.max(0, activityCeiling(activity) - activity.durationMinutes)
+      : Math.max(0, activity.durationMinutes - MIN_STAY_MINUTES);
 
-  let minutesLeft = gap;
-  let active = fillable;
+  let minutesLeft = Math.abs(gap);
+  const direction = gap > 0 ? 1 : -1;
+  let active = stretchable.map((activity) => ({ activity, room: roomFor(activity) }))
+    .filter((entry) => entry.room > 0);
+
   while (minutesLeft > 0 && active.length > 0) {
     const share = minutesLeft / active.length;
-    let addedThisPass = 0;
+    let movedThisPass = 0;
     for (const entry of active) {
-      const add = Math.min(Math.round(share), entry.headroom, minutesLeft - addedThisPass);
-      if (add <= 0) continue;
-      entry.activity.durationMinutes += add;
-      entry.headroom -= add;
-      addedThisPass += add;
+      // Moved in whole 15-minute steps, the same grid stay durations are shown
+      // on. Rounding afterwards instead used to add up to a few minutes per stop
+      // and quietly carried a day past the cutoff this pass had just measured
+      // against - Slow day 2 finished at 22:45 against a 22:30 cutoff.
+      const step = Math.min(Math.round(share), entry.room, minutesLeft - movedThisPass);
+      let move = Math.floor(step / STAY_DURATION_INCREMENT_MINUTES) * STAY_DURATION_INCREMENT_MINUTES;
+      // An even share smaller than one step rounds to nothing, and a whole pass
+      // of nothing ends the loop with the day unchanged - which is how a 15
+      // minute overrun survived every attempt to correct it. When the share is
+      // too small to split, one stop takes the whole step instead.
+      const remaining = minutesLeft - movedThisPass;
+      if (move === 0 && step > 0 && entry.room >= STAY_DURATION_INCREMENT_MINUTES
+          && remaining >= STAY_DURATION_INCREMENT_MINUTES) {
+        move = STAY_DURATION_INCREMENT_MINUTES;
+      }
+      if (move <= 0) continue;
+      entry.activity.durationMinutes += direction * move;
+      entry.room -= move;
+      movedThisPass += move;
     }
-    minutesLeft -= addedThisPass;
-    active = active.filter((entry) => entry.headroom > 0);
-    if (addedThisPass <= 0) break;
+    minutesLeft -= movedThisPass;
+    active = active.filter((entry) => entry.room > 0);
+    if (movedThisPass <= 0) break;
   }
 
-  // If time is still left over after every stop has reached its ceiling - a day
-  // with too few afternoon stops, e.g. a single castle that would need five-plus
-  // hours to reach dinner - hand the remainder to the most linger-worthy stop
-  // and let it run past its nominal ceiling rather than leave a hole in the day.
-  // A visible gap reads as a bug; an extra-long castle just reads as a slow day.
-  // The proper cure is the generator giving Slow days enough stops in the first
-  // place; this guarantees the timeline is always continuous regardless.
-  if (minutesLeft > 0 && afternoonActivities.length > 0) {
-    const anchor = afternoonActivities
-      .slice()
-      .sort((a, b) => (activityCeiling(b) - activityCeiling(a)) || (b.durationMinutes - a.durationMinutes))[0];
-    anchor.durationMinutes += minutesLeft;
-    minutesLeft = 0;
-  }
-
-  // dinner.startTime is deliberately left untouched so it stays in its window.
-  // The realignScheduleTimes pass right after this recascades the stretched
-  // durations: because the afternoon now ends right before the window time and
-  // the whole gap has been absorbed, dinner lands exactly on its window with the
-  // travel leg flowing straight into it and no dead time anywhere in the day.
+  // The meal's own startTime is deliberately left untouched. The
+  // realignScheduleTimes pass right after this recascades the changed durations:
+  // because the span now ends exactly one travel leg before the target, the meal
+  // lands on it with no dead time anywhere in the day.
 }
+
+// How well a finished day reads: every meal inside its window first, then how
+// close dinner sits to the time it should be the same on every day.
+function scoreDay(day) {
+  let inWindow = 0;
+  let dinnerMiss = 24 * 60;
+  for (const item of day.items) {
+    const window = MEAL_WINDOWS[item.mealType];
+    if (!window || !item.startTime) continue;
+    const at = timeToMinutes(item.startTime);
+    if (at == null) continue;
+    if (at >= window.start && at <= window.end) inWindow += 1;
+    if (item.mealType === 'dinner') dinnerMiss = Math.abs(at - DINNER_TARGET_MINUTES);
+  }
+  return { inWindow, dinnerMiss };
+}
+
+// Only durations and start times change here, so a snapshot of those is enough
+// to try an approach and put the day back if it did not pay off.
+function snapshotSchedule(day) {
+  return day.items.map((item) => ({ startTime: item.startTime, durationMinutes: item.durationMinutes }));
+}
+function restoreSchedule(day, snapshot) {
+  day.items.forEach((item, i) => {
+    item.startTime = snapshot[i].startTime;
+    item.durationMinutes = snapshot[i].durationMinutes;
+  });
+}
+
+// Kept under its original exported name because two routes import it, but it is
+// no longer only about dinner, and no longer only about gaps. It settles the
+// morning first so the afternoon is measured against a finished morning.
+//
+// cutoffMinutes is the latest the day may end, which this layer cannot work out
+// for itself: it depends on whether nightlife was chosen and on whether this is
+// the last day of the trip. Omitted (the swap/reorder recompute path), the day
+// keeps whatever end it already has and only its internal dead time is closed.
+//
+// Both lunch strategies get tried because fixing one meal can break the next.
+// Dragging a 15:05 lunch back to 14:00 pulls the whole afternoon with it, and on
+// a day with one short afternoon stop there is no headroom left to push dinner
+// out again: Packed day 2 traded a late lunch for an 18:15 dinner, which is a
+// worse day than the one it started with. So the day is scored both ways and the
+// better one kept, rather than the pass assuming its own correction is an
+// improvement.
+export function stretchPreDinnerGap(day, cutoffMinutes?: number | null) {
+  const cutoff = cutoffMinutes != null ? cutoffMinutes : dayEndMinutes(day);
+  const indexOfMeal = (mealType) => day.items.findIndex((item) => item.mealType === mealType);
+
+  const before = snapshotSchedule(day);
+
+  const run = (pullLunchBack) => {
+    stretchToMeal(day, 'lunch', indexOfMeal('breakfast'), null, cutoff, pullLunchBack);
+    realignScheduleTimes(day);
+    stretchToMeal(day, 'dinner', indexOfMeal('lunch'), DINNER_TARGET_MINUTES, cutoff, true);
+    realignScheduleTimes(day);
+    return scoreDay(day);
+  };
+
+  const withPullBack = run(true);
+  const attempt = snapshotSchedule(day);
+
+  restoreSchedule(day, before);
+  realignScheduleTimes(day);
+  const withoutPullBack = run(false);
+
+  const better =
+    withPullBack.inWindow > withoutPullBack.inWindow ||
+    (withPullBack.inWindow === withoutPullBack.inWindow && withPullBack.dinnerMiss < withoutPullBack.dinnerMiss);
+  if (better) {
+    restoreSchedule(day, attempt);
+    realignScheduleTimes(day);
+  }
+}
+
+// The two end-of-day cutoffs the prompt states, as the numbers the scheduler
+// enforces. Kept in step with buildTripPreamble's End time line: a nightlife
+// trip may run to 02:00, except on its last day, when the traveller checks out
+// the next morning. Expressed past midnight (26:00) because a day that ends at
+// 02:00 ends 17 hours after it started, not 7 hours before.
+const LATE_NIGHT_CUTOFF_MINUTES = 26 * 60;
+const NORMAL_CUTOFF_MINUTES = 22 * 60 + 30;
+
+export function dayCutoffMinutes(dayIndex, dayCount, interests) {
+  const hasNightlife = (interests || []).some((interest) =>
+    String(interest).toLowerCase().includes('nightlife'));
+  if (!hasNightlife) return NORMAL_CUTOFF_MINUTES;
+  if (dayCount <= 1) return LATE_NIGHT_CUTOFF_MINUTES;
+  return dayIndex === dayCount - 1 ? NORMAL_CUTOFF_MINUTES : LATE_NIGHT_CUTOFF_MINUTES;
+}
+
+// Everything from dinner's arrival to the end of the day, computed from
+// durations and travel legs rather than from start times, so it stays correct
+// while stops are being removed around it.
+function tailLoadFromDinner(items, dinnerIndex) {
+  let total = items[dinnerIndex].durationMinutes || 0;
+  for (let i = dinnerIndex; i < items.length - 1; i++) {
+    const leg = parseTravelMinutes(items[i].travelToNext);
+    total += leg ? leg.minutes : 0;
+    total += items[i + 1].durationMinutes || 0;
+  }
+  return total;
+}
+
+// Places that only make sense after dinner. A bar or a club promoted into the
+// afternoon is worse than the problem being solved, so these stay where they
+// are; anything else - a shrine, a viewpoint, a shopping street - is a stop that
+// reads better in daylight anyway.
+const NIGHTLIFE_KEYWORDS = ['bar', 'club', 'lounge', 'pub', 'izakaya', 'nightlife', 'karaoke', 'disco'];
+
+function isNightlifeStop(item) {
+  const text = `${item.name || ''} ${item.categoryTag || ''}`.toLowerCase();
+  return NIGHTLIFE_KEYWORDS.some((word) => text.includes(word));
+}
+
+// A day can be too full for dinner to happen at a normal hour. Slow day 1 of the
+// Tokyo demo carried three post-dinner stops: reaching even 19:00 would have run
+// it to about 03:00, so the scheduler gave up and served dinner at 17:55 while
+// the next day ate at 20:35 (Akber, 7 Sep 2026).
+//
+// Time cannot be conjured, so the evening has to give something up. It gives it
+// up in the least destructive order:
+//
+//   1. Move a post-dinner stop to before dinner. This is nearly free: the day
+//      keeps every stop, the tail gets shorter so dinner can sit later, and the
+//      afternoon gets longer so the stretch has something to work with. Only
+//      stops that make sense in daylight move; a bar stays a bar.
+//   2. Drop a post-dinner stop, once nothing is left to move.
+//
+// Two tiers of force, because "dinner must be at a sane hour" and "dinner should
+// be at the same hour every day" are not the same requirement:
+//
+//   Hard: dinner has to reach 19:00. The day is stripped as far as it takes.
+//   Soft: dinner should reach 20:30. More may move, but the evening never loses
+//   its last stop to it - a nightlife day that ends at dinner has lost the thing
+//   it was chosen for.
+// Returns both lists because they need different handling by the caller: a move
+// and a drop each leave legs pointing at stops that are no longer where they
+// were, so ANY change here means the day must be re-routed before its clock is
+// reconciled.
+export function trimTailForDinner(day, cutoffMinutes) {
+  const removed: string[] = [];
+  const moved: string[] = [];
+  for (;;) {
+    const dinnerIndex = day.items.findIndex((item) => item.mealType === 'dinner');
+    if (dinnerIndex < 0) break;
+
+    const latest = cutoffMinutes - tailLoadFromDinner(day.items, dinnerIndex);
+    if (latest >= DINNER_TARGET_MINUTES) break;
+
+    const postDinner: number[] = [];
+    for (let i = dinnerIndex + 1; i < day.items.length; i++) {
+      const item = day.items[i];
+      if (item.type !== 'accommodation' && !item.mealType) postDinner.push(i);
+    }
+    if (postDinner.length === 0) break;
+
+    // Prefer moving. Take the LAST daylight-friendly stop, which is both the
+    // most absurdly scheduled one and the cheapest to unhook.
+    const movable = [...postDinner].reverse().find((i) => !isNightlifeStop(day.items[i]));
+    if (movable != null) {
+      const [stop] = day.items.splice(movable, 1);
+      // Its old neighbours now meet directly, and it now sits between two stops
+      // it was never routed against. Both legs are unknown until the caller
+      // re-routes the day, which is exactly what it does after this returns.
+      day.items[movable - 1].travelToNext = null;
+      stop.travelToNext = null;
+      day.items.splice(dinnerIndex, 0, stop);
+      moved.push(stop.name);
+      continue;
+    }
+
+    // Nothing left to move: only nightlife remains after dinner. Past the hard
+    // requirement, the evening keeps a stop.
+    if (latest >= MEAL_WINDOWS.dinner.start && postDinner.length <= 1) break;
+
+    const last = postDinner[postDinner.length - 1];
+    day.items[last - 1].travelToNext = day.items[last].travelToNext;
+    removed.push(day.items[last].name);
+    day.items.splice(last, 1);
+  }
+  return { removed, moved };
+}
+
+export { dayEndMinutes };

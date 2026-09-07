@@ -52,8 +52,8 @@ export default async function handler(req, res) {
     // arrivals to the grid and fill any leg the swap left without a travel time
     // (which would otherwise show as a gap on the affected day).
     realignScheduleTimes(day);
-    stretchPreDinnerGap(day);
     roundStayDurations(day);
+    stretchPreDinnerGap(day);
     realignScheduleTimes(day);
     snapArrivalsToGrid(day, transport);
     res.status(200).json({ items: day.items });

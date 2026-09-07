@@ -144,6 +144,11 @@ function toSuggestion(place) {
     availablePhotoUrl: photoUrlFor(place),
     location: locationOf(place),
     types: place.types || [],
+    // How many photos Google holds. The only popularity signal that survives at
+    // Pro tier, and it separates a place people actually go to from one nobody
+    // photographs. Carried forward so a caller can set its own bar, not just
+    // rely on the sort order (Akber, 7 Sep 2026).
+    photoCount: (place.photos || []).length,
     neighbourhood: neighbourhoodOf(place),
     ...hoursInfo(place)
   };
