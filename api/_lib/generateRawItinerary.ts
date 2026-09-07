@@ -84,7 +84,7 @@ function buildPackedPrompt(p) {
 Trip details:
 - Destination: ${p.destination}
 - Length: ${p.days} days
-- Budget band: ${p.budget || 'Standard'}. This is a real constraint, not a label. Economy means everyday, well-loved places a local would actually eat at - markets, counters, canteens, neighbourhood institutions - and activities that are free or cheap. Standard means solid mid-range restaurants and paid attractions with an ordinary entry fee. Luxury means notable, destination dining and premium or private experiences. Apply it to every meal and every activity, not only the ones that sound expensive, and keep the whole trip in one band rather than dropping a tasting menu into a budget week.
+- Budget band: ${p.budget || 'Standard'}. This is a real constraint, not a label. Economy means everyday, well-loved places a local would actually eat at - markets, counters, canteens, neighbourhood institutions - and activities that are free or cheap. Standard means solid mid-range restaurants and paid attractions with an ordinary entry fee. Luxury means notable, destination dining and premium or private experiences. Apply it to every meal and every activity, not only the ones that sound expensive, and keep the whole trip in one band rather than dropping a tasting menu into a budget week. Unless the band is Luxury, do not choose Michelin-starred restaurants, omakase or kaiseki counters, tasting menus or anything else that would cost more than a normal meal out.
 - Accommodation (routing anchor): ${p.accommodation || 'a centrally located hotel'}
 ${p.interestsLine}${p.groupLine ? `\n${p.groupLine}` : ''}
 ${p.endTimeLine}
@@ -172,7 +172,7 @@ function buildSlowPrompt(p) {
 Trip details:
 - Destination: ${p.destination}
 - Length: ${p.days} days
-- Budget band: ${p.budget || 'Standard'}. This is a real constraint, not a label. Economy means everyday, well-loved places a local would actually eat at - markets, counters, canteens, neighbourhood institutions - and activities that are free or cheap. Standard means solid mid-range restaurants and paid attractions with an ordinary entry fee. Luxury means notable, destination dining and premium or private experiences. Apply it to every meal and every activity, not only the ones that sound expensive, and keep the whole trip in one band rather than dropping a tasting menu into a budget week.
+- Budget band: ${p.budget || 'Standard'}. This is a real constraint, not a label. Economy means everyday, well-loved places a local would actually eat at - markets, counters, canteens, neighbourhood institutions - and activities that are free or cheap. Standard means solid mid-range restaurants and paid attractions with an ordinary entry fee. Luxury means notable, destination dining and premium or private experiences. Apply it to every meal and every activity, not only the ones that sound expensive, and keep the whole trip in one band rather than dropping a tasting menu into a budget week. Unless the band is Luxury, do not choose Michelin-starred restaurants, omakase or kaiseki counters, tasting menus or anything else that would cost more than a normal meal out.
 - Accommodation (routing anchor): ${p.accommodation || 'a centrally located hotel'}
 ${p.interestsLine}${p.groupLine ? `\n${p.groupLine}` : ''}
 ${p.endTimeLine}

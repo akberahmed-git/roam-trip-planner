@@ -20,7 +20,7 @@ import {
   dayCutoffMinutes
 } from './_lib/scheduleRealign.js';
 import { applyFixedSchedule, dedupeMeals, starvedBlocks, unsuitableStops, roomForAnotherStop, eveningInsertPoint } from './_lib/fixedSchedule.js';
-import { sortByBudgetFit } from './_lib/budgetFit.js';
+import { sortByBudgetFit, isOffBandDining } from './_lib/budgetFit.js';
 import { uncoveredInterests, satisfiesInterest, isEveningInterest } from './_lib/interestCoverage.js';
 import { weekdayForDay, isOpenAt } from './_lib/openingHours.js';
 import { shapeOf, REORDER_REVERSAL_DEGREES } from './_lib/routeShape.js';
@@ -334,7 +334,9 @@ async function resolveMealPlaceholders(day, anchor, usedPlaceIds, stay, usedBran
           // re-adoption below could hand back another restaurant that is shut at
           // 20:00, the check would drop it again next round, and the day would
           // spend its three rounds swapping one closed dinner for another.
-          openAtMealTime(c)
+          openAtMealTime(c) &&
+          // Or the re-placement puts back what the check just rejected.
+          !isOffBandDining(c.name, budget)
       );
       // Budget first, then fame. Reordering rather than filtering, so a band
       // with nothing nearby still gets the best available place instead of
@@ -2200,7 +2202,7 @@ async function resolveItinerary(itinerary, destination, anchor, transport, accom
       }
 
       // Now, and only now, is every stop sitting on the time it will ship with.
-      const unsuitable = unsuitableStops(day, weekday);
+      const unsuitable = unsuitableStops(day, weekday, budget);
 
       // A meal is a slot, not a stop. Deleting one leaves a day with no dinner,
       // and nothing downstream puts it back: fillStarvedBlocks only ever looks

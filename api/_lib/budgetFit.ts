@@ -53,6 +53,26 @@ export function priceLevelOf(candidate) {
 // Stable within each rank: candidates arrive sorted by qualityScore and that
 // order is preserved, so this expresses a budget preference without throwing
 // away the quality ranking underneath it.
+// Google has no priceLevel for a great many restaurants, including the ones most
+// worth catching: "Sukiyabashi Jiro Roppongi Hills Restaurant" came back with
+// priceLevel null and landed as lunch on a Standard trip, described by the model
+// itself as "three-Michelin-starred". With no price on the record there was
+// nothing for the ranking above to act on.
+//
+// These words are how fine dining announces itself, in the name or in the
+// description the model wrote. Narrow on purpose: each one means one thing, and
+// the cost of a false positive is a meal being re-placed, not a wrong claim on
+// screen (Akber, 7 Sep 2026).
+const FINE_DINING = /\b(michelin|omakase|kaiseki|tasting menu|degustation|fine[- ]dining|haute cuisine)\b/i;
+
+// True only for the bands that should not be sent somewhere with a tasting menu.
+// Luxury is exempt by definition, and an unknown band changes nothing.
+export function isOffBandDining(text, budget) {
+  const key = String(budget || '').trim().toLowerCase();
+  if (key !== 'economy' && key !== 'standard') return false;
+  return FINE_DINING.test(String(text || ''));
+}
+
 export function sortByBudgetFit(candidates, budget) {
   const levels = levelsFor(budget);
   if (!levels || !Array.isArray(candidates)) return candidates || [];

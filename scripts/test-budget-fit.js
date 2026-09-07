@@ -17,7 +17,7 @@ if (!process.execArgv.includes(STRIP)) {
   process.exit(r.status ?? 1);
 }
 
-const { sortByBudgetFit, priceLevelOf, levelsFor } = await import('../api/_lib/budgetFit.ts');
+const { sortByBudgetFit, priceLevelOf, levelsFor, isOffBandDining } = await import('../api/_lib/budgetFit.ts');
 
 const names = (list) => list.map((c) => c.name).join(',');
 let failed = 0;
@@ -55,5 +55,15 @@ check('numeric priceLevel is read too', String(priceLevelOf({ priceLevel: 3 })),
 check('absent priceLevel reads null', String(priceLevelOf({})), 'null');
 check('band lookup is case-insensitive', String(levelsFor('  LUXURY ')), '3,4');
 
-console.log(failed === 0 ? '\nAll 9 passed.' : `\n${failed} failed.`);
+// Fine dining on a band that did not ask for it. The case: "Sukiyabashi Jiro
+// Roppongi Hills Restaurant" landing as lunch on a Standard trip with no
+// priceLevel on the record for the ranking above to act on.
+const jiro = 'Sukiyabashi Jiro Roppongi Hills Restaurant Branch of the legendary three-Michelin-starred sushi restaurant offering an intimate omakase experience';
+check('Michelin lunch is off band on Standard', String(isOffBandDining(jiro, 'Standard')), 'true');
+check('same place is fine on Luxury', String(isOffBandDining(jiro, 'Luxury')), 'false');
+check('omakase counter is off band on Economy', String(isOffBandDining('Sushi Saito omakase counter', 'Economy')), 'true');
+check('an ordinary ramen bar is not', String(isOffBandDining('ICHIRAN Shibuya, a tonkotsu ramen counter', 'Standard')), 'false');
+check('unknown band changes nothing', String(isOffBandDining(jiro, null)), 'false');
+
+console.log(failed === 0 ? '\nAll 14 passed.' : `\n${failed} failed.`);
 process.exit(failed === 0 ? 0 : 1);

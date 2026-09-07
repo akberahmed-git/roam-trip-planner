@@ -10,6 +10,7 @@ import {
 } from './scheduleRealign.js';
 import { dayShape } from './routeShape.js';
 import { isOpenAt } from './openingHours.js';
+import { isOffBandDining } from './budgetFit.js';
 
 // Meals happen at the same time every day, and the rest of the day is fitted
 // around them. This replaces the arrangement where meal times were whatever the
@@ -131,7 +132,7 @@ function indexOfMeal(day, mealType) {
 // Returns the stops the day cannot justify, with a reason each, so the caller
 // can log what it dropped and go looking for a replacement. Meals are exempt
 // from the nightlife half: an izakaya is a perfectly good dinner.
-export function unsuitableStops(day, weekdayIndex) {
+export function unsuitableStops(day, weekdayIndex, budget) {
   const found: any[] = [];
   const dinnerIndex = indexOfMeal(day, 'dinner');
 
@@ -152,7 +153,15 @@ export function unsuitableStops(day, weekdayIndex) {
       return;
     }
 
-    if (item.mealType) return;
+    if (item.mealType) {
+      // A three-Michelin sushi counter is a real place, open at the right hour,
+      // with a real photo and a real rating. Every other rule passes it. The only
+      // thing wrong with it is that the traveller asked for Standard.
+      if (isOffBandDining(`${item.name || ''} ${item.description || ''}`, budget)) {
+        found.push({ index, name: item.name, reason: 'fine dining on a budget that did not ask for it' });
+      }
+      return;
+    }
 
     // A place nobody has reviewed is usually not a place. "Kamadera East
     // Heritage" shipped in the Tokyo demo with 75 minutes against it, no rating,
