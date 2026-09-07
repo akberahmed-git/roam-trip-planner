@@ -243,7 +243,7 @@ Use this exact structure:
 // Every day must have lunch and dinner — breakfast is either an item or
 // handled via breakfastAtAccommodation. If a day is missing either required
 // meal, the itinerary is considered invalid and the call retries once.
-function validateMeals(parsed) {
+function validateMeals(parsed, checkDuplicates) {
   const REQUIRED = ['lunch', 'dinner'];
   for (const day of parsed.days || []) {
     const mealTypes = (day.items || []).filter((i) => i.mealType).map((i) => i.mealType);
@@ -261,6 +261,7 @@ function validateMeals(parsed) {
     // variants carrying two dinners - 18:10 and 19:25 on Packed, 17:30 and 19:50
     // on Slow - and everything downstream took them both at face value: the
     // window logic anchored one, the traveller was shown two.
+    if (!checkDuplicates) continue;
     const duplicated = [...present].filter(
       (mealType) => mealTypes.filter((m) => m === mealType).length > 1
     );
@@ -276,7 +277,7 @@ async function callClaude(prompt) {
   // One variant per call: 3 days × ~6 items × ~175 tokens/item ≈ 3,150 tokens.
   // 8192 gives real headroom; Haiku's output limit is 8192 max_tokens so this
   // is also the ceiling - but a single variant at 3 days fits comfortably.
-  async function attempt() {
+  async function attempt(checkDuplicates) {
     const message = await anthropic.messages.create({
       model: 'claude-haiku-4-5',
       max_tokens: 8192,
@@ -303,19 +304,26 @@ async function callClaude(prompt) {
 
     // Validate every day has lunch and dinner — if not, throw so the caller
     // can retry once before surfacing an error to the user.
-    validateMeals(parsed);
+    validateMeals(parsed, checkDuplicates);
     return parsed;
   }
 
   try {
-    return await attempt();
+    return await attempt(true);
   } catch (err) {
     // Only auto-retry meal validation failures - JSON parse errors are
     // unlikely to self-correct on a second attempt with the same prompt.
-    if (err.mealValidationFailed) {
-      return await attempt();
-    }
-    throw err;
+    if (!err.mealValidationFailed) throw err;
+
+    // The retry no longer rejects a duplicated meal. A missing meal is worth
+    // failing over because the day is genuinely incomplete, but a day with two
+    // dinners is repairable: dedupeMeals keeps whichever sits closest to the
+    // meal's anchor and drops the rest. Asking once more is worth it, since the
+    // model usually gets it right the second time and a real second dinner is
+    // better than a dropped one - but failing the whole trip on the second slip
+    // would mean a paid generation thrown away over something the pipeline can
+    // already fix by itself.
+    return await attempt(false);
   }
 }
 
