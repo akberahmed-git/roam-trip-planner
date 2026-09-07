@@ -1,11 +1,6 @@
 import { computeTravelTimes } from './_lib/travelTime.js';
-import {
-  fillMissingTravelTimes,
-  realignScheduleTimes,
-  roundStayDurations,
-  snapArrivalsToGrid,
-  stretchPreDinnerGap
-} from './_lib/scheduleRealign.js';
+import { fillMissingTravelTimes } from './_lib/scheduleRealign.js';
+import { applyFixedSchedule } from './_lib/fixedSchedule.js';
 
 // Called after a swap or reorder on the Detail screen (see TripContext.jsx's
 // swapDayItem/reorderDayItem) - both clear travelToNext on the legs they
@@ -43,19 +38,16 @@ export default async function handler(req, res) {
     const day = { items };
     await computeTravelTimes(day.items, transport);
     await fillMissingTravelTimes(day, transport, destination);
-    // Same reconciliation tail as initial generation (see
-    // generate-resolved-itinerary.js), so a swapped or reordered day reads
-    // identically to a freshly generated one: reconcile against real travel,
-    // fill any pre-dinner gap by stretching the afternoon (which keeps dinner
-    // parked in its evening window rather than sliding earlier when a swap
-    // frees up time), round stays to the 15-minute grid, re-cascade, then snap
-    // arrivals to the grid and fill any leg the swap left without a travel time
-    // (which would otherwise show as a gap on the affected day).
-    realignScheduleTimes(day);
-    roundStayDurations(day);
-    stretchPreDinnerGap(day);
-    realignScheduleTimes(day);
-    snapArrivalsToGrid(day, transport);
+    // The same single pass initial generation runs, so a swapped day reads
+    // identically to a freshly generated one: the meals stay on their fixed
+    // times and the stop durations absorb whatever the swap did to the travel.
+    //
+    // No cutoff is passed because this route is given one day in isolation and
+    // cannot know whether nightlife was chosen or whether this is the last day
+    // of the trip. The practical effect is that dinner here never gives ground
+    // to an end-of-day limit, which is the right default for a single edit: a
+    // swap should not silently drop the stop the traveller just chose.
+    applyFixedSchedule(day, { cutoffMinutes: null, transport });
     res.status(200).json({ items: day.items });
   } catch (error) {
     res.status(500).json({ error: error.message });

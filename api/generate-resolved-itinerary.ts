@@ -17,12 +17,9 @@ import {
   fillMissingTravelTimes,
   realignScheduleTimes,
   clampStayDurations,
-  dayCutoffMinutes,
-  trimTailForDinner,
-  roundStayDurations,
-  snapArrivalsToGrid,
-  stretchPreDinnerGap
+  dayCutoffMinutes
 } from './_lib/scheduleRealign.js';
+import { applyFixedSchedule, dedupeMeals } from './_lib/fixedSchedule.js';
 import { describeAdoptedStops, stripAdoptionMarkers } from './_lib/describeAdoptedStops.js';
 
 // Fixed meal windows and the "day can't start before 9am" rule, per Akber's
@@ -677,8 +674,8 @@ function applyResolution(item, result, usedPlaceIds, anchor, stay) {
 //
 // Dropping runs before travel times are computed, so the remaining stops route
 // against each other directly rather than through a hole. The day is left
-// shorter, which the existing stretchPreDinnerGap / realignScheduleTimes /
-// snapArrivalsToGrid passes already absorb - a shorter day of real places is
+// shorter, which applyFixedSchedule then fits around the meal anchors by
+// lengthening what remains - a shorter day of real places is
 // the honest outcome, and better than a full day that includes invented ones.
 //
 // Accommodation bookends are exempt: their location comes from the hotel the
@@ -948,10 +945,9 @@ async function backfillOrDropActivities(day, anchor, usedPlaceIds, interests, st
   return { dropped, adopted };
 }
 
-// stretchPreDinnerGap (afternoon gap-fill that keeps dinner parked in its
-// window while leaving no dead time) now lives in _lib/scheduleRealign.js so
-// the swap/reorder recompute path fills the pre-dinner gap identically.
-// Imported at the top of this file.
+// The whole schedule is built by applyFixedSchedule in _lib/fixedSchedule.js,
+// which the swap/reorder recompute path calls too, so an edited day reads
+// exactly like a freshly generated one. Imported at the top of this file.
 
 // roundStayDurations and snapArrivalsToGrid (the 15-minute grid + missing-leg
 // gap fill) now live in _lib/scheduleRealign.js so the swap/reorder recompute
@@ -1219,10 +1215,10 @@ function mealsStillInOrder(dayItems, middleIndexes, candidate) {
   return true;
 }
 
-// stretchPreDinnerGap fills the afternoon by extending the last activity
-// between lunch and dinner. If the reorder leaves dinner immediately after
-// lunch that pass finds nothing to extend and silently returns, so a day that
-// had an afternoon must keep one.
+// The afternoon between lunch and dinner is a fixed four to five hours that the
+// stops inside it have to fill. A reorder that empties it leaves the fit with
+// nothing to lengthen and the time has to go somewhere, so a day that had an
+// afternoon must keep one.
 function afternoonSurvives(dayItems, middleIndexes, candidate) {
   return spanSurvives(dayItems, middleIndexes, candidate, 'lunch', 'dinner');
 }
@@ -1593,8 +1589,8 @@ async function resolveItinerary(itinerary, destination, anchor, transport, accom
   // Claude sometimes returns a day's items in non-chronological order (e.g. a
   // breakfast item with startTime 09:00 landing at array index 3, after items
   // whose startTimes are 11:00 and 13:00). Every downstream step - allItems
-  // indexing, realignScheduleTimes' i-1→i chain, stretchPreDinnerGap's
-  // "last activity before dinner" scan - assumes items are in time order, so
+  // indexing, realignScheduleTimes' i-1→i chain, the block boundaries
+  // applyFixedSchedule cuts at each meal - assumes items are in time order, so
   // an out-of-order array produces a jumbled schedule where time appears to go
   // backwards and duplicate meal labels appear mid-day. Sorting here, before
   // anything else touches the array, fixes that at the root.
@@ -1666,6 +1662,12 @@ async function resolveItinerary(itinerary, destination, anchor, transport, accom
     enforceMealConstraints(day, mealDuration);
     ensureBreakfast(day, destination, mealDuration);
     ensureLunch(day, destination, mealDuration);
+    const duplicated = dedupeMeals(day);
+    if (duplicated.length > 0) {
+      console.warn(
+        `[generate-resolved-itinerary] day ${day.day}: dropped ${duplicated.length} duplicate meal(s): ${duplicated.join(', ')}`
+      );
+    }
     ensureDinner(day, destination, mealDuration);
     // ensureLunch pushes a 13:00 item to the end of the array; re-sort so it
     // lands in its real midday slot before bookends wrap the day and before
@@ -1733,9 +1735,9 @@ async function resolveItinerary(itinerary, destination, anchor, transport, accom
     // Reorder first: it moves nothing and loses nothing, so it gets the first
     // attempt at straightening the day. Only if the day still doubles back does
     // a meal get re-picked.
-    // Early, before anything deliberately extends a stay. A 240-minute stop at
-    // a nightclub starting 23:10 is the model being implausible; a 210-minute
-    // museum after stretchPreDinnerGap is the scheduler doing its job.
+    // Early, before anything deliberately sets a stay's length. A 240-minute
+    // stop at a nightclub starting 23:10 is the model being implausible; a
+    // 210-minute museum after the fit is the scheduler doing its job.
     clampStayDurations(day);
 
     const reordered = reorderDayGeographically(day);
@@ -1847,41 +1849,31 @@ async function resolveItinerary(itinerary, destination, anchor, transport, accom
     }
   }
 
-  // Dinner is an anchor, not a leftover. Each day is measured against its own
-  // real cutoff - 02:00 on a nightlife day, 22:30 on the last one - and any day
-  // too full for dinner to reach a normal hour loses stops off its tail until it
-  // can. Then the stops before dinner are lengthened or shortened to land it on
-  // the target. Applies to all pacing variants.
+  // Meals sit on fixed times and the day is fitted around them: one pass, no
+  // negotiation. See fixedSchedule.js for why the slack lives in the stop
+  // durations rather than in the meal times.
   for (let index = 0; index < itinerary.days.length; index++) {
     const day = itinerary.days[index];
     const cutoff = dayCutoffMinutes(index, itinerary.days.length, interests);
 
-    const { removed, moved } = trimTailForDinner(day, cutoff);
-    if (removed.length > 0 || moved.length > 0) {
-      if (moved.length > 0) {
-        console.info(
-          `[generate-resolved-itinerary] day ${day.day}: moved ${moved.length} stop(s) to before dinner so dinner could reach a normal hour: ${moved.join(', ')}`
-        );
-      }
-      if (removed.length > 0) {
-        console.info(
-          `[generate-resolved-itinerary] day ${day.day}: dropped ${removed.length} post-dinner stop(s) so dinner could reach a normal hour: ${removed.join(', ')}`
-        );
-      }
-      // Same reason as trimFinalNight above: the stop before the removed one
-      // still holds a leg routed to somewhere that is no longer on the day.
-      await computeTravelTimes(day.items, transport);
-      realignScheduleTimes(day);
+    const { moved, removed } = applyFixedSchedule(day, { cutoffMinutes: cutoff, transport });
+    if (moved.length > 0) {
+      console.info(
+        `[generate-resolved-itinerary] day ${day.day}: moved ${moved.length} stop(s) to fit the day's meal times: ${moved.join(', ')}`
+      );
+    }
+    if (removed.length > 0) {
+      console.info(
+        `[generate-resolved-itinerary] day ${day.day}: dropped ${removed.length} stop(s) the day had no room for: ${removed.join(', ')}`
+      );
     }
 
-    // Rounded BEFORE the stretch, not after: the stretch measures the day
-    // against its cutoff, and rounding afterwards added minutes it had not
-    // accounted for. It now moves in whole 15-minute steps of its own, so what
-    // it measures is what ships.
-    roundStayDurations(day);
-    stretchPreDinnerGap(day, cutoff);
-    realignScheduleTimes(day);
-    snapArrivalsToGrid(day, transport);
+    // A moved or dropped stop leaves legs pointing at somewhere it is no longer
+    // next to, so the day is re-routed and re-fitted against real travel.
+    if (moved.length > 0 || removed.length > 0) {
+      await computeTravelTimes(day.items, transport);
+      applyFixedSchedule(day, { cutoffMinutes: cutoff, transport });
+    }
   }
 
   return itinerary;

@@ -57,7 +57,7 @@ function buildTripPreamble(params) {
 // Shared item-shape instructions appended to both variant prompts.
 const ITEM_SHAPE_INSTRUCTIONS = `For each item, also include:
 - "categoryTag": format "Type · Descriptor", two short words separated by a dot. Examples: "Beach · Outdoor", "Restaurant · Seafront", "Museum · Outdoor", "Bar · Seafront", "Activity · Outdoor", "Hotel · Seafront". Keep this consistent for every item, including meals.
-- "startTime": a plausible 24-hour "HH:MM" clock time, sequential and realistic across the day. Nothing on any day may start before 09:00 - the day's first item (breakfast, or the first activity on a breakfastAtAccommodation day) starts at 09:00 at the earliest. Meal windows are fixed: breakfast between 09:00-10:30, lunch between 12:00-14:00, dinner between 19:00-21:00. END TIME (strictly enforced): every day's last item must end by the time given in the End time line above. Read that line carefully rather than assuming one cutoff for the whole trip: it may name a different time for the final day. SCHEDULING RULE (strictly enforced): the only gap between any two consecutive items is the travel time between them. Each item's startTime must equal the previous item's startTime + durationMinutes + travel time. No idle time is permitted anywhere in the day. Schedule afternoon activities back-to-back after lunch so the day runs continuously right up to dinner.
+- "startTime": a plausible 24-hour "HH:MM" clock time, sequential and realistic across the day. Nothing on any day may start before 09:00 - the day's first item (breakfast, or the first activity on a breakfastAtAccommodation day) starts at 09:00 at the earliest. MEAL TIMES ARE FIXED and identical on every day of the trip: breakfast 09:00, lunch 13:30, dinner 20:00. The app sets these exactly and they will not move, so build the day around them rather than choosing your own meal times. END TIME (strictly enforced): every day's last item must end by the time given in the End time line above. Read that line carefully rather than assuming one cutoff for the whole trip: it may name a different time for the final day. SCHEDULING RULE (strictly enforced): the only gap between any two consecutive items is the travel time between them. Each item's startTime must equal the previous item's startTime + durationMinutes + travel time. No idle time is permitted anywhere in the day. Schedule afternoon activities back-to-back after lunch so the day runs continuously right up to dinner.
 - "description": one short sentence on what this place is and why it suits this traveller. NEVER state a travel time, a distance, a visit length, or a mode of transport. Do not write things like "10 minutes from the hotel", "a 15-minute walk from breakfast", "45-minute focused tour", "explore for 50 minutes", or "15 minutes by metro". Every one of those numbers is measured elsewhere from real route and schedule data and shown on the same card, so a number written here can only contradict it. Describe the place, not the logistics.
 - "durationMinutes": a plausible whole number of minutes for how long this stop takes. Activities are 45-150. Meals are always exactly 60 (the app resets every meal to the length that suits the chosen pace, so this value is only a placeholder for meals).
 - "mealType": ONLY for items where "type" is "meal" — one of "breakfast", "lunch", or "dinner". Omit or set to null for non-meal items.
@@ -90,9 +90,9 @@ The traveller's accommodation for this whole trip is ${p.accommodation || 'a cen
 
 For meal items specifically: the place you choose must genuinely fit that meal, not just have a plausible-sounding name. For breakfast, choose somewhere that's actually a breakfast/brunch venue by nature - a café, bakery, hotel restaurant, or dedicated brunch spot - never a place whose real identity is a burger joint, steakhouse, bar, or nightclub, even if its name sounds inviting. The same logic applies to lunch and dinner: pick a place whose actual identity matches the meal, not just any restaurant name that comes to mind.
 
-CRITICAL MORNING RULE (strictly enforced): At least one real activity must sit between breakfast and lunch. Breakfast is never followed immediately by lunch - a plan that eats twice in a row with nothing in between reads as a mistake, and it wastes the best sightseeing hours of the day. Use the morning: that is when the famous sights are least crowded.
+CRITICAL DAY SHAPE RULE (strictly enforced): The fixed meal times divide every day into three stretches, and each one needs the right number of stops to fill it. Breakfast runs 09:00 to 10:00, so the morning between breakfast and lunch is about three and a half hours: give it TWO activities. Lunch runs 13:30 to 14:30, so the afternoon between lunch and dinner is about five and a half hours: give it THREE activities. Anything after dinner belongs to the evening.
 
-CRITICAL AFTERNOON RULE (strictly enforced): After lunch, activities must run continuously so that the last pre-dinner activity ends no earlier than 18:30. Count your afternoon items: if they would finish before 18:30, you must add another activity to fill the time — always by adding another distinct stop, never by inflating a single stop's duration past 120 minutes. Aim for at least three separate afternoon stops between lunch and dinner.
+Both counts matter in both directions. Too few stops and one place has to be stretched across hours it does not deserve; too many and the day cannot fit them and one gets dropped. Never leave the morning empty - breakfast followed straight by lunch is two meals in a row with nothing between them, and it wastes the hours when the famous sights are least crowded.
 
 CRITICAL MEAL RULE (strictly enforced): Every single day must include both lunch and dinner as separate meal items at real restaurants. This rule has no exceptions — not even on the last day. Evening activities such as beach clubs, bars, rooftop venues, or nightlife are scheduled AFTER dinner, never instead of it. A venue that serves food or drinks is not a substitute for a dinner meal item.
 
@@ -180,9 +180,9 @@ For meal items specifically: the place you choose must genuinely fit that meal, 
 
 CRITICAL MEAL RULE (strictly enforced): Every single day must include both lunch and dinner as separate meal items at real restaurants. This rule has no exceptions — not even on the last day. Evening activities such as beach clubs, bars, rooftop venues, or nightlife are scheduled AFTER dinner, never instead of it. A venue that serves food or drinks is not a substitute for a dinner meal item.
 
-CRITICAL MORNING RULE (strictly enforced): At least one real activity must sit between breakfast and lunch. Breakfast is never followed immediately by lunch - a plan that eats twice in a row with nothing in between reads as a mistake, and it wastes the best sightseeing hours of the day. Use the morning: that is when the famous sights are least crowded.
+CRITICAL DAY SHAPE RULE (strictly enforced): The fixed meal times divide every day into three stretches, and each one needs the right number of stops to fill it. This is the slow plan, so meals are long: breakfast runs 09:00 to 11:00, which leaves about two and a half hours before lunch: give the morning ONE OR TWO activities. Lunch runs 13:30 to 15:30, which leaves about four and a half hours before dinner: give the afternoon TWO OR THREE activities. Anything after dinner belongs to the evening.
 
-CRITICAL AFTERNOON RULE (strictly enforced): After lunch, activities must run continuously so that the last pre-dinner activity ends no earlier than 18:00. At least two separate afternoon stops between lunch and dinner. This is the slow plan, so a stop may run to the top of the allowed range rather than being cut short - but fill the afternoon with real places, never by leaving a gap or by stretching one visit across the whole of it.
+Both counts matter in both directions. Too few stops and one place has to be stretched across hours it does not deserve; too many and the day cannot fit them and one gets dropped. Never leave the morning empty - breakfast followed straight by lunch is two meals in a row with nothing between them, and it wastes the hours when the famous sights are least crowded.
 
 CRITICAL ONE-MEAL-PER-SLOT RULE (strictly enforced): Each day has exactly one breakfast, one lunch and one dinner — never two of the same meal. Do NOT schedule a plain café, coffee shop, bakery or restaurant as an activity when its only purpose is eating or drinking — an ordinary café in the morning alongside breakfast is wrong, because it creates two breakfast-style stops in one day. Genuine food-THEMED experiences are still welcome as activities: a cooking class, a food-market or street-food tour, a wine, cheese or olive-oil tasting, or visiting a famous historic café as a landmark — these are real experiences, not just a meal. A simple coffee or café break may appear as an activity ONLY in the afternoon between lunch and dinner, and only once — never in the morning, and never as a second meal. Every other activity must be a genuine non-food attraction: a sight, landmark, museum, gallery, beach, viewpoint, park, garden, walk, boat trip or tour. (Where nightlife applies, a post-dinner bar or club is also allowed, only after dinner.)
 
@@ -246,12 +246,26 @@ Use this exact structure:
 function validateMeals(parsed) {
   const REQUIRED = ['lunch', 'dinner'];
   for (const day of parsed.days || []) {
-    const present = new Set(
-      (day.items || []).filter((i) => i.mealType).map((i) => i.mealType)
-    );
+    const mealTypes = (day.items || []).filter((i) => i.mealType).map((i) => i.mealType);
+    const present = new Set(mealTypes);
+
     const missing = REQUIRED.filter((m) => !present.has(m));
     if (missing.length > 0) {
       const err = new Error(`Day ${day.day} is missing required meal(s): ${missing.join(', ')}`) as Error & { mealValidationFailed?: boolean };
+      err.mealValidationFailed = true;
+      throw err;
+    }
+
+    // Two of the same meal is as broken as none, and until now only one of the
+    // two was checked. A generation on 7 Sep 2026 came back with day 2 of both
+    // variants carrying two dinners - 18:10 and 19:25 on Packed, 17:30 and 19:50
+    // on Slow - and everything downstream took them both at face value: the
+    // window logic anchored one, the traveller was shown two.
+    const duplicated = [...present].filter(
+      (mealType) => mealTypes.filter((m) => m === mealType).length > 1
+    );
+    if (duplicated.length > 0) {
+      const err = new Error(`Day ${day.day} has more than one ${duplicated.join(' and ')}`) as Error & { mealValidationFailed?: boolean };
       err.mealValidationFailed = true;
       throw err;
     }
