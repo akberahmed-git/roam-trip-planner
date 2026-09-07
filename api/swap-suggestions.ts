@@ -10,6 +10,11 @@ export default async function handler(req, res) {
   const destination = req.body.destination;
   const excludeNames = req.body.excludeNames;
   const interests = req.body.interests;
+  // The slot the replacement has to fit: what time it starts, and which weekday
+  // that is, so a place that is shut then is never offered.
+  const startTime = req.body.startTime;
+  const startDate = req.body.startDate;
+  const dayNumber = req.body.dayNumber;
 
   if (!placeName || !destination) {
     return res.status(400).json({ error: 'placeName and destination are required' });
@@ -22,6 +27,9 @@ export default async function handler(req, res) {
       destination,
       excludeNames,
       interests,
+      startTime,
+      startDate,
+      dayNumber,
     });
     res.status(200).json({ alternatives });
   } catch (error) {

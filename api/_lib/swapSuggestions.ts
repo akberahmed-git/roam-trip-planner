@@ -17,6 +17,7 @@
 // real pipeline fabricates it, so alternative cards simply omit that row
 // rather than invent one.
 import Anthropic from '@anthropic-ai/sdk';
+import { isOpenAt, weekdayForDay } from './openingHours.js';
 
 const anthropic = new Anthropic({
   apiKey: process.env.ANTHROPIC_API_KEY,
@@ -64,9 +65,13 @@ async function searchCandidate(name, destination) {
       headers: {
         'Content-Type': 'application/json',
         'X-Goog-Api-Key': process.env.GOOGLE_PLACES_API_KEY ?? '',
-        // rating and userRatingCount removed — both Enterprise-tier. Pro-tier only now.
+        // Enterprise-tier, same as verifyPlace.js. This file was missed when the
+        // ratings and hours fields were restored there, so the Swap screen was
+        // still ranking alternatives with no idea which were well known and no
+        // idea which were open - and its cards have always been built to show a
+        // star rating, which therefore never appeared (Akber, 7 Sep 2026).
         'X-Goog-FieldMask':
-          'places.id,places.displayName,places.formattedAddress,places.photos,places.location,places.types',
+          'places.id,places.displayName,places.formattedAddress,places.photos,places.location,places.types,places.rating,places.userRatingCount,places.regularOpeningHours',
       },
       body: JSON.stringify({
       textQuery,
@@ -91,12 +96,18 @@ async function searchCandidate(name, destination) {
     return null;
   }
 
+  const hours = place.regularOpeningHours;
   return {
     placeId: place.id,
     name: place.displayName.text,
     categoryTag: typeLabelFor(place.types),
-    rating: place.rating,
-    ratingCount: place.userRatingCount,
+    rating: place.rating ?? null,
+    ratingCount: place.userRatingCount ?? null,
+    // The swap card reads reviewCount, not ratingCount. Both are carried so the
+    // count actually renders beside the star instead of being quietly dropped
+    // on the way to the screen.
+    reviewCount: place.userRatingCount ?? null,
+    weekdayDescriptions: hours?.weekdayDescriptions || null,
     photoUrl: photoUrlFor(place),
     location: place.location ? { lat: place.location.latitude, lng: place.location.longitude } : null,
   };
@@ -152,7 +163,14 @@ Respond with ONLY valid JSON, no markdown formatting, no code fences, no comment
   return Array.isArray(parsed) ? parsed : [];
 }
 
-export async function getSwapSuggestions({ placeName, categoryTag, destination, excludeNames, interests }) {
+// A swap should not put somewhere shut into a slot the traveller is standing in.
+// startTime is the time the stop being replaced occupies, and startDate plus
+// dayNumber say which weekday that is; without them the check simply does not
+// run, the same as anywhere else hours are unknown.
+export async function getSwapSuggestions({
+  placeName, categoryTag, destination, excludeNames, interests,
+  startTime, startDate, dayNumber,
+}) {
   const candidates = await proposeCandidates({ placeName, categoryTag, destination, excludeNames, interests });
 
   const verified = await Promise.all(
@@ -169,9 +187,31 @@ export async function getSwapSuggestions({ placeName, categoryTag, destination, 
   // in the itinerary under a slightly different name. Belt-and-braces with
   // the prompt-level exclusion above, not a replacement for it.
   const excludeSet = new Set((excludeNames || []).map(normalize));
-  const deduped = verified.filter((result) => result && !excludeSet.has(normalize(result.name)));
+  const deduped: any[] = verified.filter(
+    (result) => result && !excludeSet.has(normalize(result.name))
+  );
+
+  // Anywhere Google says is shut at that hour comes out. Silence still means
+  // open: a place Google knows nothing about is offered rather than withheld.
+  const weekday = weekdayForDay(startDate, dayNumber);
+  const at = typeof startTime === 'string' ? timeToMinutes(startTime) : null;
+  const open = deduped.filter((result) => {
+    if (weekday == null || at == null || !result.weekdayDescriptions) return true;
+    return isOpenAt(result.weekdayDescriptions, weekday, at);
+  });
+
+  // Best known first. Review count is the closest thing Places offers to how
+  // many people actually go somewhere, and on a list of five alternatives the
+  // order is the recommendation.
+  open.sort((a, b) => (b.ratingCount || 0) - (a.ratingCount || 0));
 
   // Only real, Places-verified candidates ever reach the UI - an unverified
   // Claude suggestion is dropped silently rather than shown as a guess.
-  return deduped.filter(Boolean);
+  return open.filter(Boolean);
+}
+
+function timeToMinutes(time) {
+  const [hours, minutes] = String(time).split(':').map(Number);
+  if (Number.isNaN(hours) || Number.isNaN(minutes)) return null;
+  return hours * 60 + minutes;
 }

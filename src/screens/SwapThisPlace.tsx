@@ -206,6 +206,12 @@ export default function SwapThisPlace() {
         destination: tripParams.destination,
         excludeNames,
         interests: tripParams.interests,
+        // The slot the replacement has to fit. Without these the server cannot
+        // tell whether an alternative is open when the traveller would arrive,
+        // and would offer somewhere shut.
+        startTime: swapContext.item.startTime,
+        startDate: tripParams.startDate,
+        dayNumber: swapContext.dayIndex + 1,
       }),
     })
       .then((response) => (response.ok ? response.json() : Promise.reject(new Error('Request failed'))))
