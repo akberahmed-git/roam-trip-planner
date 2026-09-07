@@ -1673,7 +1673,7 @@ function reorderDayGeographically(day) {
 //     offending meal itself drags outward.
 const MEAL_LEASH_KM = 4;
 
-async function repositionStrandedMeals(day, anchor, usedPlaceIds, stay) {
+async function repositionStrandedStops(day, anchor, usedPlaceIds, stay) {
   const located = day.items.filter((i) => i.type !== 'accommodation' && i.location);
   const activities = located.filter((i) => !i.mealType);
   if (activities.length < 2) return [];
@@ -1687,21 +1687,37 @@ async function repositionStrandedMeals(day, anchor, usedPlaceIds, stay) {
   const moved: string[] = [];
 
   for (const item of located) {
-    if (!item.mealType) continue;
     if (haversineMeters(item.location, centre) / 1000 <= MEAL_LEASH_KM) continue;
 
-    const candidates = await findNearbyCandidates(
-      MEAL_SEARCH_QUERY[item.mealType] || 'restaurant',
-      null,
-      centre
-    ).catch(() => []);
+    // Meals were the only thing this moved, on the assumption that a restaurant
+    // is the interchangeable stop and an activity is the reason to travel. Two
+    // demo generations in a row proved otherwise: a shrine sat alone out east
+    // between two western stops for a 165 degree turn, and a Shinjuku nightclub
+    // sat between dinner and a Roppongi tower for 174 degrees. Neither could be
+    // reordered away - the nightclub is pinned after dinner by the nightlife
+    // rule - and neither was a meal, so nothing touched them.
+    //
+    // An activity is replaced by a comparable one nearer the day, so the trip
+    // keeps its shape and its interests. The swap is still only kept if the day
+    // measurably straightens, which is what stops this trading a good stop for a
+    // convenient one (Akber, 7 Sep 2026).
+    const query = item.mealType
+      ? MEAL_SEARCH_QUERY[item.mealType] || 'restaurant'
+      : queryForStop(item);
+    if (!query) continue;
+
+    const candidates = await findNearbyCandidates(query, null, centre).catch(() => []);
 
     const acceptable = candidates.filter((candidate) => {
       if (!candidate.location || !candidate.placeId) return false;
       if (!candidate.availablePhotoUrl) return false;
       if (usedPlaceIds.has(candidate.placeId)) return false;
       if (!hasReadableName(candidate.name)) return false;
-      if (!(candidate.types || []).some((t) => FOOD_PLACE_TYPES.has(t))) return false;
+      // A meal has to land on somewhere that serves food. An activity only has
+      // to be the same kind of thing it is replacing, which the query already
+      // asks for, so holding it to the food list would reject every candidate.
+      if (item.mealType && !(candidate.types || []).some((t) => FOOD_PLACE_TYPES.has(t))) return false;
+      if (!item.mealType && (candidate.types || []).some((t) => FOOD_PLACE_TYPES.has(t))) return false;
       if (!withinReachOfStay(candidate.location, stay)) return false;
       if (anchor && haversineMeters(anchor, candidate.location) > MAX_BROAD_DISTANCE_METERS) return false;
       return haversineMeters(candidate.location, centre) < haversineMeters(item.location, centre);
@@ -1746,6 +1762,18 @@ async function repositionStrandedMeals(day, anchor, usedPlaceIds, stay) {
   }
 
   return moved;
+}
+
+// What to look for when replacing a stranded activity. The stop's own Google
+// types first, because they describe what it actually is, then the first half of
+// its category tag ("Shrine · Kanda"), then nothing - and nothing means the stop
+// is left where it is rather than swapped for something unrelated.
+function queryForStop(item) {
+  const types = Array.isArray(item.placeTypes) ? item.placeTypes : [];
+  const named = types.find((type) => PLACE_TYPE_LABELS[type]);
+  if (named) return PLACE_TYPE_LABELS[named].toLowerCase();
+  const tagged = String(item.categoryTag || '').split('·')[0].trim().toLowerCase();
+  return tagged || null;
 }
 
 function medoidOfLocations(points) {
@@ -2036,10 +2064,10 @@ async function resolveItinerary(itinerary, destination, anchor, transport, accom
       );
     }
 
-    const restranded = await repositionStrandedMeals(day, anchor, usedPlaceIds, stay);
+    const restranded = await repositionStrandedStops(day, anchor, usedPlaceIds, stay);
     if (restranded.length > 0) {
       console.info(
-        `[generate-resolved-itinerary] day ${day.day}: moved ${restranded.length} stranded meal(s) back to the day: ${restranded.join('; ')}`
+        `[generate-resolved-itinerary] day ${day.day}: moved ${restranded.length} stranded stop(s) back to the day: ${restranded.join('; ')}`
       );
       reorderDayGeographically(day);
     }
@@ -2272,10 +2300,10 @@ async function resolveItinerary(itinerary, destination, anchor, transport, accom
         `[generate-resolved-itinerary] day ${day.day}: reordered the settled day, worst turn ${settledReorder.fromTurn}° -> ${settledReorder.toTurn}°`
       );
     }
-    const settledMeals = await repositionStrandedMeals(day, anchor, usedPlaceIds, stay);
+    const settledMeals = await repositionStrandedStops(day, anchor, usedPlaceIds, stay);
     if (settledMeals.length > 0) {
       console.info(
-        `[generate-resolved-itinerary] day ${day.day}: moved ${settledMeals.length} stranded meal(s) back to the settled day: ${settledMeals.join('; ')}`
+        `[generate-resolved-itinerary] day ${day.day}: moved ${settledMeals.length} stranded stop(s) back to the settled day: ${settledMeals.join('; ')}`
       );
       reorderDayGeographically(day);
     }
