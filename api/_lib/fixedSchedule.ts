@@ -9,6 +9,7 @@ import {
   TRAVEL_GRID_MINUTES,
 } from './scheduleRealign.js';
 import { dayShape } from './routeShape.js';
+import { isOpenAt } from './openingHours.js';
 
 // Meals happen at the same time every day, and the rest of the day is fitted
 // around them. This replaces the arrangement where meal times were whatever the
@@ -45,6 +46,12 @@ const NIGHTLIFE_KEYWORDS = ['bar', 'club', 'lounge', 'pub', 'izakaya', 'nightlif
 
 const MEAL_ORDER = ['breakfast', 'lunch', 'dinner'];
 
+// After this, the day is the evening and only nightlife belongs in it. Akber's
+// call (7 Sep 2026): by nine almost every museum, shop, temple and viewpoint has
+// shut, so a stop scheduled later than this is either a bar, a club, a live
+// music venue - or a mistake.
+export const EVENING_STARTS_MINUTES = 21 * 60;
+
 // A safety net behind validateMeals, which rejects a duplicated meal and retries
 // the generation once. If the retry comes back duplicated too, failing the whole
 // trip would be a worse outcome than keeping the better of the two, so the
@@ -80,13 +87,67 @@ function isStop(item) {
   return item.type !== 'accommodation' && !item.mealType;
 }
 
+// Whole words only. Substring matching read "Akihabara Electric Town" as a bar,
+// because Akiha-bar-a contains one, and would have thrown a district out of the
+// afternoon for it. Any keyword this short needs boundaries.
 function isNightlifeStop(item) {
   const text = `${item.name || ''} ${item.categoryTag || ''}`.toLowerCase();
-  return NIGHTLIFE_KEYWORDS.some((word) => text.includes(word));
+  const words = new Set(text.split(/[^a-z]+/).filter(Boolean));
+  return NIGHTLIFE_KEYWORDS.some((word) => words.has(word));
 }
 
 function indexOfMeal(day, mealType) {
   return day.items.findIndex((item) => item.mealType === mealType);
+}
+
+// The rule runs in both directions, which is the half that is easy to miss. The
+// Tokyo demo sent a traveller to a government building at 22:15, two hours after
+// it shut - and, on another day, to a whisky bar at 11:10 in the morning for two
+// hours. Same error, opposite ends of the day (Akber, 7 Sep 2026).
+//
+// Returns the stops the day cannot justify, with a reason each, so the caller
+// can log what it dropped and go looking for a replacement. Meals are exempt
+// from the nightlife half: an izakaya is a perfectly good dinner.
+export function unsuitableStops(day, weekdayIndex) {
+  const found: any[] = [];
+  const dinnerIndex = indexOfMeal(day, 'dinner');
+
+  day.items.forEach((item, index) => {
+    if (item.type === 'accommodation' || !item.startTime) return;
+    const at = timeToMinutes(item.startTime);
+    if (at == null) return;
+
+    // Three-valued on purpose: true, false, or nobody knows. Google having
+    // nothing to say about a place is not evidence that it is shut.
+    const knownOpen =
+      weekdayIndex != null && item.weekdayDescriptions
+        ? isOpenAt(item.weekdayDescriptions, weekdayIndex, at)
+        : null;
+
+    if (knownOpen === false) {
+      found.push({ index, name: item.name, reason: `closed at ${item.startTime}` });
+      return;
+    }
+
+    if (item.mealType) return;
+
+    const nightlife = isNightlifeStop(item);
+
+    // Real hours outrank the keyword guess. Omoide Yokocho is an alley of
+    // late-night bars whose name says none of that, and throwing it out of a
+    // 21:00 slot when Google plainly says it is open would be the rule being
+    // more confident than the evidence.
+    if (at >= EVENING_STARTS_MINUTES && !nightlife && knownOpen !== true) {
+      found.push({ index, name: item.name, reason: `scheduled at ${item.startTime}, when somewhere like this is shut` });
+      return;
+    }
+
+    if (nightlife && dinnerIndex >= 0 && index < dinnerIndex) {
+      found.push({ index, name: item.name, reason: `a night venue scheduled at ${item.startTime}` });
+    }
+  });
+
+  return found;
 }
 
 function legOf(item) {
@@ -183,6 +244,33 @@ function blocksOf(day, anchors) {
     });
   }
   return blocks;
+}
+
+// Blocks with more time than the stops inside them can plausibly hold, and by how
+// much. rebalanceBlocks tries to fix these by borrowing from a neighbouring
+// block, but it often cannot: the borrow has to leave the route alone, and on a
+// day that sweeps across a city the morning stops are nowhere near the afternoon.
+// When that happens the leftover time is handed to whichever stop can hold most
+// of it, which is how a shopping street got four hours on a Slow day while
+// Sensō-ji two blocks earlier got the 45-minute minimum (Akber, 7 Sep 2026).
+//
+// A block reported here needs another stop, not more minutes spread over the
+// ones it has. Only the caller can go and find one, so this just says where and
+// how big the hole is.
+export function starvedBlocks(day, cutoffMinutes) {
+  const anchors = resolveAnchors(day, cutoffMinutes);
+  return blocksOf(day, anchors)
+    .map((block) => ({
+      shortfall: block.available - block.maxHold,
+      // A new stop goes at the end of the block, next to the meal that closes
+      // it, so it lands beside the stop it will be routed against.
+      insertAt: block.endIndex,
+      near: [...block.stopIndexes].reverse().map((i) => day.items[i].location).find(Boolean)
+        || day.items[block.startIndex]?.location
+        || null,
+      stops: block.stopIndexes.length,
+    }))
+    .filter((block) => block.shortfall >= MIN_STAY_MINUTES && block.near);
 }
 
 // A block with more time than its stops can plausibly hold wants another stop; a

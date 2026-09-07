@@ -19,7 +19,8 @@ import {
   clampStayDurations,
   dayCutoffMinutes
 } from './_lib/scheduleRealign.js';
-import { applyFixedSchedule, dedupeMeals } from './_lib/fixedSchedule.js';
+import { applyFixedSchedule, dedupeMeals, starvedBlocks, unsuitableStops } from './_lib/fixedSchedule.js';
+import { weekdayForDay } from './_lib/openingHours.js';
 import { shapeOf, REORDER_REVERSAL_DEGREES } from './_lib/routeShape.js';
 import { describeAdoptedStops, stripAdoptionMarkers } from './_lib/describeAdoptedStops.js';
 
@@ -288,10 +289,15 @@ function describeAdoptedMeal(pick, mealType) {
   return pick.neighbourhood ? `${what} in ${pick.neighbourhood}.` : `${what}.`;
 }
 
-async function resolveMealPlaceholders(day, anchor, usedPlaceIds, stay) {
+async function resolveMealPlaceholders(day, anchor, usedPlaceIds, stay, usedBrands) {
   for (let i = 0; i < day.items.length; i++) {
     const item = day.items[i];
-    if (!item.mealType || item.location) {
+    if (!item.mealType) continue;
+    if (item.location) {
+      // A meal the model chose and that verified normally still claims its
+      // brand, or the guard would only stop substitutions repeating a chain
+      // while leaving the model free to.
+      usedBrands.add(brandKey(item.name));
       continue;
     }
 
@@ -310,6 +316,7 @@ async function resolveMealPlaceholders(day, anchor, usedPlaceIds, stay) {
         (c) =>
           c.location &&
           !usedPlaceIds.has(c.placeId) &&
+          !sharesBrand(c.name, usedBrands) &&
           hasReadableName(c.name) &&
           (!anchor || haversineMeters(anchor, c.location) <= MAX_BROAD_DISTANCE_METERS) &&
           withinReachOfStay(c.location, stay)
@@ -340,6 +347,7 @@ async function resolveMealPlaceholders(day, anchor, usedPlaceIds, stay) {
     item.description = describeAdoptedMeal(pick, item.mealType);
     item.adoptedFrom = { neighbourhood: pick.neighbourhood, types: pick.types };
     usedPlaceIds.add(pick.placeId);
+    usedBrands.add(brandKey(pick.name));
   }
 }
 
@@ -481,17 +489,57 @@ function isUsableCandidate(candidate) {
 // no photo still gets used when nothing else qualifies.
 // Restaurants and cafés get no prominence bonus from qualityScore, because
 // neither type is in PROMINENT_TYPES - correctly, since a good local restaurant
-// is not a landmark. But it left meals ranked on photo count alone with no
-// floor, so a substitution could land on somewhere nobody has heard of while a
-// far better-known option sat further down the list.
+// is not a landmark. So a meal substitution needs its own idea of what counts as
+// somewhere worth sending a traveller.
 //
-// A preference, never a requirement: try for a well-photographed place first,
-// and fall back to the best available rather than leaving a hole (Akber, 7 Sep
-// 2026).
+// It is review count. That is the closest thing Places offers to how many people
+// actually go somewhere, and it separates the famous from the merely present in
+// a way nothing else available does. The bar is deliberately high: a place with
+// a thousand reviews in a major city is somewhere people seek out.
+//
+// This used to be a photo-count test, for the only reason that photo count was
+// all the field mask still carried. It could not tell a chain branch from a
+// destination, because a chain branch photographs just as well - which is how
+// two branches of the same yakiniku chain served dinner on consecutive days of
+// the Tokyo demo (Akber, 7 Sep 2026).
+//
+// A preference, never a requirement: candidates arrive already sorted by
+// qualityScore, so falling through to the first is falling through to the best
+// available rather than to nothing.
+const WELL_KNOWN_RATING_COUNT = 1000;
 const WELL_KNOWN_PHOTO_COUNT = 5;
 
 function preferWellKnown(candidates) {
-  return candidates.find((c) => (c.photoCount || 0) >= WELL_KNOWN_PHOTO_COUNT) || candidates[0] || null;
+  return (
+    candidates.find((c) => (c.ratingCount || 0) >= WELL_KNOWN_RATING_COUNT) ||
+    candidates.find((c) => (c.photoCount || 0) >= WELL_KNOWN_PHOTO_COUNT) ||
+    candidates[0] ||
+    null
+  );
+}
+
+// A trip should not eat at the same brand twice. Places gives no brand field, so
+// this compares the significant words in the name: "Yakiniku Kokokara Roppongi
+// Store" and "Yakiniku Kokokara Kinshicho Honten" share enough to be caught,
+// while two unrelated ramen bars do not.
+const BRAND_STOPWORDS = new Set([
+  'the', 'and', 'cafe', 'café', 'bar', 'restaurant', 'store', 'shop', 'branch',
+  'honten', 'ten', 'main', 'tokyo', 'kitchen', 'house', 'by', 'de', 'la', 'el',
+]);
+
+function brandKey(name) {
+  return (name || '')
+    .toLowerCase()
+    .replace(/[^a-z0-9\s]/g, ' ')
+    .split(/\s+/)
+    .filter((word) => word.length > 2 && !BRAND_STOPWORDS.has(word))
+    .slice(0, 2)
+    .join(' ');
+}
+
+function sharesBrand(name, usedBrands) {
+  const key = brandKey(name);
+  return key.length > 0 && usedBrands.has(key);
 }
 
 function preferWithPhoto(candidates) {
@@ -1246,6 +1294,71 @@ function spanSurvives(dayItems, middleIndexes, candidate, fromMeal, toMeal) {
   return gapFor(dayItems) === 0 || gapFor(merged) > 0;
 }
 
+// A block the scheduler reported as starved needs another stop, and the only
+// place to get one is Google. Searches beside the block's last stop, so the new
+// arrival sits next to something it will be routed against rather than being
+// dropped into the middle of the day from somewhere across town.
+//
+// The alternative, and what happened before this existed, is that the fit hands
+// the leftover time to whichever stop can absorb most of it. That is how a
+// shopping street ended up with a four-hour visit on a plan whose whole promise
+// is an unhurried day.
+async function fillStarvedBlocks(day, cutoff, anchor, usedPlaceIds, stay, interests) {
+  const added: string[] = [];
+
+  for (const block of starvedBlocks(day, cutoff)) {
+    // Whichever interest the traveller picked that a restaurant cannot satisfy;
+    // failing that, just somewhere worth going.
+    const query =
+      (interests || []).map(interestQuery).find(Boolean) || 'popular tourist attraction';
+    const candidates = await findNearbyCandidates(query, null, block.near).catch(() => []);
+
+    const pick = preferWellKnown(
+      candidates.filter(
+        (c) =>
+          c.location &&
+          c.availablePhotoUrl &&
+          !usedPlaceIds.has(c.placeId) &&
+          hasReadableName(c.name) &&
+          !(c.types || []).some((type) => FOOD_PLACE_TYPES.has(type)) &&
+          (!anchor || haversineMeters(anchor, c.location) <= MAX_BROAD_DISTANCE_METERS) &&
+          withinReachOfStay(c.location, stay)
+      )
+    );
+    if (!pick) continue;
+
+    const stop = {
+      type: 'activity',
+      name: pick.name,
+      address: pick.address,
+      location: pick.location,
+      description: describeAdoptedActivity(pick),
+      adoptedFrom: { neighbourhood: pick.neighbourhood, types: pick.types },
+      categoryTag: null,
+      startTime: null,
+      durationMinutes: MIN_STAY_MINUTES_FOR_NEW_STOP,
+      mealType: null,
+      travelToNext: null,
+      photoUrl: pick.availablePhotoUrl || null,
+      rating: null,
+      ratingCount: null,
+      hasHours: pick.hasHours || false,
+      weekdayDescriptions: pick.weekdayDescriptions || null,
+    };
+    stop.categoryTag = composeCategoryTag(stop, pick);
+
+    // Its new neighbours were routed against each other, not against it.
+    if (block.insertAt > 0) day.items[block.insertAt - 1].travelToNext = null;
+    day.items.splice(block.insertAt, 0, stop);
+    usedPlaceIds.add(pick.placeId);
+    added.push(pick.name);
+  }
+
+  return added;
+}
+
+const MIN_STAY_MINUTES_FOR_NEW_STOP = 60;
+
 function reorderDayGeographically(day) {
   const middleIndexes: number[] = [];
   day.items.forEach((item, index) => {
@@ -1536,9 +1649,12 @@ async function enforceDriveCap(day, transport, usedPlaceIds, stay) {
   }
 }
 
-async function resolveItinerary(itinerary, destination, anchor, transport, accommodationDetails, interests) {
+async function resolveItinerary(itinerary, destination, anchor, transport, accommodationDetails, interests, checkInDate) {
   const stay = accommodationDetails?.location || null;
   const usedPlaceIds = new Set();
+  // Beside usedPlaceIds and for the same reason: per request, never module-level,
+  // or one generation's choices leak into another running at the same time.
+  const usedBrands = new Set();
 
   // Slow & Immersive (pacingLabel 'Relaxed', set by computePacing in
   // generateRawItinerary.js) gives every meal a longer, unhurried sitting;
@@ -1654,7 +1770,7 @@ async function resolveItinerary(itinerary, destination, anchor, transport, accom
   // placeholder (Akber, 1 Aug 2026). Sequential, not Promise.all, so the shared
   // usedPlaceIds stays consistent and two days can't adopt the same restaurant.
   for (const day of itinerary.days) {
-    await resolveMealPlaceholders(day, anchor, usedPlaceIds, stay);
+    await resolveMealPlaceholders(day, anchor, usedPlaceIds, stay, usedBrands);
   }
 
   // Then remove any non-meal stop that never resolved to a real place, so an
@@ -1680,7 +1796,7 @@ async function resolveItinerary(itinerary, destination, anchor, transport, accom
     // card, invisible on the map, with the legs either side of it nulled.
     // resolveMealPlaceholders is exactly the pass that repairs that, so run it
     // again now that the day's activities are settled (Akber, 4 Sep 2026).
-    await resolveMealPlaceholders(day, anchor, usedPlaceIds, stay);
+    await resolveMealPlaceholders(day, anchor, usedPlaceIds, stay, usedBrands);
     if (adopted.length > 0) {
       console.info(
         `[generate-resolved-itinerary] day ${day.day}: backfilled ${adopted.length} unresolved stop(s): ${adopted.join(', ')}`
@@ -1832,9 +1948,40 @@ async function resolveItinerary(itinerary, destination, anchor, transport, accom
       );
     }
 
-    // A moved or dropped stop leaves legs pointing at somewhere it is no longer
-    // next to, so the day is re-routed and re-fitted against real travel.
-    if (moved.length > 0 || removed.length > 0) {
+    // Only now, with every stop sitting on a real time, can the day be checked
+    // against what is actually open and what belongs at that hour.
+    const weekday = weekdayForDay(checkInDate, day.day);
+    const unsuitable = unsuitableStops(day, weekday);
+    for (const entry of [...unsuitable].sort((a, b) => b.index - a.index)) {
+      if (entry.index > 0) day.items[entry.index - 1].travelToNext = null;
+      day.items.splice(entry.index, 1);
+    }
+    if (unsuitable.length > 0) {
+      console.info(
+        `[generate-resolved-itinerary] day ${day.day}: dropped ${unsuitable.length} stop(s) that did not belong at their hour: ` +
+          unsuitable.map((e) => `${e.name} (${e.reason})`).join('; ')
+      );
+    }
+
+    // Dropping leaves the day thinner, and a thin block is what produces a
+    // four-hour visit to a shopping street, so refit first and then go and find
+    // whatever the day is now short of.
+    if (unsuitable.length > 0) {
+      await computeTravelTimes(day.items, transport);
+      applyFixedSchedule(day, { cutoffMinutes: cutoff, transport });
+    }
+
+    const added = await fillStarvedBlocks(day, cutoff, anchor, usedPlaceIds, stay, interests);
+    if (added.length > 0) {
+      console.info(
+        `[generate-resolved-itinerary] day ${day.day}: added ${added.length} stop(s) to fill a stretch nothing could plausibly cover: ${added.join(', ')}`
+      );
+    }
+
+    // Anything moved, dropped or added leaves legs pointing at somewhere the
+    // stop is no longer next to, so the day is re-routed and re-fitted against
+    // real travel.
+    if (moved.length > 0 || removed.length > 0 || unsuitable.length > 0 || added.length > 0) {
       await computeTravelTimes(day.items, transport);
       applyFixedSchedule(day, { cutoffMinutes: cutoff, transport });
     }
@@ -1872,6 +2019,15 @@ export default async function handler(req, res) {
   const interests = req.body.interests;
   const adults = req.body.adults;
   const transport = req.body.transport;
+  // Which weekday each day of the trip falls on, which is what makes opening
+  // hours mean anything. Optional: a trip planned without dates simply skips the
+  // hours check, and the day-part rule still applies.
+  //
+  // Two names because two callers: the app sends startDate (TripParams in
+  // src/types.ts), the demo reseed script sends checkInDate. Reading only one of
+  // them would have left the hours check permanently dead in whichever caller
+  // used the other, which is exactly the failure the hours data itself had.
+  const checkInDate = req.body.startDate || req.body.checkInDate;
 
   if (!destination || !days) {
     return res.status(400).json({ error: 'destination and days are required' });
@@ -1911,8 +2067,8 @@ export default async function handler(req, res) {
     // Resolve both variants in parallel - each is independent of the other,
     // so there's no reason to wait for packed before starting slow.
     await Promise.all([
-      raw.packed ? resolveItinerary(raw.packed, destination, anchor, transport, accommodationDetails, interests) : Promise.resolve(),
-      raw.slow ? resolveItinerary(raw.slow, destination, anchor, transport, accommodationDetails, interests) : Promise.resolve(),
+      raw.packed ? resolveItinerary(raw.packed, destination, anchor, transport, accommodationDetails, interests, checkInDate) : Promise.resolve(),
+      raw.slow ? resolveItinerary(raw.slow, destination, anchor, transport, accommodationDetails, interests, checkInDate) : Promise.resolve(),
     ]);
     res.status(200).json(raw);
   } catch (error) {

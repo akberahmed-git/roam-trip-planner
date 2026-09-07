@@ -90,11 +90,35 @@ const PROMINENT_TYPES = new Set([
   'historical_landmark',
 ]);
 
+// How many people have to have rated a place before its rating means anything.
+// Below this the score is noise: a single five-star review from the owner's
+// cousin should not outrank a landmark with twenty thousand.
+const MIN_RATINGS_TO_TRUST = 200;
+
+// What "popular" actually is, now that the data exists again. Review count is
+// the closest thing Places gives to footfall, and it spans orders of magnitude -
+// a neighbourhood cafe has hundreds, Sensō-ji has tens of thousands - so it goes
+// in as a log rather than swamping everything else outright.
+//
+// Photo count stays as the fallback for places with too few ratings to trust,
+// which is what this scored on entirely while the rating fields were cut from
+// the mask. That is why two branches of the same yakiniku chain served dinner on
+// consecutive days of the Tokyo demo: a chain branch photographs exactly as well
+// as a famous restaurant, and nothing else could tell them apart (Akber,
+// 7 Sep 2026).
 function qualityScore(place) {
   const photoCount = Math.min((place.photos || []).length, 10);
   const types = place.types || [];
   const prominent = types.some((type) => PROMINENT_TYPES.has(type)) ? 5 : 0;
-  return photoCount + prominent;
+
+  const ratings = place.userRatingCount || 0;
+  const popularity = ratings >= MIN_RATINGS_TO_TRUST ? Math.log10(ratings) * 8 : 0;
+
+  // A well-reviewed place that people dislike is not somewhere to send anyone.
+  const rating = place.rating || 0;
+  const liked = ratings >= MIN_RATINGS_TO_TRUST && rating > 0 && rating < 3.8 ? -15 : 0;
+
+  return photoCount + prominent + popularity + liked;
 }
 
 function hoursInfo(place) {
@@ -249,7 +273,7 @@ async function _runSearch(name, textQuery) {
       headers: {
         'Content-Type': 'application/json',
         'X-Goog-Api-Key': process.env.GOOGLE_PLACES_API_KEY ?? '',
-        // rating, userRatingCount and regularOpeningHours all removed — each one is an
+        // rating, userRatingCount and regularOpeningHours are Enterprise-tier, which
         // Enterprise-tier field (~$0.025/request). This mask is now Pro-tier only.
         // hoursInfo() returns hasHours: false for all places as a result.
         //
@@ -257,7 +281,7 @@ async function _runSearch(name, textQuery) {
         // composeCategoryTag in generate-resolved-itinerary.js). Both are Pro-tier,
         // the same tier this mask already sits in, so they add no per-request cost -
         // hotelSearch.js's mask already carries both for the same reason.
-        'X-Goog-FieldMask': 'places.id,places.displayName,places.formattedAddress,places.photos,places.location,places.types,places.addressComponents'
+        'X-Goog-FieldMask': 'places.id,places.displayName,places.formattedAddress,places.photos,places.location,places.types,places.addressComponents,places.rating,places.userRatingCount,places.regularOpeningHours'
       },
       body: JSON.stringify({ textQuery, languageCode: 'en' })
     });
@@ -362,10 +386,10 @@ export async function findNearbyCandidates(name, type, near, radiusMeters = 2000
       headers: {
         'Content-Type': 'application/json',
         'X-Goog-Api-Key': process.env.GOOGLE_PLACES_API_KEY ?? '',
-        // rating, userRatingCount and regularOpeningHours removed — all Enterprise-tier.
+        // Enterprise-tier field mask, same as the primary search above.
         // Pro-tier only now, same cost reason as runSearch. types +
         // addressComponents are Pro-tier and feed composeCategoryTag.
-        'X-Goog-FieldMask': 'places.id,places.displayName,places.formattedAddress,places.photos,places.location,places.types,places.addressComponents'
+        'X-Goog-FieldMask': 'places.id,places.displayName,places.formattedAddress,places.photos,places.location,places.types,places.addressComponents,places.rating,places.userRatingCount,places.regularOpeningHours'
       },
       body: JSON.stringify({
         textQuery,

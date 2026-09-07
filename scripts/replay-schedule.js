@@ -32,7 +32,7 @@ if (!process.execArgv.includes(STRIP)) {
   process.exit(result.status ?? 1);
 }
 
-const SOURCES = ['api/_lib/scheduleRealign.ts', 'api/_lib/routeShape.ts', 'api/_lib/fixedSchedule.ts'];
+const SOURCES = ['api/_lib/scheduleRealign.ts', 'api/_lib/routeShape.ts', 'api/_lib/openingHours.ts', 'api/_lib/fixedSchedule.ts'];
 
 // Copied into one temp directory so the modules' imports of each other still
 // resolve, with the source's .js specifiers pointed at the .ts files Node is
@@ -55,7 +55,7 @@ async function loadScheduleModule() {
 
 const {
   clampStayDurations, dayEndMinutes, dayCutoffMinutes, applyFixedSchedule, MEAL_ANCHORS,
-  dayShape, REORDER_REVERSAL_DEGREES
+  dayShape, REORDER_REVERSAL_DEGREES, unsuitableStops, starvedBlocks, weekdayForDay
 } = await loadScheduleModule();
 
 const dump = JSON.parse(readFileSync('.roam-last-generation.json', 'utf8'));
@@ -142,6 +142,17 @@ for (const variant of ['packed', 'slow']) {
     const turn = Math.round(dayShape(fitted).worstTurn);
     console.log(`    route: worst turn ${turn} deg` +
       (turn > REORDER_REVERSAL_DEGREES ? `  << DOUBLES BACK (audit rejects above ${REORDER_REVERSAL_DEGREES})` : ', OK'));
+    const weekday = weekdayForDay(dump.trip?.startDate || dump.trip?.checkInDate, i + 1);
+    const wrongHour = unsuitableStops(fitted, weekday);
+    console.log(wrongHour.length === 0
+      ? '    hours: OK, every stop belongs at the time it is scheduled'
+      : '    WRONG HOUR:\n      ' + wrongHour.map((e) => `${e.name} - ${e.reason}`).join('\n      '));
+
+    const thin = starvedBlocks(fitted, cutoff);
+    console.log(thin.length === 0
+      ? '    blocks: OK, every stretch can be filled by the stops it holds'
+      : '    THIN BLOCKS: ' + thin.map((b) => `${b.stops} stop(s), ${b.shortfall} min more than they can hold`).join('; '));
+
     const faults = checkContinuity(fitted);
     console.log(faults.length === 0
       ? '    continuity: OK, every gap is exactly its travel time'
