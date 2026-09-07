@@ -127,7 +127,16 @@ function resolveAnchors(day, cutoffMinutes) {
   if (dinnerIndex < 0 || cutoffMinutes == null) return anchors;
 
   const latest = cutoffMinutes - loadAfter(day.items, dinnerIndex);
-  if (latest < anchors.dinner) anchors.dinner = Math.max(latest, MIN_DINNER_MINUTES);
+  if (latest < anchors.dinner) {
+    // Down to the travel grid, never up: rounding up would spend minutes the
+    // cutoff does not have. Flooring also keeps the clock readable, because
+    // every time after dinner is derived from this one. A day that had to
+    // compress for a 22:30 checkout was showing dinner at 19:34, an evening
+    // stop at 20:59 and the hotel at 22:29 - all correct to the minute, and all
+    // looking like a rounding error rather than a plan (Akber, 7 Sep 2026).
+    const pulled = Math.max(latest, MIN_DINNER_MINUTES);
+    anchors.dinner = Math.floor(pulled / TRAVEL_GRID_MINUTES) * TRAVEL_GRID_MINUTES;
+  }
   return anchors;
 }
 
@@ -404,7 +413,14 @@ function assignTimes(day, anchors, residuals, mode) {
     const next = items[1];
     const nextStart = timeToMinutes(next.startTime);
     if (nextStart != null) {
-      first.startTime = addMinutesToTime('00:00', nextStart - (legOf(first) || TRAVEL_GRID_MINUTES));
+      // Snapped like every other leg, so the departure time reads as cleanly as
+      // the rest of the day rather than as an 08:51.
+      const leg = Math.max(
+        TRAVEL_GRID_MINUTES,
+        Math.round((legOf(first) || TRAVEL_GRID_MINUTES) / TRAVEL_GRID_MINUTES) * TRAVEL_GRID_MINUTES
+      );
+      first.travelToNext = `${leg} minute ${mode}`;
+      first.startTime = addMinutesToTime('00:00', nextStart - leg);
     }
   }
 
