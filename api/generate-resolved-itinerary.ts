@@ -1726,6 +1726,24 @@ async function repositionStrandedStops(day, anchor, usedPlaceIds, stay) {
   // the day goes out and comes straight back.
   const pivot = shape.worstAt >= 0 ? located[shape.worstAt] : null;
 
+  // Where to look for the pivot's replacement. NOT the day's centre: a stop is
+  // the pivot precisely because it sits off the line between its neighbours, so
+  // the centre is the wrong place to search. A club in Shinjuku between dinner
+  // in Roppongi and a tower in Roppongi is 2.6 km from a Harajuku centre and
+  // every candidate found there still turns the day around. The midpoint of its
+  // two neighbours is the one place a stop can sit without bending the route at
+  // all, so that is where the search goes (Akber, 7 Sep 2026).
+  const pivotTarget = (() => {
+    if (!pivot) return null;
+    const before = located[shape.worstAt - 1];
+    const after = located[shape.worstAt + 1];
+    if (!before?.location || !after?.location) return pivot.location;
+    return {
+      lat: (before.location.lat + after.location.lat) / 2,
+      lng: (before.location.lng + after.location.lng) / 2,
+    };
+  })();
+
   const centre = medoidOfLocations(activities.map((i) => i.location));
   if (!centre) return [];
 
@@ -1751,7 +1769,8 @@ async function repositionStrandedStops(day, anchor, usedPlaceIds, stay) {
       : queryForStop(item);
     if (!query) continue;
 
-    const candidates = await findNearbyCandidates(query, null, centre).catch(() => []);
+    const searchFrom = item === pivot ? pivotTarget : centre;
+    const candidates = await findNearbyCandidates(query, null, searchFrom).catch(() => []);
 
     const acceptable = candidates.filter((candidate) => {
       if (!candidate.location || !candidate.placeId) return false;
@@ -1776,9 +1795,14 @@ async function repositionStrandedStops(day, anchor, usedPlaceIds, stay) {
       }
       if (!withinReachOfStay(candidate.location, stay)) return false;
       if (anchor && haversineMeters(anchor, candidate.location) > MAX_BROAD_DISTANCE_METERS) return false;
-      // For the pivot the test is whether the day straightens, checked below, not
-      // whether the replacement is nearer the centre - it is already near it.
-      if (item === pivot) return true;
+      // The pivot is judged against the point between its neighbours, not the
+      // day's centre. Being nearer that point is what removes the turn.
+      if (item === pivot) {
+        return (
+          haversineMeters(candidate.location, pivotTarget) <
+          haversineMeters(item.location, pivotTarget)
+        );
+      }
       return haversineMeters(candidate.location, centre) < haversineMeters(item.location, centre);
     });
     const pick = preferWellKnown(acceptable);
