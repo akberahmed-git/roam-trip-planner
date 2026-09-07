@@ -49,7 +49,7 @@ const DAY_SECONDS = 60 * 60 * 24;
 // Turning someone away is cheap here: the 429 renders as an example trip, not
 // an error, so a visitor past the cap still sees the product working.
 export const LIMITS = {
-  trip: { perIp: null, global: 20 },
+  trip: { perIp: null, global: 60 }, // TEMPORARY: raised to reseed the demo. Put back to 20.
   hotel: { perIp: null, global: 200 },
 };
 
