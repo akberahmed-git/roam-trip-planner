@@ -1704,6 +1704,23 @@ async function resolveItinerary(itinerary, destination, anchor, transport, accom
   // 45-minute Sensō-ji (Akber, 7 Sep 2026).
   const minStayMinutes = itinerary.pacingLabel === 'Relaxed' ? SLOW_MIN_STAY_MINUTES : undefined;
 
+  // "type" is a three-value union on the client (ItemType in src/types.ts) and
+  // the model does not always respect it. Told to include real night venues, it
+  // started returning "type": "nightlife", which flowed all the way through and
+  // failed the build when the demo was saved as TypeScript - the schedule was
+  // fine, the file simply would not compile (Akber, 7 Sep 2026).
+  //
+  // A meal is whatever carries a mealType; everything else the model invents is
+  // an activity. The kind of place it is already lives in categoryTag, which is
+  // built from Google's own types and is where that information belongs.
+  const ITEM_TYPES = new Set(['accommodation', 'activity', 'meal']);
+  itinerary.days.forEach((day) => {
+    day.items.forEach((item) => {
+      if (ITEM_TYPES.has(item.type)) return;
+      item.type = item.mealType ? 'meal' : 'activity';
+    });
+  });
+
   // Claude sometimes returns a day's items in non-chronological order (e.g. a
   // breakfast item with startTime 09:00 landing at array index 3, after items
   // whose startTimes are 11:00 and 13:00). Every downstream step - allItems
@@ -1940,7 +1957,6 @@ async function resolveItinerary(itinerary, destination, anchor, transport, accom
   } catch (error) {
     console.warn('[generate-resolved-itinerary] description pass failed, keeping synthesised lines:', error);
   }
-  stripAdoptionMarkers(itinerary.days);
 
   itinerary.days.forEach((day) => realignScheduleTimes(day));
 
@@ -2039,6 +2055,30 @@ async function resolveItinerary(itinerary, destination, anchor, transport, accom
       if (round === 2) applyFixedSchedule(day, options);
     }
   }
+
+  // Again, because the scheduling loop above can adopt stops of its own -
+  // fillStarvedBlocks goes to Google for a real place when a stretch of the day
+  // is too thin. Those arrive after the first pass has run, so without this they
+  // keep the category-and-postcode fallback line and, worse, keep the scratch
+  // field that marks them: Meiji Jingu shipped in the demo reading "Landmark in
+  // Yoyogikamizonochō" with its adoptedFrom marker still attached, which is what
+  // broke the build (Akber, 7 Sep 2026).
+  //
+  // A no-op when nothing was adopted late, since the pass returns immediately on
+  // an empty list.
+  try {
+    const described = await describeAdoptedStops(itinerary.days, destination);
+    if (described > 0) {
+      console.info(
+        `[generate-resolved-itinerary] wrote real descriptions for ${described} late-adopted stop(s)`
+      );
+    }
+  } catch (error) {
+    console.warn('[generate-resolved-itinerary] late description pass failed, keeping synthesised lines:', error);
+  }
+
+  // Last thing before the itinerary leaves: no scratch field reaches the client.
+  stripAdoptionMarkers(itinerary.days);
 
   return itinerary;
 }

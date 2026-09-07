@@ -156,7 +156,7 @@ export const TOKYO_2_DAYS: ResolvedItinerary = {
           },
           {
             "time": "evening",
-            "type": "nightlife",
+            "type": "activity",
             "name": "Rokusan Angel (Burlesque Tokyo)",
             "categoryTag": "Nightlife · Roppongi",
             "description": "A burlesque and cabaret nightclub in Roppongi featuring theatrical performances with an international flair in Tokyo's entertainment district.",
@@ -375,17 +375,6 @@ export const TOKYO_2_DAYS: ResolvedItinerary = {
               "lng": 139.6993259
             },
             "description": "Landmark in Yoyogikamizonochō.",
-            "adoptedFrom": {
-              "neighbourhood": "Yoyogikamizonochō",
-              "types": [
-                "shinto_shrine",
-                "tourist_attraction",
-                "place_of_worship",
-                "association_or_organization",
-                "point_of_interest",
-                "establishment"
-              ]
-            },
             "categoryTag": "Landmark · Yoyogikamizonochō",
             "startTime": "17:25",
             "durationMinutes": 135,
