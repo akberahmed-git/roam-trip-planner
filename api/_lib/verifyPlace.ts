@@ -1,4 +1,5 @@
 import { neighbourhoodOf } from './placeAddress.js';
+import { haversineMeters } from './routeShape.js';
 const GENERIC_WORDS = new Set([
   'restaurant', 'restaurants', 'restorant', 'resto', 'bar', 'cafe',
   'taverna', 'tavern', 'bistro', 'grill', 'lounge', 'pub', 'hotel', 'house',
@@ -320,18 +321,11 @@ function countryHint(destination) {
   return parts.length > 1 ? parts[parts.length - 1] : destination;
 }
 
-export function haversineMeters(a, b) {
-  const R = 6371000;
-  const toRad = (deg) => (deg * Math.PI) / 180;
-  const dLat = toRad(b.lat - a.lat);
-  const dLng = toRad(b.lng - a.lng);
-  const lat1 = toRad(a.lat);
-  const lat2 = toRad(b.lat);
-  const sinDLat = Math.sin(dLat / 2);
-  const sinDLng = Math.sin(dLng / 2);
-  const h = sinDLat * sinDLat + Math.cos(lat1) * Math.cos(lat2) * sinDLng * sinDLng;
-  return 2 * R * Math.asin(Math.min(1, Math.sqrt(h)));
-}
+// Lives in routeShape.js, which is pure geometry with no dependencies of its
+// own. Re-exported here because this is where callers have always imported it
+// from, and because a module that talks to Google should not be what a
+// scheduling pass has to load to measure a distance.
+export { haversineMeters };
 
 // Broad-search results (no town-level bias) are only trusted if they land within
 // this radius of the destination's own geocoded center. A country-level text hint

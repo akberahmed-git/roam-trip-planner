@@ -32,7 +32,7 @@ if (!process.execArgv.includes(STRIP)) {
   process.exit(result.status ?? 1);
 }
 
-const SOURCES = ['api/_lib/scheduleRealign.ts', 'api/_lib/fixedSchedule.ts'];
+const SOURCES = ['api/_lib/scheduleRealign.ts', 'api/_lib/routeShape.ts', 'api/_lib/fixedSchedule.ts'];
 
 // Copied into one temp directory so the modules' imports of each other still
 // resolve, with the source's .js specifiers pointed at the .ts files Node is
@@ -46,14 +46,16 @@ async function loadScheduleModule() {
       .replace(/from '\.\/(\w+)\.js'/g, "from './$1.ts'");
     writeFileSync(path.join(dir, path.basename(source)), src);
   }
-  return {
-    ...(await import(path.join(dir, 'scheduleRealign.ts'))),
-    ...(await import(path.join(dir, 'fixedSchedule.ts'))),
-  };
+  const loaded = {};
+  for (const source of SOURCES) {
+    Object.assign(loaded, await import(path.join(dir, path.basename(source))));
+  }
+  return loaded;
 }
 
 const {
-  clampStayDurations, dayEndMinutes, dayCutoffMinutes, applyFixedSchedule, MEAL_ANCHORS
+  clampStayDurations, dayEndMinutes, dayCutoffMinutes, applyFixedSchedule, MEAL_ANCHORS,
+  dayShape, REORDER_REVERSAL_DEGREES
 } = await loadScheduleModule();
 
 const dump = JSON.parse(readFileSync('.roam-last-generation.json', 'utf8'));
@@ -137,6 +139,9 @@ for (const variant of ['packed', 'slow']) {
     console.log();
     const fitted = runTail(clone(day), transport, cutoff);
     show('REPLAY', fitted);
+    const turn = Math.round(dayShape(fitted).worstTurn);
+    console.log(`    route: worst turn ${turn} deg` +
+      (turn > REORDER_REVERSAL_DEGREES ? `  << DOUBLES BACK (audit rejects above ${REORDER_REVERSAL_DEGREES})` : ', OK'));
     const faults = checkContinuity(fitted);
     console.log(faults.length === 0
       ? '    continuity: OK, every gap is exactly its travel time'

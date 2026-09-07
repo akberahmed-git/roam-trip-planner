@@ -20,6 +20,7 @@ import {
   dayCutoffMinutes
 } from './_lib/scheduleRealign.js';
 import { applyFixedSchedule, dedupeMeals } from './_lib/fixedSchedule.js';
+import { shapeOf, REORDER_REVERSAL_DEGREES } from './_lib/routeShape.js';
 import { describeAdoptedStops, stripAdoptionMarkers } from './_lib/describeAdoptedStops.js';
 
 // Fixed meal windows and the "day can't start before 9am" rule, per Akber's
@@ -1139,43 +1140,6 @@ const EVENING_PIN_MINUTES = 19 * 60;
 // 2026). A pass that quietly disables itself on the largest days is worse than
 // no pass at all, because it looks like it ran.
 const MAX_REORDER_BRUTE_FORCE = 8;
-const REORDER_LONG_LEG_METERS = 4000;
-const REORDER_REVERSAL_DEGREES = 140;
-
-function bearingBetween(a, b) {
-  const toRad = (d) => (d * Math.PI) / 180;
-  const dLng = toRad(b.lng - a.lng);
-  const y = Math.sin(dLng) * Math.cos(toRad(b.lat));
-  const x =
-    Math.cos(toRad(a.lat)) * Math.sin(toRad(b.lat)) -
-    Math.sin(toRad(a.lat)) * Math.cos(toRad(b.lat)) * Math.cos(dLng);
-  return ((Math.atan2(y, x) * 180) / Math.PI + 360) % 360;
-}
-
-function angleGap(a, b) {
-  const raw = Math.abs(a - b);
-  return Math.min(raw, 360 - raw);
-}
-
-// Worst reversal in a sequence, and how far it walks. Ranked in that order: a
-// day that doubles back is worse than a day that is merely a little longer.
-function shapeOf(locations) {
-  let path = 0;
-  const longBearings: number[] = [];
-  for (let k = 0; k < locations.length - 1; k++) {
-    const metres = haversineMeters(locations[k], locations[k + 1]);
-    path += metres;
-    if (metres >= REORDER_LONG_LEG_METERS) {
-      longBearings.push(bearingBetween(locations[k], locations[k + 1]));
-    }
-  }
-  let worstTurn = 0;
-  for (let k = 0; k < longBearings.length - 1; k++) {
-    worstTurn = Math.max(worstTurn, angleGap(longBearings[k], longBearings[k + 1]));
-  }
-  return { worstTurn, path };
-}
-
 // A generator, not a materialised list. At 8 movable stops the old version
 // built all 40,320 arrays up front, which measured ~220ms of the ~480ms this
 // pass costs - and it runs twice per day, for both variants, on one event loop.

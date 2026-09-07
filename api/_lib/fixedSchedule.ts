@@ -8,6 +8,7 @@ import {
   STAY_DURATION_INCREMENT_MINUTES,
   TRAVEL_GRID_MINUTES,
 } from './scheduleRealign.js';
+import { dayShape } from './routeShape.js';
 
 // Meals happen at the same time every day, and the rest of the day is fitted
 // around them. This replaces the arrangement where meal times were whatever the
@@ -207,6 +208,7 @@ function rebalanceBlocks(day, cutoffMinutes) {
 
     const before = snapshot(day);
     const cost = mismatch(day, cutoffMinutes);
+    const turn = dayShape(day).worstTurn;
 
     const [stop] = day.items.splice(takeFrom, 1);
     const insertAt = donorIsEarlier ? needy.startIndex : needy.endIndex - 1;
@@ -217,11 +219,32 @@ function rebalanceBlocks(day, cutoffMinutes) {
     if (insertAt > 0) day.items[insertAt - 1].travelToNext = null;
     stop.travelToNext = null;
 
-    // A move is only worth making if the day as a whole fits better for it.
-    // Without this the pass ping-ponged one stop across the lunch boundary until
-    // it ran out of iterations: taking a stop from the afternoon to fill the
-    // morning left the afternoon short, which asked for it straight back.
-    if (mismatch(day, cutoffMinutes) >= cost) {
+    // A move has to earn its place twice over.
+    //
+    // It must make the day fit better. Without this the pass ping-ponged one
+    // stop across the lunch boundary until it ran out of iterations: taking a
+    // stop from the afternoon to fill the morning left the afternoon short,
+    // which asked for it straight back.
+    //
+    // And it must not bend the route. Time and geography are both real, and
+    // this pass only understands time - it will happily haul a stop across a
+    // meal boundary because the minutes work out, with no idea that it has just
+    // sent the traveller back across the city. On packed day 1 it moved Tokyo
+    // National Museum out of the morning to give the afternoon 45 more minutes,
+    // turning a clean Asakusa-to-Azabudai run into Asakusa, Ginza, Ueno,
+    // Azabudai: a 163 degree reversal that the demo audit refused to ship, and
+    // rightly (Akber, 7 Sep 2026). Undoing the geographic reorder to save a
+    // stop from running 45 minutes long is a bad trade in any direction, so
+    // the route is a hard constraint here and the fit is what gets optimised
+    // inside it.
+    // The route may not get worse at all, not merely stay under the audit's 140
+    // degree bar: a move that took a day from a clean 0 degrees to 139 would
+    // pass every check and still read as a zig-zag to the person walking it.
+    // The geographic reorder has already found a good order by the time this
+    // runs, and there is nothing here that knows better.
+    const fitsBetter = mismatch(day, cutoffMinutes) < cost;
+    const routeHolds = dayShape(day).worstTurn <= turn;
+    if (!fitsBetter || !routeHolds) {
       restore(day, before);
       break;
     }
@@ -287,7 +310,25 @@ function relieveEvening(day, cutoffMinutes) {
     for (let i = dinnerIndex + 1; i < day.items.length; i++) if (isStop(day.items[i])) evening.push(i);
     if (evening.length === 0) break;
 
-    const movable = [...evening].reverse().find((i) => !isNightlifeStop(day.items[i]));
+    // Latest first, since the last stop of the night is both the most absurdly
+    // scheduled and the cheapest to unhook. Among those, prefer one whose move
+    // does not bend the route - this pass has to act, because a dinner that
+    // cannot reach a normal hour is a broken day, but it can still pick the
+    // least damaging way to act rather than the first one it finds.
+    const candidates = [...evening].reverse().filter((i) => !isNightlifeStop(day.items[i]));
+    let movable: number | null = null;
+    if (candidates.length > 0) {
+      const turn = dayShape(day).worstTurn;
+      movable = candidates.find((i) => {
+        const trial = snapshot(day);
+        const [stop] = day.items.splice(i, 1);
+        day.items.splice(dinnerIndex, 0, stop);
+        const holds = dayShape(day).worstTurn <= turn;
+        restore(day, trial);
+        return holds;
+      }) ?? candidates[0];
+    }
+
     if (movable != null) {
       const [stop] = day.items.splice(movable, 1);
       day.items[movable - 1].travelToNext = null;
