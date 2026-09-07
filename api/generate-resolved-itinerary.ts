@@ -2444,14 +2444,44 @@ async function resolveItinerary(itinerary, destination, anchor, transport, accom
       );
       // Each addition sits between two stops it was never routed against, and
       // the day it landed in now holds one more thing than it was fitted for.
+      //
+      // The clock was always recomputed here. The ROUTE was not, and that is the
+      // bug that rejected seven demo drafts in a row. This pass runs after every
+      // per-day geometry check has finished, so a stop inserted here bends a day
+      // nobody looks at again: the resolver's last reading of one Tokyo day was
+      // 137 degrees, comfortably under the bar, and the audit measured the
+      // shipped day at 175. The repair was not failing, it had already gone home.
+      //
+      // Same shape as the opening-hours check running before the passes that
+      // moved stops, and the reorder running before the loop that drops and adds
+      // them. Third time tonight (Akber, 7 Sep 2026).
       for (let index = 0; index < itinerary.days.length; index++) {
         const day = itinerary.days[index];
-        await computeTravelTimes(day.items, transport);
-        applyFixedSchedule(day, {
+        const options = {
           cutoffMinutes: dayCutoffMinutes(index, itinerary.days.length, interests),
           transport,
           minStayMinutes,
-        });
+        };
+        await computeTravelTimes(day.items, transport);
+        applyFixedSchedule(day, options);
+
+        const reordered = reorderDayGeographically(day);
+        if (reordered) {
+          console.info(
+            `[generate-resolved-itinerary] day ${day.day}: reordered after interest coverage, worst turn ${reordered.fromTurn}° -> ${reordered.toTurn}°`
+          );
+        }
+        const moved = await repositionStrandedStops(day, anchor, usedPlaceIds, stay);
+        if (moved.length > 0) {
+          console.info(
+            `[generate-resolved-itinerary] day ${day.day}: moved ${moved.length} stop(s) after interest coverage: ${moved.join('; ')}`
+          );
+          reorderDayGeographically(day);
+        }
+        if (reordered || moved.length > 0) {
+          await computeTravelTimes(day.items, transport);
+          applyFixedSchedule(day, options);
+        }
       }
     }
   } catch (error) {
