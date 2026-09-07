@@ -371,6 +371,13 @@ async function resolveMealPlaceholders(day, anchor, usedPlaceIds, stay, usedBran
     item.hasHours = pick.hasHours || false;
     item.weekdayDescriptions = pick.weekdayDescriptions || null;
     item.categoryTag = composeCategoryTag(item, pick);
+    // The stop is now a different place, so it needs that place's id. Adoption
+    // never set this: the id only ever went into usedPlaceIds. That was invisible
+    // while adoption only filled in a meal that had no id to begin with, and
+    // stopped being invisible once a meal rejected for its hours was emptied and
+    // re-adopted - emptying set the id to null and nothing put a new one back.
+    // A stop with no id cannot be deduped, swapped or re-verified.
+    item.placeId = pick.placeId;
     item.description = describeAdoptedMeal(pick, item.mealType);
     item.adoptedFrom = { neighbourhood: pick.neighbourhood, types: pick.types };
     item.placeTypes = pick.types || null;
@@ -1766,6 +1773,13 @@ async function repositionStrandedStops(day, anchor, usedPlaceIds, stay) {
     item.photoUrl = pick.availablePhotoUrl || null;
     item.hasHours = pick.hasHours || false;
     item.weekdayDescriptions = pick.weekdayDescriptions || null;
+    // The stop is now a different place, so it needs that place's id. Adoption
+    // never set this: the id only ever went into usedPlaceIds. That was invisible
+    // while adoption only filled in a meal that had no id to begin with, and
+    // stopped being invisible once a meal rejected for its hours was emptied and
+    // re-adopted - emptying set the id to null and nothing put a new one back.
+    // A stop with no id cannot be deduped, swapped or re-verified.
+    item.placeId = pick.placeId;
     item.description = describeAdoptedMeal(pick, item.mealType);
     item.adoptedFrom = { neighbourhood: pick.neighbourhood, types: pick.types };
     item.placeTypes = pick.types || null;

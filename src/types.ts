@@ -56,7 +56,7 @@ export interface ItineraryItem {
   startTime?: string | null
   durationMinutes?: number | null
   travelToNext?: string | null
-  placeId?: string
+  placeId?: string | null
   // Legacy display fields carried on some items/alternatives: a review count
   // (distinct from ratingCount on older data) and a "busy at" note. Read by
   // the Swap screens' place cards.
@@ -121,7 +121,7 @@ export interface AccommodationOption {
   ratingCount?: number | null
   photoUrl?: string | null
   priceLevelLabel?: string | null
-  placeId?: string
+  placeId?: string | null
   location?: Coordinates | null
 }
 
