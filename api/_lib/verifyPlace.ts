@@ -239,7 +239,14 @@ async function cachedSearch(textQuery, fetcher) {
   if (_searchCache.has(textQuery)) {
     return _searchCache.get(textQuery);
   }
-  const kvKey = 'places:search:' + textQuery;
+  // Versioned on purpose. The key used to be unversioned, so entries written
+  // while the field mask was cut back to Pro tier - no rating, no
+  // userRatingCount, no regularOpeningHours - stayed servable for the full
+  // 30-day TTL after the fields were bought back. A cache hit then handed the
+  // planner a place with no popularity signal and no hours, which is exactly
+  // the failure restoring the fields was meant to end. Bump this whenever the
+  // shape of what is stored changes (Akber, 7 Sep 2026).
+  const kvKey = 'places:search:v2:' + textQuery;
   const stored = await kvGet(kvKey);
   if (stored != null) {
     _searchCache.set(textQuery, stored);
@@ -273,9 +280,14 @@ async function _runSearch(name, textQuery) {
       headers: {
         'Content-Type': 'application/json',
         'X-Goog-Api-Key': process.env.GOOGLE_PLACES_API_KEY ?? '',
-        // rating, userRatingCount and regularOpeningHours are Enterprise-tier, which
-        // Enterprise-tier field (~$0.025/request). This mask is now Pro-tier only.
-        // hoursInfo() returns hasHours: false for all places as a result.
+        // rating, userRatingCount and regularOpeningHours are Enterprise-tier and
+        // are here deliberately, at roughly 10% more per call than Pro. They were
+        // cut once to save money and both turned out to be load-bearing: review
+        // count is the only signal separating a famous restaurant from a branch of
+        // a chain, and opening hours are the only way to know a place is open when
+        // you arrive. Without them the planner served two branches of the same
+        // yakiniku chain on consecutive nights and scheduled a government building
+        // at 22:15.
         //
         // types + addressComponents added for categoryTag composition (see
         // composeCategoryTag in generate-resolved-itinerary.js). Both are Pro-tier,

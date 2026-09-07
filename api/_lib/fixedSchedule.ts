@@ -68,6 +68,13 @@ let floorMinutes = MIN_STAY_MINUTES;
 // music venue - or a mistake.
 export const EVENING_STARTS_MINUTES = 21 * 60;
 
+// Deliberately low. WELL_KNOWN_RATING_COUNT (1000) is a ranking preference, used
+// to pick the better of several real candidates; this is a rejection bar, and set
+// anywhere near 1000 it would throw out the neighbourhood shrine and the small
+// museum that are the reason to travel. It only has to catch places with
+// effectively no visitors at all, and every rejection costs another lookup.
+const MIN_REVIEWS_FOR_A_STOP = 50;
+
 // A safety net behind validateMeals, which rejects a duplicated meal and retries
 // the generation once. If the retry comes back duplicated too, failing the whole
 // trip would be a worse outcome than keeping the better of the two, so the
@@ -146,6 +153,31 @@ export function unsuitableStops(day, weekdayIndex) {
     }
 
     if (item.mealType) return;
+
+    // A place nobody has reviewed is usually not a place. "Kamadera East
+    // Heritage" shipped in the Tokyo demo with 75 minutes against it, no rating,
+    // no reviews, and a description that said only that it was historical: it is
+    // a historic-site marker stone on a Suginami street corner. It passed every
+    // other rule - inside the radius, a real Google place, open 24 hours, a tag
+    // built from real place types - because nothing asked whether it was worth
+    // going to.
+    //
+    // Only trusted when the Enterprise fields plainly came back for this place.
+    // hasHours is the tell: regularOpeningHours rides the same tier as
+    // userRatingCount, so hours present and reviews absent means Google has none,
+    // while hours absent means we cannot tell and the stop is left alone. Same
+    // principle as the hours check above: silence is not evidence.
+    if (item.hasHours === true) {
+      const reviews = typeof item.ratingCount === 'number' ? item.ratingCount : null;
+      if (reviews === null || reviews < MIN_REVIEWS_FOR_A_STOP) {
+        found.push({
+          index,
+          name: item.name,
+          reason: reviews === null ? 'nobody has reviewed it' : `only ${reviews} reviews`,
+        });
+        return;
+      }
+    }
 
     const nightlife = isNightlifeStop(item);
 

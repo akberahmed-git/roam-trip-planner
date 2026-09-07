@@ -68,6 +68,25 @@ function trimTrailingClaims(segment) {
   return text;
 }
 
+// Claude reaches for em dashes; nothing else this product writes uses them, and
+// they ship straight to the card. One lived in the Tokyo demo for weeks, inside
+// "youth culture storefronts - the heart of Tokyo's pop culture retail", where it
+// was the only em dash on an entire portfolio page.
+//
+// Runs last, after trimTrailingClaims, so it cannot disturb the [-<en><em>] inside
+// QUANTITY - that is how "5-10 minutes" is recognised and trimmed, and rewriting
+// the dash first would hide the claim from the pattern meant to catch it.
+export function normaliseDashes(text) {
+  if (typeof text !== 'string') return text;
+  return text
+    // A dash joining two non-digits is a clause break, and a comma reads the same.
+    // Guarded on both sides so a dash between digits stays: "5-10 minutes" and
+    // "1920-1935" are ranges, not asides.
+    .replace(/(\D)\s*[\u2014\u2013]\s*(?=\D)/g, '$1, ')
+    .replace(/,\s*,/g, ',')
+    .replace(/\s+([.,;])/g, '$1');
+}
+
 export function stripUnverifiedClaims(description) {
   if (typeof description !== 'string' || !description.trim()) {
     return { text: description, changed: false, residual: false };
@@ -99,7 +118,7 @@ export function stripUnverifiedClaims(description) {
     // leaves a grammatical sentence behind.
   });
 
-  const text = tidy(kept.length > 0 ? kept.join('; ') : original);
+  const text = tidy(normaliseDashes(kept.length > 0 ? kept.join('; ') : original));
 
   return {
     text,

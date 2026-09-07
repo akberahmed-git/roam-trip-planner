@@ -341,8 +341,13 @@ async function resolveMealPlaceholders(day, anchor, usedPlaceIds, stay, usedBran
     item.name = pick.name;
     item.address = pick.address;
     item.location = pick.location;
-    item.rating = null;
-    item.ratingCount = null;
+    // The candidate came back from a Places search that asks for rating and
+    // userRatingCount, and nulling them here threw away the only evidence of
+    // whether anyone has ever been to the place. It also meant an adopted stop
+    // rendered without the star its card is built to show, which is why the
+    // shipped demo carried a rating on 4 of its 21 stops.
+    item.rating = pick.rating ?? null;
+    item.ratingCount = pick.ratingCount ?? null;
     item.photoUrl = pick.availablePhotoUrl || null;
     item.hasHours = pick.hasHours || false;
     item.weekdayDescriptions = pick.weekdayDescriptions || null;
@@ -1018,8 +1023,13 @@ async function backfillOrDropActivities(day, anchor, usedPlaceIds, interests, st
     item.name = pick.name;
     item.address = pick.address;
     item.location = pick.location;
-    item.rating = null;
-    item.ratingCount = null;
+    // The candidate came back from a Places search that asks for rating and
+    // userRatingCount, and nulling them here threw away the only evidence of
+    // whether anyone has ever been to the place. It also meant an adopted stop
+    // rendered without the star its card is built to show, which is why the
+    // shipped demo carried a rating on 4 of its 21 stops.
+    item.rating = pick.rating ?? null;
+    item.ratingCount = pick.ratingCount ?? null;
     item.photoUrl = pick.availablePhotoUrl || null;
     item.hasHours = pick.hasHours || false;
     item.weekdayDescriptions = pick.weekdayDescriptions || null;
@@ -1401,8 +1411,9 @@ function buildAdoptedStop(pick, durationMinutes) {
     mealType: null,
     travelToNext: null,
     photoUrl: pick.availablePhotoUrl || null,
-    rating: null,
-    ratingCount: null,
+    // Carried through, not nulled: see the note on the adoption paths above.
+    rating: pick.rating ?? null,
+    ratingCount: pick.ratingCount ?? null,
     hasHours: pick.hasHours || false,
     weekdayDescriptions: pick.weekdayDescriptions || null,
   };
@@ -1655,8 +1666,13 @@ async function repositionStrandedMeals(day, anchor, usedPlaceIds, stay) {
     moved.push(`${item.name} -> ${pick.name}`);
     item.name = pick.name;
     item.address = pick.address;
-    item.rating = null;
-    item.ratingCount = null;
+    // The candidate came back from a Places search that asks for rating and
+    // userRatingCount, and nulling them here threw away the only evidence of
+    // whether anyone has ever been to the place. It also meant an adopted stop
+    // rendered without the star its card is built to show, which is why the
+    // shipped demo carried a rating on 4 of its 21 stops.
+    item.rating = pick.rating ?? null;
+    item.ratingCount = pick.ratingCount ?? null;
     item.photoUrl = pick.availablePhotoUrl || null;
     item.hasHours = pick.hasHours || false;
     item.weekdayDescriptions = pick.weekdayDescriptions || null;
