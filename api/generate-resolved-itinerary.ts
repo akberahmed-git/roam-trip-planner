@@ -551,21 +551,58 @@ function preferWellKnown(candidates) {
 const BRAND_STOPWORDS = new Set([
   'the', 'and', 'cafe', 'café', 'bar', 'restaurant', 'store', 'shop', 'branch',
   'honten', 'ten', 'main', 'tokyo', 'kitchen', 'house', 'by', 'de', 'la', 'el',
+  // Cuisine and format words. Two unrelated sushi counters share "sushi" and
+  // must not read as one brand, so these are stripped before names are compared.
+  'sushi', 'ramen', 'yakiniku', 'izakaya', 'noodle', 'noodles', 'soba', 'udon',
+  'tempura', 'curry', 'grill', 'bakery', 'coffee', 'bistro', 'diner', 'eatery',
 ]);
 
+// Everything left after the stopwords, run together. Hyphens and spacing are
+// where the old version came apart: it took the first two significant words and
+// compared those, so "MO-MO-PARADISE Shibuya Center-gai" keyed on
+// "paradise shibuya" (the two "mo" fragments were too short to survive) while
+// "Momo Paradise Shinjuku Higashi-guchi" keyed on "momo paradise", and the same
+// chain served lunch and dinner on one day of the Tokyo demo. A leading word did
+// the same damage: "Maidreamin Akihabara Head Store" against "Maidcafe
+// Maidreamin Akihabara idol-dori Store" (Akber, 7 Sep 2026).
 function brandKey(name) {
   return (name || '')
     .toLowerCase()
-    .replace(/[^a-z0-9\s]/g, ' ')
+    .replace(/[^a-z0-9]+/g, ' ')
     .split(/\s+/)
-    .filter((word) => word.length > 2 && !BRAND_STOPWORDS.has(word))
-    .slice(0, 2)
-    .join(' ');
+    .filter((word) => word.length > 0 && !BRAND_STOPWORDS.has(word))
+    .join('');
+}
+
+// The longest run of characters two names share once the generic words are gone.
+// Seven is the shortest real chain name this has to catch ("ichiran"), and short
+// enough coincidences do not reach it: "sushizanmai" and "sushiichiban" have
+// nothing in common once "sushi" is a stopword.
+const BRAND_MATCH_LENGTH = 7;
+
+function longestSharedRun(a, b) {
+  if (!a || !b) return 0;
+  let best = 0;
+  const row = new Array(b.length + 1).fill(0);
+  for (let i = 1; i <= a.length; i++) {
+    let prevDiagonal = 0;
+    for (let j = 1; j <= b.length; j++) {
+      const previous = row[j];
+      row[j] = a[i - 1] === b[j - 1] ? prevDiagonal + 1 : 0;
+      if (row[j] > best) best = row[j];
+      prevDiagonal = previous;
+    }
+  }
+  return best;
 }
 
 function sharesBrand(name, usedBrands) {
   const key = brandKey(name);
-  return key.length > 0 && usedBrands.has(key);
+  if (key.length < BRAND_MATCH_LENGTH) return false;
+  for (const used of usedBrands) {
+    if (longestSharedRun(key, used) >= BRAND_MATCH_LENGTH) return true;
+  }
+  return false;
 }
 
 function preferWithPhoto(candidates) {

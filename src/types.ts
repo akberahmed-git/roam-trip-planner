@@ -44,6 +44,10 @@ export interface ItineraryItem {
   address?: string | null
   rating?: number | null
   ratingCount?: number | null
+  // Google's own price band for the place, carried through so a substituted
+  // restaurant can be matched to the traveller's budget (see budgetFit.ts).
+  // Absent on most attractions, which is expected: only dining reliably has one.
+  priceLevel?: string | null
   photoUrl?: string | null
   hasHours?: boolean
   weekdayDescriptions?: string[] | null
@@ -97,6 +101,10 @@ export interface Place {
   address?: string | null
   rating?: number | null
   ratingCount?: number | null
+  // Google's own price band for the place, carried through so a substituted
+  // restaurant can be matched to the traveller's budget (see budgetFit.ts).
+  // Absent on most attractions, which is expected: only dining reliably has one.
+  priceLevel?: string | null
   photoUrl?: string | null
   hasHours?: boolean
   weekdayDescriptions?: string[] | null
