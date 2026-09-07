@@ -1159,6 +1159,21 @@ function permutations(items) {
   return out;
 }
 
+// Breakfast before lunch before dinner. The only ordering constraint meals
+// still carry now that they are free to move geographically.
+const MEAL_SEQUENCE = { breakfast: 0, lunch: 1, dinner: 2 };
+
+function mealsStillInOrder(items) {
+  let previous = -1;
+  for (const item of items) {
+    const rank = MEAL_SEQUENCE[item.mealType];
+    if (rank == null) continue;
+    if (rank < previous) return false;
+    previous = rank;
+  }
+  return true;
+}
+
 function reorderDayGeographically(day) {
   const middleIndexes: number[] = [];
   day.items.forEach((item, index) => {
@@ -1166,15 +1181,19 @@ function reorderDayGeographically(day) {
   });
   if (middleIndexes.length < 3) return null;
 
-  // Meals are pinned by definition. Evening activities are pinned too: a
-  // post-dinner bar is in that slot because of the hour, not the geography, and
-  // the optimiser would happily move it to 09:30 if that shaved a few degrees
-  // off the worst turn. backfillOrDropActivities already refuses to use a
-  // nightlife query before 19:00 for the same reason; reordering must not undo
-  // that care (Akber, 4 Sep 2026).
+  // Meals move too, provided breakfast still precedes lunch and lunch precedes
+  // dinner. Pinning them by position was wrong: a day whose activities cluster
+  // in Asakusa but whose breakfast sits in Omotesando is dragged across the
+  // city by the meal, and with the meal fixed the optimiser could do nothing -
+  // 138 degrees before and after, where letting the meals move reaches 0
+  // (measured on a real generation, Akber, 7 Sep 2026).
+  //
+  // Evening activities stay pinned. A post-dinner bar is in that slot because
+  // of the hour, not the geography, and the optimiser would happily move it to
+  // 09:30 to shave a few degrees.
   const activitySlots = middleIndexes.filter((index) => {
     const item = day.items[index];
-    if (item.mealType) return false;
+    if (item.mealType) return true;
     const start = timeToMinutes(item.startTime);
     return !(start != null && start >= EVENING_PIN_MINUTES);
   });
@@ -1215,6 +1234,7 @@ function reorderDayGeographically(day) {
   let bestShape = currentShape;
   for (const arrangement of permutations(activities)) {
     const candidate = sequenceFor(arrangement);
+    if (!mealsStillInOrder(candidate)) continue;
     const shape = measure(candidate);
     if (shape.worstTurn < bestShape.worstTurn ||
         (shape.worstTurn === bestShape.worstTurn && shape.path < bestShape.path)) {
@@ -1234,6 +1254,97 @@ function reorderDayGeographically(day) {
     toTurn: Math.round(bestShape.worstTurn),
     savedKm: (currentShape.path - bestShape.path) / 1000,
   };
+}
+
+// A meal the model chose can sit nowhere near the day it belongs to. One real
+// generation put breakfast in Omotesando and dinner in Shinjuku while every
+// activity was in Asakusa and Akihabara, 9km east: the day crossed the city
+// twice for the meals alone, 155 degrees, and no ordering could repair it
+// because the meals were in the wrong PLACE rather than the wrong position.
+// Re-picking both took that day to 0 (Akber, 7 Sep 2026).
+//
+// Deliberately narrow, because replacing stops is how Sensō-ji got deleted
+// once already:
+//   - only meals, never an activity. Swapping one restaurant for a nearer
+//     restaurant loses nothing; swapping a landmark loses the landmark.
+//   - only when the day already fails, so a passing day is never touched.
+//   - only if the swap measurably lowers the worst turn. On one day here
+//     re-picking would have made it worse, 138 to 172, and this refuses it.
+//   - measured against the day's own ACTIVITY centre, not a mean that the
+//     offending meal itself drags outward.
+const MEAL_LEASH_KM = 4;
+
+async function repositionStrandedMeals(day, anchor, usedPlaceIds, stay) {
+  const located = day.items.filter((i) => i.type !== 'accommodation' && i.location);
+  const activities = located.filter((i) => !i.mealType);
+  if (activities.length < 2) return [];
+
+  const before = shapeOf(located.map((i) => i.location)).worstTurn;
+  if (before <= REORDER_REVERSAL_DEGREES) return [];
+
+  const centre = medoidOfLocations(activities.map((i) => i.location));
+  if (!centre) return [];
+
+  const moved: string[] = [];
+
+  for (const item of located) {
+    if (!item.mealType) continue;
+    if (haversineMeters(item.location, centre) / 1000 <= MEAL_LEASH_KM) continue;
+
+    const candidates = await findNearbyCandidates(
+      MEAL_SEARCH_QUERY[item.mealType] || 'restaurant',
+      null,
+      centre
+    ).catch(() => []);
+
+    const pick = candidates.find((candidate) => {
+      if (!candidate.location || !candidate.placeId) return false;
+      if (!candidate.availablePhotoUrl) return false;
+      if (usedPlaceIds.has(candidate.placeId)) return false;
+      if (!hasReadableName(candidate.name)) return false;
+      if (!(candidate.types || []).some((t) => FOOD_PLACE_TYPES.has(t))) return false;
+      if (!withinReachOfStay(candidate.location, stay)) return false;
+      if (anchor && haversineMeters(anchor, candidate.location) > MAX_BROAD_DISTANCE_METERS) return false;
+      return haversineMeters(candidate.location, centre) < haversineMeters(item.location, centre);
+    });
+    if (!pick) continue;
+
+    // Only keep the swap if the day is actually straighter for it.
+    const original = { ...item };
+    item.location = pick.location;
+    const after = shapeOf(
+      day.items.filter((i) => i.type !== 'accommodation' && i.location).map((i) => i.location)
+    ).worstTurn;
+    if (after >= before) {
+      item.location = original.location;
+      continue;
+    }
+
+    moved.push(`${item.name} -> ${pick.name}`);
+    item.name = pick.name;
+    item.address = pick.address;
+    item.rating = null;
+    item.ratingCount = null;
+    item.photoUrl = pick.availablePhotoUrl || null;
+    item.hasHours = pick.hasHours || false;
+    item.weekdayDescriptions = pick.weekdayDescriptions || null;
+    item.description = describeAdoptedMeal(pick, item.mealType);
+    item.categoryTag = composeCategoryTag(item, pick) || item.categoryTag;
+    usedPlaceIds.add(pick.placeId);
+  }
+
+  return moved;
+}
+
+function medoidOfLocations(points) {
+  let best = null;
+  let bestTotal = Infinity;
+  for (const candidate of points) {
+    let total = 0;
+    for (const other of points) total += haversineMeters(candidate, other);
+    if (total < bestTotal) { bestTotal = total; best = candidate; }
+  }
+  return best;
 }
 
 async function enforceDriveCap(day, transport, usedPlaceIds, stay) {
@@ -1466,11 +1577,22 @@ async function resolveItinerary(itinerary, destination, anchor, transport, accom
     // After the backfill and the reach pass, so it orders the stops that will
     // actually ship, and before travel times, so the cascade recomputes against
     // the new order.
+    // Reorder first: it moves nothing and loses nothing, so it gets the first
+    // attempt at straightening the day. Only if the day still doubles back does
+    // a meal get re-picked.
     const reordered = reorderDayGeographically(day);
     if (reordered) {
       console.info(
         `[generate-resolved-itinerary] day ${day.day}: reordered stops, worst turn ${reordered.fromTurn}° -> ${reordered.toTurn}°, ${reordered.savedKm.toFixed(1)} km saved`
       );
+    }
+
+    const restranded = await repositionStrandedMeals(day, anchor, usedPlaceIds, stay);
+    if (restranded.length > 0) {
+      console.info(
+        `[generate-resolved-itinerary] day ${day.day}: moved ${restranded.length} stranded meal(s) back to the day: ${restranded.join('; ')}`
+      );
+      reorderDayGeographically(day);
     }
 
   }
