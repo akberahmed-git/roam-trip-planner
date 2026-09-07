@@ -286,7 +286,7 @@ function describeAdoptedMeal(pick, mealType) {
   return pick.neighbourhood ? `${what} in ${pick.neighbourhood}.` : `${what}.`;
 }
 
-async function resolveMealPlaceholders(day, anchor, usedPlaceIds) {
+async function resolveMealPlaceholders(day, anchor, usedPlaceIds, stay) {
   for (let i = 0; i < day.items.length; i++) {
     const item = day.items[i];
     if (!item.mealType || item.location) {
@@ -310,7 +310,7 @@ async function resolveMealPlaceholders(day, anchor, usedPlaceIds) {
           !usedPlaceIds.has(c.placeId) &&
           hasReadableName(c.name) &&
           (!anchor || haversineMeters(anchor, c.location) <= MAX_BROAD_DISTANCE_METERS) &&
-          withinReachOfStay(c.location)
+          withinReachOfStay(c.location, stay)
       );
       return preferWithPhoto(usable);
     };
@@ -480,7 +480,7 @@ function preferWithPhoto(candidates) {
   return candidates.find((candidate) => candidate.availablePhotoUrl) || candidates[0] || null;
 }
 
-function pickSubstitute(suggestions, usedPlaceIds, anchor) {
+function pickSubstitute(suggestions, usedPlaceIds, anchor, stay) {
   if (!suggestions) {
     return null;
   }
@@ -490,7 +490,7 @@ function pickSubstitute(suggestions, usedPlaceIds, anchor) {
     if (usedPlaceIds.has(candidate.placeId)) return false;
     if (anchor && candidate.location) {
       if (haversineMeters(anchor, candidate.location) > MAX_BROAD_DISTANCE_METERS) return false;
-      if (!withinReachOfStay(candidate.location)) return false;
+      if (!withinReachOfStay(candidate.location, stay)) return false;
     }
     return true;
   });
@@ -582,7 +582,7 @@ function composeCategoryTag(item, place) {
   return item.categoryTag || null;
 }
 
-function applyResolution(item, result, usedPlaceIds, anchor) {
+function applyResolution(item, result, usedPlaceIds, anchor, stay) {
   if (result.status === 'found') {
     // Same real place already used earlier in the trip? This happens when
     // Claude proposes two distinct-sounding stops that Google resolves to the
@@ -610,7 +610,7 @@ function applyResolution(item, result, usedPlaceIds, anchor) {
   }
 
   const suggestions = result.status === 'not_found' ? result.suggestions : null;
-  const substitute = pickSubstitute(suggestions, usedPlaceIds, anchor);
+  const substitute = pickSubstitute(suggestions, usedPlaceIds, anchor, stay);
 
   if (substitute) {
     item.name = substitute.name;
@@ -842,7 +842,7 @@ function describeAdoptedActivity(pick) {
 //   - food places are rejected, so a backfill can't become a second lunch
 //   - "Nightlife" is only used as a query after 19:00, since a bar at 10am is
 //     not what the chip meant
-async function backfillOrDropActivities(day, anchor, usedPlaceIds, interests) {
+async function backfillOrDropActivities(day, anchor, usedPlaceIds, interests, stay) {
   const dropped: string[] = [];
   const adopted: string[] = [];
   const kept: any[] = [];
@@ -896,7 +896,7 @@ async function backfillOrDropActivities(day, anchor, usedPlaceIds, interests) {
           if ((candidate.types || []).some((t) => FOOD_PLACE_TYPES.has(t))) return false;
           if (!isSubstantialActivity(candidate)) return false;
           if (anchor && haversineMeters(anchor, candidate.location) > MAX_BROAD_DISTANCE_METERS) return false;
-          if (!withinReachOfStay(candidate.location)) return false;
+          if (!withinReachOfStay(candidate.location, stay)) return false;
           return true;
         }) || null;
       }
@@ -1046,11 +1046,14 @@ function trimFinalNight(day) {
 // model did (Akber, 4 Sep 2026).
 //
 // A replacement must clear the same bar as an original. Set once per request.
-let stayLocation: any = null;
-
-function withinReachOfStay(location) {
-  if (!stayLocation || !location) return true;
-  return haversineMeters(location, stayLocation) / 1000 <= MAX_KM_FROM_ACCOMMODATION;
+// Passed down rather than held at module scope. It was a module-level `let`,
+// set inside resolveItinerary, which is fine within one request but wrong in a
+// warm serverless instance: two people generating trips at the same time would
+// have shared it, and one traveller's hotel would have gated the other's stops
+// (Akber, 7 Sep 2026).
+function withinReachOfStay(location, stay) {
+  if (!stay || !location) return true;
+  return haversineMeters(location, stay) / 1000 <= MAX_KM_FROM_ACCOMMODATION;
 }
 
 const MAX_KM_FROM_ACCOMMODATION = 15;
@@ -1233,7 +1236,7 @@ function reorderDayGeographically(day) {
   };
 }
 
-async function enforceDriveCap(day, transport, usedPlaceIds) {
+async function enforceDriveCap(day, transport, usedPlaceIds, stay) {
   for (let i = 0; i < day.items.length - 1; i++) {
     const current = day.items[i];
     const next = day.items[i + 1];
@@ -1261,7 +1264,7 @@ async function enforceDriveCap(day, transport, usedPlaceIds) {
         (candidate) =>
           isUsableCandidate(candidate) &&
           !usedPlaceIds.has(candidate.placeId) &&
-          withinReachOfStay(candidate.location)
+          withinReachOfStay(candidate.location, stay)
       )
     );
 
@@ -1276,7 +1279,7 @@ async function enforceDriveCap(day, transport, usedPlaceIds) {
           (candidate) =>
           isUsableCandidate(candidate) &&
           !usedPlaceIds.has(candidate.placeId) &&
-          withinReachOfStay(candidate.location)
+          withinReachOfStay(candidate.location, stay)
         )
       );
     }
@@ -1310,7 +1313,7 @@ async function enforceDriveCap(day, transport, usedPlaceIds) {
 }
 
 async function resolveItinerary(itinerary, destination, anchor, transport, accommodationDetails, interests) {
-  stayLocation = accommodationDetails?.location || null;
+  const stay = accommodationDetails?.location || null;
   const usedPlaceIds = new Set();
 
   // Slow & Immersive (pacingLabel 'Relaxed', set by computePacing in
@@ -1361,7 +1364,7 @@ async function resolveItinerary(itinerary, destination, anchor, transport, accom
   );
 
   allItems.forEach((item, index) => {
-    applyResolution(item, results[index], usedPlaceIds, anchor);
+    applyResolution(item, results[index], usedPlaceIds, anchor, stay);
   });
 
   // Remove any stop applyResolution flagged as a duplicate real place (two
@@ -1421,7 +1424,7 @@ async function resolveItinerary(itinerary, destination, anchor, transport, accom
   // placeholder (Akber, 1 Aug 2026). Sequential, not Promise.all, so the shared
   // usedPlaceIds stays consistent and two days can't adopt the same restaurant.
   for (const day of itinerary.days) {
-    await resolveMealPlaceholders(day, anchor, usedPlaceIds);
+    await resolveMealPlaceholders(day, anchor, usedPlaceIds, stay);
   }
 
   // Then remove any non-meal stop that never resolved to a real place, so an
@@ -1439,7 +1442,7 @@ async function resolveItinerary(itinerary, destination, anchor, transport, accom
       );
     }
 
-    const { dropped, adopted } = await backfillOrDropActivities(day, anchor, usedPlaceIds, interests);
+    const { dropped, adopted } = await backfillOrDropActivities(day, anchor, usedPlaceIds, interests, stay);
 
     // backfillOrDropActivities deliberately skips meals, so a meal that
     // markUnusableStops just invalidated (too far from the hotel, or no photo)
@@ -1447,7 +1450,7 @@ async function resolveItinerary(itinerary, destination, anchor, transport, accom
     // card, invisible on the map, with the legs either side of it nulled.
     // resolveMealPlaceholders is exactly the pass that repairs that, so run it
     // again now that the day's activities are settled (Akber, 4 Sep 2026).
-    await resolveMealPlaceholders(day, anchor, usedPlaceIds);
+    await resolveMealPlaceholders(day, anchor, usedPlaceIds, stay);
     if (adopted.length > 0) {
       console.info(
         `[generate-resolved-itinerary] day ${day.day}: backfilled ${adopted.length} unresolved stop(s): ${adopted.join(', ')}`
@@ -1506,7 +1509,7 @@ async function resolveItinerary(itinerary, destination, anchor, transport, accom
   // usedPlaceIds, and days shouldn't race each other over which one claims
   // a given nearby replacement first.
   for (const day of itinerary.days) {
-    await enforceDriveCap(day, transport, usedPlaceIds);
+    await enforceDriveCap(day, transport, usedPlaceIds, stay);
   }
 
   // No shared state here (unlike enforceDriveCap above), so this can run
