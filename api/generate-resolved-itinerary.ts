@@ -967,6 +967,31 @@ const MEAL_DELIVERED_INTERESTS = new Set(['cuisine', 'food tours', 'food & drink
 
 // Types that make a place a meal rather than an activity. A backfilled stop
 // carrying any of these is rejected for the same reason as above.
+// Types that make a place worth going to in its own right. A candidate carrying
+// one of these is an activity even if it also serves food.
+const ACTIVITY_PLACE_TYPES = new Set([
+  'night_club',
+  'tourist_attraction',
+  'museum',
+  'art_gallery',
+  'park',
+  'shopping_mall',
+  'amusement_park',
+  'aquarium',
+  'zoo',
+  'place_of_worship',
+  'hindu_temple',
+  'church',
+  'mosque',
+  'synagogue',
+  'stadium',
+  'performing_arts_theater',
+  'movie_theater',
+  'casino',
+  'spa',
+  'observation_deck',
+]);
+
 const FOOD_PLACE_TYPES = new Set([
   'restaurant',
   'cafe',
@@ -1738,7 +1763,17 @@ async function repositionStrandedStops(day, anchor, usedPlaceIds, stay) {
       // to be the same kind of thing it is replacing, which the query already
       // asks for, so holding it to the food list would reject every candidate.
       if (item.mealType && !(candidate.types || []).some((t) => FOOD_PLACE_TYPES.has(t))) return false;
-      if (!item.mealType && (candidate.types || []).some((t) => FOOD_PLACE_TYPES.has(t))) return false;
+      // Only reject a food-typed candidate when food is all it is. Google types
+      // a Tokyo nightclub as night_club AND bar AND restaurant, so the blanket
+      // version of this rejected every replacement for the Shinjuku club that
+      // turned three separate demo drafts 174 degrees, and the repair silently
+      // had nothing to offer (Akber, 7 Sep 2026).
+      if (!item.mealType) {
+        const types = candidate.types || [];
+        const food = types.some((t) => FOOD_PLACE_TYPES.has(t));
+        const alsoSomethingToDo = types.some((t) => ACTIVITY_PLACE_TYPES.has(t));
+        if (food && !alsoSomethingToDo) return false;
+      }
       if (!withinReachOfStay(candidate.location, stay)) return false;
       if (anchor && haversineMeters(anchor, candidate.location) > MAX_BROAD_DISTANCE_METERS) return false;
       // For the pivot the test is whether the day straightens, checked below, not
