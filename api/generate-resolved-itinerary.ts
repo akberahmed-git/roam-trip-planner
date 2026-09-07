@@ -692,6 +692,22 @@ function applyResolution(item, result, usedPlaceIds, anchor, stay) {
     item.weekdayDescriptions = substitute.weekdayDescriptions;
     item.location = substitute.location;
     item.categoryTag = composeCategoryTag(item, substitute);
+
+    // The description has to go with the name. This pass replaced everything
+    // else about the stop and left the model's prose in place, so a substituted
+    // place shipped wearing a confident, specific description of the business it
+    // replaced: "Roppongi Hills Club", a members' club, described as a 24-hour
+    // ramen chain (Akber, 7 Sep 2026).
+    //
+    // Of everything this app can get wrong, that is the worst: a real place, a
+    // real photo, and fluent text about somewhere else. describeAdoptedStops
+    // rewrites it from the new place's own data at the end of the pipeline; the
+    // line below is what it falls back to.
+    item.description = item.mealType
+      ? describeAdoptedMeal(substitute, item.mealType)
+      : describeAdoptedActivity(substitute);
+    item.adoptedFrom = { neighbourhood: substitute.neighbourhood, types: substitute.types };
+
     usedPlaceIds.add(substitute.placeId);
     return;
   }
@@ -856,7 +872,11 @@ const INTEREST_SEARCH_QUERY = {
   'beaches': 'beach',
   'landmarks': 'landmark',
   'shopping': 'shopping street',
-  'nightlife': 'bar',
+  // "bar" returns whichever bar is nearest, which is how a members' club typed
+  // as a restaurant became a trip's entire nightlife. Asking for the thing
+  // people actually go out for, now that ranking weighs review count, surfaces
+  // venues someone has heard of (Akber, 7 Sep 2026).
+  'nightlife': 'popular nightclub or cocktail bar',
 };
 
 // Interests delivered by the day's meals, not by an activity. Backfilling an
@@ -943,9 +963,20 @@ async function backfillOrDropActivities(day, anchor, usedPlaceIds, interests, st
 
     // The stop's own type first (a dropped museum should be replaced by a
     // museum), then the trip's interests, then a generic attraction.
+    //
+    // Except after dinner on a nightlife trip, where the evening's purpose beats
+    // whatever the failed stop happened to be. A ramen shop the model had put
+    // after dinner failed, its own type "Restaurant" went to the front of the
+    // queue, and the trip's entire nightlife became a members' club that Google
+    // types as a restaurant (Akber, 7 Sep 2026).
     const queries: string[] = [];
+    const nightlifeFirst = isEvening
+      ? usable.find((interest) => String(interest).trim().toLowerCase() === 'nightlife')
+      : null;
+    if (nightlifeFirst) queries.push(interestQuery(nightlifeFirst));
+
     const ownType = typeof item.categoryTag === 'string' ? item.categoryTag.split('·')[0].trim() : '';
-    if (ownType) queries.push(ownType.toLowerCase());
+    if (ownType && !queries.includes(ownType.toLowerCase())) queries.push(ownType.toLowerCase());
     for (const interest of usable) {
       const q = interestQuery(interest);
       if (q && !queries.includes(q)) queries.push(q);

@@ -45,10 +45,24 @@ function buildTripPreamble(params) {
   // named the interest and the stops quietly ignored it (Akber, 4 Sep 2026).
   // So coverage is now a stated requirement, and a theme may not claim an
   // interest the day does not actually contain.
+  // Nightlife is the one interest that needs a slot as well as a subject, and
+  // the general coverage rule above turned out not to be enough on its own: a
+  // trip with Nightlife selected came back with a ramen shop after dinner, which
+  // then failed verification and was replaced by a members' club Google types as
+  // a restaurant. The trip's entire nightlife was a restaurant (Akber, 7 Sep
+  // 2026). Naming what a nightlife stop actually is, and where it goes, is the
+  // part that was missing.
+  const wantsNightlife = interests.some((interest) =>
+    String(interest).trim().toLowerCase().includes('nightlife'));
+  const nightlifeLine = wantsNightlife
+    ? `
+- NIGHTLIFE (strictly enforced): "Nightlife" is one of the interests, so every day except the last must end with a real, named night venue AFTER dinner - a well-known bar, cocktail bar, live music venue or club that this city is actually known for. It must be somewhere people go out in the evening, not a restaurant, a ramen shop, a late-opening cafe or a members-only club. Name a specific venue a local would recognise, not a generic description.`
+    : '';
+
   const interestsLine = interests.length > 0
     ? `- Traveller interests: ${interests.join(', ')} — weight activity and meal choices toward these where it makes sense for the destination, rather than a generic mix.
 - INTEREST COVERAGE (strictly enforced): every single interest listed above must appear as at least one real, named stop across the trip as a whole. If "Temples & Shrines" is listed, an actual named temple or shrine must appear. If "Anime & Pop Culture" is listed, an actual anime or pop-culture venue must appear. Spread the interests across the days rather than stacking them all into one.
-- THEME HONESTY (strictly enforced): a day's "theme" may only name an interest that day actually delivers. Do not theme a day "Sacred Temples" unless that day contains a temple, or "Anime Culture" unless that day contains an anime venue. If a day has no stop for an interest, do not mention that interest in its theme.`
+- THEME HONESTY (strictly enforced): a day's "theme" may only name an interest that day actually delivers. Do not theme a day "Sacred Temples" unless that day contains a temple, or "Anime Culture" unless that day contains an anime venue. If a day has no stop for an interest, do not mention that interest in its theme.${nightlifeLine}`
     : '- Traveller interests: none specified — use a well-rounded, broadly appealing mix.';
 
   return { destination, days, budget, accommodation, endTimeLine, groupLine, interestsLine };

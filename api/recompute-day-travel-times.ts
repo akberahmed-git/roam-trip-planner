@@ -2,6 +2,9 @@ import { computeTravelTimes } from './_lib/travelTime.js';
 import { fillMissingTravelTimes } from './_lib/scheduleRealign.js';
 import { applyFixedSchedule } from './_lib/fixedSchedule.js';
 
+// Kept in step with generate-resolved-itinerary.js's own floor for Slow days.
+const SLOW_MIN_STAY_MINUTES = 75;
+
 // Called after a swap or reorder on the Detail screen (see TripContext.jsx's
 // swapDayItem/reorderDayItem) - both clear travelToNext on the legs they
 // affect immediately, client-side, so a stale number is never shown as if
@@ -47,7 +50,16 @@ export default async function handler(req, res) {
     // of the trip. The practical effect is that dinner here never gives ground
     // to an end-of-day limit, which is the right default for a single edit: a
     // swap should not silently drop the stop the traveller just chose.
-    applyFixedSchedule(day, { cutoffMinutes: null, transport });
+    // Which variant this day belongs to, inferred from its meals: the Slow
+    // plan sets every meal to 120 minutes and every other variant to 60. The
+    // client posts only the day's items, and refitting a Slow day with the
+    // Packed floor would let a swap quietly shrink a stop back to 45 minutes.
+    const slow = day.items.some((item) => item.mealType && item.durationMinutes >= 120);
+    applyFixedSchedule(day, {
+      cutoffMinutes: null,
+      transport,
+      minStayMinutes: slow ? SLOW_MIN_STAY_MINUTES : undefined,
+    });
     res.status(200).json({ items: day.items });
   } catch (error) {
     res.status(500).json({ error: error.message });
