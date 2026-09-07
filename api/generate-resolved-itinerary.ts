@@ -301,7 +301,7 @@ async function resolveMealPlaceholders(day, anchor, usedPlaceIds, stay, usedBran
       // A meal the model chose and that verified normally still claims its
       // brand, or the guard would only stop substitutions repeating a chain
       // while leaving the model free to.
-      usedBrands.add(brandKey(item.name));
+      usedBrands.add(brandKey(item.name, neighbourhoodOf(item)));
       continue;
     }
 
@@ -326,7 +326,7 @@ async function resolveMealPlaceholders(day, anchor, usedPlaceIds, stay, usedBran
         (c) =>
           c.location &&
           !usedPlaceIds.has(c.placeId) &&
-          !sharesBrand(c.name, usedBrands) &&
+          !sharesBrand(c.name, usedBrands, neighbourhoodOf(c)) &&
           hasReadableName(c.name) &&
           (!anchor || haversineMeters(anchor, c.location) <= MAX_BROAD_DISTANCE_METERS) &&
           withinReachOfStay(c.location, stay) &&
@@ -382,7 +382,7 @@ async function resolveMealPlaceholders(day, anchor, usedPlaceIds, stay, usedBran
     item.adoptedFrom = { neighbourhood: pick.neighbourhood, types: pick.types };
     item.placeTypes = pick.types || null;
     usedPlaceIds.add(pick.placeId);
-    usedBrands.add(brandKey(pick.name));
+    usedBrands.add(brandKey(pick.name, neighbourhoodOf(pick)));
   }
 }
 
@@ -574,13 +574,38 @@ const BRAND_STOPWORDS = new Set([
 // chain served lunch and dinner on one day of the Tokyo demo. A leading word did
 // the same damage: "Maidreamin Akihabara Head Store" against "Maidcafe
 // Maidreamin Akihabara idol-dori Store" (Akber, 7 Sep 2026).
-function brandKey(name) {
-  return (name || '')
+// Where a place is, taken from whichever field this object happens to carry it
+// in: a fresh Places candidate has it directly, an adopted stop keeps it under
+// adoptedFrom, and a stop the model chose has it as the second half of its
+// category tag ("Restaurant · Shibuya").
+function neighbourhoodOf(place) {
+  if (!place) return null;
+  if (place.neighbourhood) return place.neighbourhood;
+  if (place.adoptedFrom && place.adoptedFrom.neighbourhood) return place.adoptedFrom.neighbourhood;
+  const tag = String(place.categoryTag || '');
+  const dot = tag.indexOf('·');
+  return dot >= 0 ? tag.slice(dot + 1).trim() : null;
+}
+
+function brandKey(name, neighbourhood) {
+  const key = (name || '')
     .toLowerCase()
     .replace(/[^a-z0-9]+/g, ' ')
     .split(/\s+/)
     .filter((word) => word.length > 0 && !BRAND_STOPWORDS.has(word))
     .join('');
+  // A Tokyo restaurant is routinely named for the district it stands in, and
+  // "shibuya" is seven characters, which is exactly the bar a shared run has to
+  // clear. Without this, "Pokemon Center Shibuya" and "Tsukishima Monja Okoge
+  // Shibuya" read as one chain. The district is where a place is, never who runs
+  // it, so it comes out before anything is compared (Akber, 7 Sep 2026).
+  const hood = String(neighbourhood || '')
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, '');
+  if (hood.length >= 4 && key.includes(hood)) {
+    return key.split(hood).join('');
+  }
+  return key;
 }
 
 // The longest run of characters two names share once the generic words are gone.
@@ -605,8 +630,8 @@ function longestSharedRun(a, b) {
   return best;
 }
 
-function sharesBrand(name, usedBrands) {
-  const key = brandKey(name);
+function sharesBrand(name, usedBrands, neighbourhood) {
+  const key = brandKey(name, neighbourhood);
   if (key.length < BRAND_MATCH_LENGTH) return false;
   for (const used of usedBrands) {
     if (longestSharedRun(key, used) >= BRAND_MATCH_LENGTH) return true;
