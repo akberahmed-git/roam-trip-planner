@@ -289,6 +289,43 @@ export function starvedBlocks(day, cutoffMinutes) {
     .filter((block) => block.shortfall >= floorMinutes && block.near);
 }
 
+// Where a day could take one more stop without anything being dropped again.
+// Used when an interest the traveller chose is missing from the whole trip and a
+// stop has to be found for it - there is no point inserting one into a stretch
+// that is already full, because the next fit would drop it straight back out.
+//
+// Returns the roomiest block's insertion point, or null when the day is full.
+export function roomForAnotherStop(day, cutoffMinutes) {
+  const anchors = resolveAnchors(day, cutoffMinutes);
+
+  const candidates = blocksOf(day, anchors)
+    .map((block) => ({
+      // What the block would need if it held one more stop, against what it has.
+      spare: block.available - (block.stopIndexes.length + 1) * floorMinutes,
+      insertAt: block.endIndex,
+      near: [...block.stopIndexes].reverse().map((i) => day.items[i].location).find(Boolean)
+        || day.items[block.startIndex]?.location
+        || null,
+    }))
+    .filter((block) => block.spare >= 0 && block.near)
+    .sort((a, b) => b.spare - a.spare);
+
+  return candidates[0] || null;
+}
+
+// Where a stop that only makes sense after dark goes: immediately after dinner,
+// before whatever else the evening already holds, so it is the first thing the
+// traveller does once they have eaten.
+export function eveningInsertPoint(day) {
+  const dinnerIndex = indexOfMeal(day, 'dinner');
+  if (dinnerIndex < 0) return null;
+
+  const near = day.items[dinnerIndex].location
+    || [...day.items].reverse().find((item) => item.location)?.location
+    || null;
+  return near ? { insertAt: dinnerIndex + 1, near } : null;
+}
+
 // A block with more time than its stops can plausibly hold wants another stop; a
 // block with less time than they need has one too many. Moving a stop across a
 // meal boundary fixes both at once and costs the day nothing, so it is always

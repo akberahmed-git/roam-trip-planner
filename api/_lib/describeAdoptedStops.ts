@@ -33,7 +33,10 @@ const MODEL = 'claude-sonnet-4-5';
 // itinerary is returned, so it never reaches the client.
 export function stripAdoptionMarkers(days) {
   for (const day of days) {
-    for (const item of day.items) delete item.adoptedFrom;
+    for (const item of day.items) {
+      delete item.adoptedFrom;
+      delete item.placeTypes;
+    }
   }
 }
 

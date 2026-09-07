@@ -19,7 +19,8 @@ import {
   clampStayDurations,
   dayCutoffMinutes
 } from './_lib/scheduleRealign.js';
-import { applyFixedSchedule, dedupeMeals, starvedBlocks, unsuitableStops } from './_lib/fixedSchedule.js';
+import { applyFixedSchedule, dedupeMeals, starvedBlocks, unsuitableStops, roomForAnotherStop, eveningInsertPoint } from './_lib/fixedSchedule.js';
+import { uncoveredInterests, satisfiesInterest, isEveningInterest } from './_lib/interestCoverage.js';
 import { weekdayForDay } from './_lib/openingHours.js';
 import { shapeOf, REORDER_REVERSAL_DEGREES } from './_lib/routeShape.js';
 import { describeAdoptedStops, stripAdoptionMarkers } from './_lib/describeAdoptedStops.js';
@@ -348,6 +349,7 @@ async function resolveMealPlaceholders(day, anchor, usedPlaceIds, stay, usedBran
     item.categoryTag = composeCategoryTag(item, pick);
     item.description = describeAdoptedMeal(pick, item.mealType);
     item.adoptedFrom = { neighbourhood: pick.neighbourhood, types: pick.types };
+    item.placeTypes = pick.types || null;
     usedPlaceIds.add(pick.placeId);
     usedBrands.add(brandKey(pick.name));
   }
@@ -673,6 +675,11 @@ function applyResolution(item, result, usedPlaceIds, anchor, stay) {
     item.weekdayDescriptions = result.weekdayDescriptions;
     item.location = result.location;
     item.categoryTag = composeCategoryTag(item, result);
+    // Google's raw types, kept for the interest check. categoryTag cannot stand
+    // in for them: it collapses church, place_of_worship, historical_landmark and
+    // tourist_attraction all into "Landmark", so a temple and a monument read
+    // identically once it has been built.
+    item.placeTypes = result.types || null;
     usedPlaceIds.add(result.placeId);
     return;
   }
@@ -707,6 +714,7 @@ function applyResolution(item, result, usedPlaceIds, anchor, stay) {
       ? describeAdoptedMeal(substitute, item.mealType)
       : describeAdoptedActivity(substitute);
     item.adoptedFrom = { neighbourhood: substitute.neighbourhood, types: substitute.types };
+    item.placeTypes = substitute.types || null;
 
     usedPlaceIds.add(substitute.placeId);
     return;
@@ -1017,6 +1025,7 @@ async function backfillOrDropActivities(day, anchor, usedPlaceIds, interests, st
     item.weekdayDescriptions = pick.weekdayDescriptions || null;
     item.description = describeAdoptedActivity(pick);
     item.adoptedFrom = { neighbourhood: pick.neighbourhood, types: pick.types };
+    item.placeTypes = pick.types || null;
     item.categoryTag = composeCategoryTag(item, pick) || item.categoryTag;
     usedPlaceIds.add(pick.placeId);
     adopted.push(pick.name);
@@ -1360,25 +1369,7 @@ async function fillStarvedBlocks(day, cutoff, anchor, usedPlaceIds, stay, intere
     );
     if (!pick) continue;
 
-    const stop = {
-      type: 'activity',
-      name: pick.name,
-      address: pick.address,
-      location: pick.location,
-      description: describeAdoptedActivity(pick),
-      adoptedFrom: { neighbourhood: pick.neighbourhood, types: pick.types },
-      categoryTag: null,
-      startTime: null,
-      durationMinutes: MIN_STAY_MINUTES_FOR_NEW_STOP,
-      mealType: null,
-      travelToNext: null,
-      photoUrl: pick.availablePhotoUrl || null,
-      rating: null,
-      ratingCount: null,
-      hasHours: pick.hasHours || false,
-      weekdayDescriptions: pick.weekdayDescriptions || null,
-    };
-    stop.categoryTag = composeCategoryTag(stop, pick);
+    const stop = buildAdoptedStop(pick, MIN_STAY_MINUTES_FOR_NEW_STOP);
 
     // Its new neighbours were routed against each other, not against it.
     if (block.insertAt > 0) day.items[block.insertAt - 1].travelToNext = null;
@@ -1391,6 +1382,89 @@ async function fillStarvedBlocks(day, cutoff, anchor, usedPlaceIds, stay, intere
 }
 
 const MIN_STAY_MINUTES_FOR_NEW_STOP = 60;
+
+// Builds a stop from a verified Google place. Shared by the two passes that add
+// one after the itinerary already exists, so an added stop is indistinguishable
+// from one that was there all along.
+function buildAdoptedStop(pick, durationMinutes) {
+  const stop = {
+    type: 'activity',
+    name: pick.name,
+    address: pick.address,
+    location: pick.location,
+    description: describeAdoptedActivity(pick),
+    adoptedFrom: { neighbourhood: pick.neighbourhood, types: pick.types },
+    placeTypes: pick.types || null,
+    categoryTag: null,
+    startTime: null,
+    durationMinutes,
+    mealType: null,
+    travelToNext: null,
+    photoUrl: pick.availablePhotoUrl || null,
+    rating: null,
+    ratingCount: null,
+    hasHours: pick.hasHours || false,
+    weekdayDescriptions: pick.weekdayDescriptions || null,
+  };
+  stop.categoryTag = composeCategoryTag(stop, pick) || null;
+  return stop;
+}
+
+// The prompt asks for every chosen interest to appear somewhere in the trip and
+// calls it strictly enforced. Nothing enforced it. A Tokyo trip with Nightlife
+// selected shipped with no night venue in either variant, and the demo audit
+// passed it on the word "Club" in a restaurant's name (Akber, 7 Sep 2026).
+//
+// So the finished itinerary is checked, and anything missing is gone and found.
+// A candidate has to satisfy the interest itself, not merely turn up in a search
+// for it - a search for "temple shrine" will happily return the gift shop
+// opposite, and adding that would close the gap on paper while leaving the trip
+// without a temple.
+async function coverMissingInterests(itinerary, { interests, anchor, usedPlaceIds, stay, cutoffFor }) {
+  const added: string[] = [];
+
+  for (const interest of uncoveredInterests(itinerary.days, interests)) {
+    const query = interestQuery(interest);
+    if (!query) continue;
+
+    let placed = false;
+    for (let index = 0; index < itinerary.days.length && !placed; index++) {
+      const day = itinerary.days[index];
+
+      // Nightlife goes after dinner or not at all; everything else goes wherever
+      // the day still has room for a stop of a sensible length.
+      const slot = isEveningInterest(interest)
+        ? eveningInsertPoint(day)
+        : roomForAnotherStop(day, cutoffFor(index));
+      if (!slot) continue;
+
+      const candidates = await findNearbyCandidates(query, null, slot.near).catch(() => []);
+      const pick = preferWellKnown(
+        candidates.filter(
+          (c) =>
+            c.location &&
+            c.availablePhotoUrl &&
+            !usedPlaceIds.has(c.placeId) &&
+            hasReadableName(c.name) &&
+            !(c.types || []).some((type) => FOOD_PLACE_TYPES.has(type)) &&
+            (!anchor || haversineMeters(anchor, c.location) <= MAX_BROAD_DISTANCE_METERS) &&
+            withinReachOfStay(c.location, stay) &&
+            satisfiesInterest({ ...c, placeTypes: c.types, mealType: null }, interest)
+        )
+      );
+      if (!pick) continue;
+
+      const stop = buildAdoptedStop(pick, MIN_STAY_MINUTES_FOR_NEW_STOP);
+      if (slot.insertAt > 0) day.items[slot.insertAt - 1].travelToNext = null;
+      day.items.splice(slot.insertAt, 0, stop);
+      usedPlaceIds.add(pick.placeId);
+      added.push(`${pick.name} (${interest})`);
+      placed = true;
+    }
+  }
+
+  return added;
+}
 
 function reorderDayGeographically(day) {
   const middleIndexes: number[] = [];
@@ -1588,6 +1662,7 @@ async function repositionStrandedMeals(day, anchor, usedPlaceIds, stay) {
     item.weekdayDescriptions = pick.weekdayDescriptions || null;
     item.description = describeAdoptedMeal(pick, item.mealType);
     item.adoptedFrom = { neighbourhood: pick.neighbourhood, types: pick.types };
+    item.placeTypes = pick.types || null;
     item.categoryTag = composeCategoryTag(item, pick) || item.categoryTag;
     usedPlaceIds.add(pick.placeId);
   }
@@ -2054,6 +2129,38 @@ async function resolveItinerary(itinerary, destination, anchor, transport, accom
       // one unchecked round. Fit it and let it go.
       if (round === 2) applyFixedSchedule(day, options);
     }
+  }
+
+  // Last content decision before the descriptions are written: does this trip
+  // actually deliver the interests it was asked for? Checked on the finished
+  // itinerary, because until the scheduling loop has settled, stops are still
+  // being dropped and added underneath it.
+  try {
+    const covered = await coverMissingInterests(itinerary, {
+      interests,
+      anchor,
+      usedPlaceIds,
+      stay,
+      cutoffFor: (index) => dayCutoffMinutes(index, itinerary.days.length, interests),
+    });
+    if (covered.length > 0) {
+      console.info(
+        `[generate-resolved-itinerary] added ${covered.length} stop(s) for interests the trip was missing: ${covered.join(', ')}`
+      );
+      // Each addition sits between two stops it was never routed against, and
+      // the day it landed in now holds one more thing than it was fitted for.
+      for (let index = 0; index < itinerary.days.length; index++) {
+        const day = itinerary.days[index];
+        await computeTravelTimes(day.items, transport);
+        applyFixedSchedule(day, {
+          cutoffMinutes: dayCutoffMinutes(index, itinerary.days.length, interests),
+          transport,
+          minStayMinutes,
+        });
+      }
+    }
+  } catch (error) {
+    console.warn('[generate-resolved-itinerary] interest coverage pass failed, leaving the trip as generated:', error);
   }
 
   // Again, because the scheduling loop above can adopt stops of its own -
