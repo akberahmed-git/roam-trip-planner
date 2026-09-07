@@ -32,3 +32,4 @@ api/_lib/.interest-suggestions-cache.json
 
 # local-only project notes (not for the public repo)
 _local-notes/
+.roam-last-generation.json

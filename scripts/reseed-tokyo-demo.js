@@ -555,6 +555,15 @@ async function main() {
     }
   }
 
+  // Always keep the raw generation, pass or fail. Every fix this session was
+  // reverse-engineered from the four-line audit summary while the itinerary
+  // that produced it was discarded, which meant guessing at the stops the
+  // summary did not name - and guessing wrong repeatedly. A rejected draft
+  // costs EUR 1.43; keeping it costs nothing (Akber, 7 Sep 2026).
+  const dumpPath = path.join(process.cwd(), '.roam-last-generation.json');
+  await writeFile(dumpPath, JSON.stringify({ trip: TRIP, accommodationDetails, itinerary }, null, 2));
+  console.log(`\nFull generation saved to ${dumpPath}`);
+
   const { problems, notes } = auditDemo(itinerary);
   if (notes.length > 0) {
     console.warn('\nWorth a look, but not blocking:\n');
