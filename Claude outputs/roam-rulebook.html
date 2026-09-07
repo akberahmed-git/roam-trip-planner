@@ -1,0 +1,85 @@
+<div class="roam-rules">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;700&family=Manrope:wght@500;700&display=swap" rel="stylesheet">
+  <div class="rr-wrap">
+    <div class="rr-scroll">
+      <table class="rr-table">
+        <thead>
+          <tr>
+            <th>Rule</th>
+            <th>Why it exists</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td class="rr-rule">No idle gaps</td>
+            <td data-label="Why it exists">The only space between two stops is the travel between them.</td>
+          </tr>
+          <tr>
+            <td class="rr-rule">Fixed meal windows</td>
+            <td data-label="Why it exists">Dinner lands in the evening, not at five.</td>
+          </tr>
+          <tr>
+            <td class="rr-rule">One meal per slot</td>
+            <td data-label="Why it exists">Exactly one breakfast, lunch and dinner a day. A café or restaurant can't slip in as an activity and read as a second meal.</td>
+          </tr>
+          <tr>
+            <td class="rr-rule">Meal length follows pace</td>
+            <td data-label="Why it exists">Slow plans give each meal a longer, unhurried sitting; Packed keeps them brief, so the pace is felt at the table too.</td>
+          </tr>
+          <tr>
+            <td class="rr-rule">Sensible hours</td>
+            <td data-label="Why it exists">Nothing before 09:00 or past 22:30, with a later cutoff for nightlife.</td>
+          </tr>
+          <tr>
+            <td class="rr-rule">No place twice</td>
+            <td data-label="Why it exists">Dedupe on the resolved place, not the name. This caught a real Lahore itinerary that listed the fort and a palace inside it as two stops, both resolving to the same listing.</td>
+          </tr>
+          <tr>
+            <td class="rr-rule">Distance-first routing</td>
+            <td data-label="Why it exists">Keep each day in one part of the city under a 60-minute travel ceiling, with the Slow plan carrying fewer stops than Packed.</td>
+          </tr>
+          <tr>
+            <td class="rr-rule">Resolve or drop</td>
+            <td data-label="Why it exists">A stop that fails verification is dropped rather than shown with a time and a travel leg, looking like one that checked out.</td>
+          </tr>
+          <tr>
+            <td class="rr-rule">Labels from data</td>
+            <td data-label="Why it exists">Category tags are built from Google's place types, after the model returned a street number as a descriptor.</td>
+          </tr>
+          <tr>
+            <td class="rr-rule">No numbers in prose</td>
+            <td data-label="Why it exists">No travel times, distances or visit lengths in the text. Every number on a card is measured, so the prose cannot contradict it.</td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+  </div>
+  <style>
+    .roam-rules{font-family:'DM Sans',sans-serif;color:#ffffff;-webkit-font-smoothing:antialiased;box-sizing:border-box;width:100%;}
+    .roam-rules *,.roam-rules *::before,.roam-rules *::after{box-sizing:border-box;margin:0;}
+    .rr-wrap{background:#0a0a0a;border:1px solid rgba(255,255,255,0.1);border-radius:8px;overflow:hidden;}
+    .rr-scroll{overflow-x:auto;}
+    .rr-table{width:100%;min-width:560px;border-collapse:collapse;}
+    .rr-table th{text-align:left;font-family:'DM Sans',sans-serif;font-size:20px;font-weight:400;letter-spacing:0;line-height:1.4;color:rgb(181,181,181);padding:22px 24px;white-space:nowrap;}
+    .rr-table td{font-family:'DM Sans',sans-serif;font-size:20px;font-weight:400;letter-spacing:-0.3px;line-height:1.55;color:rgb(181,181,181);padding:22px 24px;vertical-align:top;border-top:1px solid rgba(255,255,255,0.08);}
+    .rr-table .rr-rule{font-family:'Manrope',sans-serif;font-size:20px;font-weight:700;letter-spacing:-0.3px;color:#ffffff;}
+    .rr-table td strong{color:#ffffff;font-weight:500;}
+    .rr-table th:nth-child(1),.rr-table td:nth-child(1){width:26%;}
+    .rr-table th:nth-child(2),.rr-table td:nth-child(2){width:74%;}
+    /* MOBILE: stack each row into a card */
+    @media (max-width:600px){
+      .rr-scroll{overflow-x:visible;}
+      .rr-table,.rr-table tbody{display:block;min-width:0;width:100%;}
+      .rr-table thead{display:none;}
+      .rr-table tr{display:block;padding:22px 20px;border-top:1px solid rgba(255,255,255,0.08);}
+      .rr-table tbody tr:first-child{border-top:none;}
+      .rr-table td{display:block;width:100%;padding:0;border-top:none;font-size:16px;line-height:1.5;}
+      .rr-table td:not(:first-child){margin-top:12px;}
+      .rr-table td:nth-child(1),.rr-table td:nth-child(2){width:auto;}
+      .rr-table .rr-rule{font-size:18px;}
+      .rr-table td[data-label]::before{content:attr(data-label);display:block;font-family:'DM Sans',sans-serif;font-size:12px;font-weight:500;letter-spacing:0.04em;text-transform:uppercase;color:rgb(181,181,181);margin-bottom:5px;}
+    }
+  </style>
+</div>
