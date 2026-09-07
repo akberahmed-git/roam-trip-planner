@@ -19,7 +19,7 @@ import {
   clampStayDurations,
   dayCutoffMinutes
 } from './_lib/scheduleRealign.js';
-import { applyFixedSchedule, dedupeMeals, starvedBlocks, unsuitableStops, roomForAnotherStop, eveningInsertPoint } from './_lib/fixedSchedule.js';
+import { applyFixedSchedule, dedupeMeals, starvedBlocks, unsuitableStops, roomForAnotherStop, eveningInsertPoint, hasEnoughReviews } from './_lib/fixedSchedule.js';
 import { sortByBudgetFit, isOffBandDining } from './_lib/budgetFit.js';
 import { uncoveredInterests, satisfiesInterest, isEveningInterest } from './_lib/interestCoverage.js';
 import { weekdayForDay, isOpenAt } from './_lib/openingHours.js';
@@ -1442,6 +1442,9 @@ async function fillStarvedBlocks(day, cutoff, anchor, usedPlaceIds, stay, intere
           !usedPlaceIds.has(c.placeId) &&
           hasReadableName(c.name) &&
           !(c.types || []).some((type) => FOOD_PLACE_TYPES.has(type)) &&
+          // Or this pass spends the whole loop adding a stop the hours-and-reviews
+          // check deletes again on the next round.
+          hasEnoughReviews(c) &&
           (!anchor || haversineMeters(anchor, c.location) <= MAX_BROAD_DISTANCE_METERS) &&
           withinReachOfStay(c.location, stay)
       )
@@ -1527,6 +1530,7 @@ async function coverMissingInterests(itinerary, { interests, anchor, usedPlaceId
             c.availablePhotoUrl &&
             !usedPlaceIds.has(c.placeId) &&
             hasReadableName(c.name) &&
+            hasEnoughReviews(c) &&
             !(c.types || []).some((type) => FOOD_PLACE_TYPES.has(type)) &&
             (!anchor || haversineMeters(anchor, c.location) <= MAX_BROAD_DISTANCE_METERS) &&
             withinReachOfStay(c.location, stay) &&
@@ -1729,6 +1733,7 @@ async function repositionStrandedStops(day, anchor, usedPlaceIds, stay) {
       if (!candidate.availablePhotoUrl) return false;
       if (usedPlaceIds.has(candidate.placeId)) return false;
       if (!hasReadableName(candidate.name)) return false;
+      if (!hasEnoughReviews(candidate)) return false;
       // A meal has to land on somewhere that serves food. An activity only has
       // to be the same kind of thing it is replacing, which the query already
       // asks for, so holding it to the food list would reject every candidate.

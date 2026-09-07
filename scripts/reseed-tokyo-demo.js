@@ -272,6 +272,11 @@ export const TOKYO_ACCOMMODATION = ${JSON.stringify(accommodation, null, 2)}
 // The last day is a departure day: the traveller checks out and travels, and
 // the pipeline trims its late stops for exactly that reason. Holding it to the
 // same count as a full day deadlocked against that trim.
+// Above this a stop has stopped being a visit. Set clear of the 240-minute
+// ceiling a genuinely absorbing place (a teamLab, a big museum) can justify, so
+// this only catches a block that had nothing else to give its minutes to.
+const MAX_PLAUSIBLE_STAY_MINUTES = 250;
+
 const MIN_ACTIVITIES_PER_DAY = 3;
 const MIN_ACTIVITIES_FINAL_DAY = 2;
 // Raised: the goal is a day that crosses the city, not one that huddles.
@@ -376,6 +381,23 @@ function auditDemo(itinerary) {
       }
       if (!meals.some((m) => m.mealType === 'dinner')) {
         problems.push(`${label}: no dinner`);
+      }
+
+      // A block with more time than the stops inside it can hold gives the
+      // leftover to whichever stop can absorb most of it, so the timeline never
+      // shows a hole. With a single stop in the block that dump is unbounded,
+      // and a gallery shipped with four hours and forty-five minutes against it.
+      // The cure is the generator handing that block another stop; this is here
+      // so a draft where it failed to cannot reach anybody.
+      const marathon = activities.filter((i) => (i.durationMinutes || 0) > MAX_PLAUSIBLE_STAY_MINUTES);
+      if (marathon.length > 0) {
+        problems.push(
+          `${label}: ` +
+            marathon
+              .map((i) => `${i.name} runs ${Math.floor(i.durationMinutes / 60)}h ${i.durationMinutes % 60}m`)
+              .join(', ') +
+            `, so that block needs another stop rather than a longer one`
+        );
       }
       // A day that finishes at 00:05 has run LATE, not early - with nightlife
       // among the interests the prompt allows up to 02:00, so the clock wraps.

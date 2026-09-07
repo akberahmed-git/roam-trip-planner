@@ -74,7 +74,17 @@ export const EVENING_STARTS_MINUTES = 21 * 60;
 // anywhere near 1000 it would throw out the neighbourhood shrine and the small
 // museum that are the reason to travel. It only has to catch places with
 // effectively no visitors at all, and every rejection costs another lookup.
-const MIN_REVIEWS_FOR_A_STOP = 50;
+export const MIN_REVIEWS_FOR_A_STOP = 50;
+
+// The same bar unsuitableStops enforces, for the passes that go looking for a
+// stop to add. Without it the loop adds a place nobody has reviewed and deletes
+// it again on the next round, three times over, and the block it was meant to
+// fill still ships with one stop holding four hours (Akber, 7 Sep 2026).
+export function hasEnoughReviews(candidate) {
+  if (!candidate || candidate.hasHours !== true) return true; // silence is not evidence
+  const reviews = typeof candidate.ratingCount === 'number' ? candidate.ratingCount : null;
+  return reviews !== null && reviews >= MIN_REVIEWS_FOR_A_STOP;
+}
 
 // A safety net behind validateMeals, which rejects a duplicated meal and retries
 // the generation once. If the retry comes back duplicated too, failing the whole
