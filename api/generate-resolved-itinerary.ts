@@ -1771,13 +1771,18 @@ async function repositionStrandedStops(day, anchor, usedPlaceIds, stay) {
 
     const searchFrom = item === pivot ? pivotTarget : centre;
     const candidates = await findNearbyCandidates(query, null, searchFrom).catch(() => []);
+    // Four demo drafts were rejected for a reversal this pass was supposed to
+    // repair, and each time working out why cost a whole generation. Say what
+    // happened instead: the stop, what was searched for, and how many candidates
+    // survived each gate (Akber, 7 Sep 2026).
+    const reasons = { noPhoto: 0, used: 0, unreadable: 0, tooFewReviews: 0, wrongKind: 0, tooFar: 0, notCloser: 0 };
 
     const acceptable = candidates.filter((candidate) => {
       if (!candidate.location || !candidate.placeId) return false;
-      if (!candidate.availablePhotoUrl) return false;
-      if (usedPlaceIds.has(candidate.placeId)) return false;
-      if (!hasReadableName(candidate.name)) return false;
-      if (!hasEnoughReviews(candidate)) return false;
+      if (!candidate.availablePhotoUrl) { reasons.noPhoto++; return false; }
+      if (usedPlaceIds.has(candidate.placeId)) { reasons.used++; return false; }
+      if (!hasReadableName(candidate.name)) { reasons.unreadable++; return false; }
+      if (!hasEnoughReviews(candidate)) { reasons.tooFewReviews++; return false; }
       // A meal has to land on somewhere that serves food. An activity only has
       // to be the same kind of thing it is replacing, which the query already
       // asks for, so holding it to the food list would reject every candidate.
@@ -1791,10 +1796,10 @@ async function repositionStrandedStops(day, anchor, usedPlaceIds, stay) {
         const types = candidate.types || [];
         const food = types.some((t) => FOOD_PLACE_TYPES.has(t));
         const alsoSomethingToDo = types.some((t) => ACTIVITY_PLACE_TYPES.has(t));
-        if (food && !alsoSomethingToDo) return false;
+        if (food && !alsoSomethingToDo) { reasons.wrongKind++; return false; }
       }
-      if (!withinReachOfStay(candidate.location, stay)) return false;
-      if (anchor && haversineMeters(anchor, candidate.location) > MAX_BROAD_DISTANCE_METERS) return false;
+      if (!withinReachOfStay(candidate.location, stay)) { reasons.tooFar++; return false; }
+      if (anchor && haversineMeters(anchor, candidate.location) > MAX_BROAD_DISTANCE_METERS) { reasons.tooFar++; return false; }
       // The pivot is judged against the point between its neighbours, not the
       // day's centre. Being nearer that point is what removes the turn.
       if (item === pivot) {
@@ -1805,6 +1810,15 @@ async function repositionStrandedStops(day, anchor, usedPlaceIds, stay) {
       }
       return haversineMeters(candidate.location, centre) < haversineMeters(item.location, centre);
     });
+    if (item === pivot) {
+      console.info(
+        `[generate-resolved-itinerary] day ${day.day}: repairing pivot ${item.name} with "${query}" - ` +
+          `${candidates.length} candidate(s), ${acceptable.length} usable` +
+          (acceptable.length === 0
+            ? `, rejected: ${Object.entries(reasons).filter(([, n]) => n > 0).map(([k, n]) => `${k}=${n}`).join(' ') || 'none matched the query'}`
+            : '')
+      );
+    }
     const pick = preferWellKnown(acceptable);
     if (!pick) continue;
 
@@ -1815,6 +1829,12 @@ async function repositionStrandedStops(day, anchor, usedPlaceIds, stay) {
       day.items.filter((i) => i.type !== 'accommodation' && i.location).map((i) => i.location)
     ).worstTurn;
     if (after >= worst) {
+      if (item === pivot) {
+        console.info(
+          `[generate-resolved-itinerary] day ${day.day}: ${pick.name} would not straighten ${item.name}, ` +
+            `${Math.round(worst)}° -> ${Math.round(after)}°, keeping the original`
+        );
+      }
       item.location = original.location;
       continue;
     }
