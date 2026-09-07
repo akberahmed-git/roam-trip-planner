@@ -46,19 +46,62 @@ function* perms(a) {
     for (const t of perms([...a.slice(0, i), ...a.slice(i + 1)])) yield [a[i], ...t];
   }
 }
+// Mirrors the shipped reorder INCLUDING its brute-force cap and swap fallback.
+// The first version modelled the algorithm but not the code, so it reported
+// "reorder would reach 124 degrees" on a day where the real pass bailed out at
+// the cap and did nothing at all. A harness that disagrees with production is
+// worse than none, because it is believed (Akber, 7 Sep 2026).
+const MAX_REORDER_BRUTE_FORCE = 8;
+
+const MEAL_SEQUENCE = { breakfast: 0, lunch: 1, dinner: 2 };
+function mealsInOrder(items) {
+  let prev = -1;
+  for (const i of items) {
+    const r = MEAL_SEQUENCE[i.mealType];
+    if (r == null) continue;
+    if (r < prev) return false;
+    prev = r;
+  }
+  return true;
+}
+
 function bestUnder(items, movableIdx) {
   const base = items.map((i) => i.location);
-  if (movableIdx.length > 8) return { turn: worstTurn(base), note: 'too many to brute force' };
   const movable = movableIdx.map((i) => items[i]);
   let best = worstTurn(base);
   let bestOrder = items;
-  for (const p of perms(movable)) {
+  const apply = (arr) => {
     const trial = [...items];
-    movableIdx.forEach((slot, i) => { trial[slot] = p[i]; });
-    const t = worstTurn(trial.map((i) => i.location));
-    if (t < best) { best = t; bestOrder = trial; }
+    movableIdx.forEach((slot, i) => { trial[slot] = arr[i]; });
+    return trial;
+  };
+
+  if (movable.length <= MAX_REORDER_BRUTE_FORCE) {
+    for (const p of perms(movable)) {
+      const trial = apply(p);
+      if (!mealsInOrder(trial)) continue;
+      const t = worstTurn(trial.map((i) => i.location));
+      if (t < best) { best = t; bestOrder = trial; }
+    }
+    return { turn: best, order: bestOrder, mode: 'brute' };
   }
-  return { turn: best, order: bestOrder };
+
+  let arrangement = [...movable];
+  let improved = true;
+  while (improved) {
+    improved = false;
+    for (let a = 0; a < arrangement.length - 1; a++) {
+      for (let b = a + 1; b < arrangement.length; b++) {
+        const trialArr = [...arrangement];
+        [trialArr[a], trialArr[b]] = [trialArr[b], trialArr[a]];
+        const trial = apply(trialArr);
+        if (!mealsInOrder(trial)) continue;
+        const t = worstTurn(trial.map((i) => i.location));
+        if (t < best) { best = t; bestOrder = trial; arrangement = trialArr; improved = true; }
+      }
+    }
+  }
+  return { turn: best, order: bestOrder, mode: 'swap' };
 }
 
 const dump = JSON.parse(await readFile(path.join(process.cwd(), '.roam-last-generation.json'), 'utf8'));
@@ -80,20 +123,21 @@ for (const variant of Object.keys(dump.itinerary)) {
       console.log(`  ${String(it.startTime || '-').padEnd(5)} ${String(it.name).slice(0, 32).padEnd(32)} ${pin.padEnd(8)} ${out.padEnd(20)} ${leg}`);
     });
     const locs = mid.map((i) => i.location);
+    // Matches the shipped rule: meals MAY move (subject to breakfast < lunch <
+    // dinner, enforced in bestUnder); only evening activities are pinned.
     const freeIdx = mid.map((i, k) => k).filter((k) => {
       const it = mid[k];
-      if (it.mealType) return false;
+      if (it.mealType) return true;
       const [h, m] = String(it.startTime || '').split(':').map(Number);
       return !(Number.isFinite(h) && h * 60 + (m || 0) >= EVENING_MINUTES);
     });
     const allIdx = mid.map((i, k) => k);
     const now = worstTurn(locs);
     const pinned = bestUnder(mid, freeIdx);
-    const free = bestUnder(mid, allIdx);
     const verdict = now > REVERSAL_DEGREES ? 'FAILS' : 'passes';
-    console.log(`  -> as generated ${now.toFixed(0)}° (${verdict})   reorder w/ pins ${pinned.turn.toFixed(0)}°   reorder unpinned ${free.turn.toFixed(0)}°`);
-    if (free.order && free.turn < pinned.turn) {
-      console.log(`     unpinned order: ${free.order.map((i) => String(i.name).slice(0, 18)).join(' -> ')}`);
+    console.log(`  -> as generated ${now.toFixed(0)}° (${verdict})   ${mid.length - freeIdx.length ? '' : ''}${freeIdx.length} movable via ${pinned.mode}   after reorder ${pinned.turn.toFixed(0)}°`);
+    if (pinned.order && pinned.turn < now) {
+      console.log(`     after reorder: ${pinned.order.map((i) => String(i.name).slice(0, 18)).join(' -> ')}`);
     }
     console.log();
   }

@@ -16,6 +16,7 @@ import {
   timeToMinutes,
   fillMissingTravelTimes,
   realignScheduleTimes,
+  clampStayDurations,
   roundStayDurations,
   snapArrivalsToGrid,
   stretchPreDinnerGap
@@ -1111,7 +1112,17 @@ function markUnusableStops(day, accommodationLocation) {
 // Brute force over the activity slots. A day has at most a handful, and the
 // cost of 5040 distance sums is nothing next to one Places call.
 const EVENING_PIN_MINUTES = 19 * 60;
-const MAX_REORDER_ACTIVITIES = 7;
+// Brute force up to this many movable stops. Above it the pass switches to
+// pairwise-swap improvement rather than giving up.
+//
+// It used to be 7 and it used to return null above that. That was safe while
+// only non-meal activities moved, and stopped being safe the moment meals
+// became movable too: packed day 2 went from 5 movable stops to 8, crossed the
+// cap, and the reorder silently did nothing on the one day that needed it -
+// 162 degrees shipped when reordering would have reached 124 (Akber, 7 Sep
+// 2026). A pass that quietly disables itself on the largest days is worse than
+// no pass at all, because it looks like it ran.
+const MAX_REORDER_BRUTE_FORCE = 8;
 const REORDER_LONG_LEG_METERS = 4000;
 const REORDER_REVERSAL_DEGREES = 140;
 
@@ -1149,29 +1160,60 @@ function shapeOf(locations) {
   return { worstTurn, path };
 }
 
-function permutations(items) {
-  if (items.length <= 1) return [items];
-  const out: any[] = [];
+// A generator, not a materialised list. At 8 movable stops the old version
+// built all 40,320 arrays up front, which measured ~220ms of the ~480ms this
+// pass costs - and it runs twice per day, for both variants, on one event loop.
+// Yielding lazily removes that half and lets a rejected arrangement (wrong meal
+// order, no afternoon) be discarded without ever being stored.
+function* permutations(items) {
+  if (items.length <= 1) {
+    yield items;
+    return;
+  }
   for (let i = 0; i < items.length; i++) {
     const rest = items.slice(0, i).concat(items.slice(i + 1));
-    for (const tail of permutations(rest)) out.push([items[i], ...tail]);
+    for (const tail of permutations(rest)) yield [items[i], ...tail];
   }
-  return out;
 }
 
 // Breakfast before lunch before dinner. The only ordering constraint meals
 // still carry now that they are free to move geographically.
 const MEAL_SEQUENCE = { breakfast: 0, lunch: 1, dinner: 2 };
 
-function mealsStillInOrder(items) {
+// Checked across the WHOLE day, not just the stops being reordered. A meal that
+// failed to resolve has no location, so it is excluded from the reorder and
+// pinned at its index - and it was therefore invisible to this check, which
+// meant a located dinner could be placed above an unlocated lunch and ship in
+// that order (Akber, 7 Sep 2026).
+function mealsStillInOrder(dayItems, middleIndexes, candidate) {
+  const merged = [...dayItems];
+  middleIndexes.forEach((index, i) => { merged[index] = candidate[i]; });
+
   let previous = -1;
-  for (const item of items) {
+  for (const item of merged) {
     const rank = MEAL_SEQUENCE[item.mealType];
     if (rank == null) continue;
     if (rank < previous) return false;
     previous = rank;
   }
   return true;
+}
+
+// stretchPreDinnerGap fills the afternoon by extending the last activity
+// between lunch and dinner. If the reorder leaves dinner immediately after
+// lunch that pass finds nothing to extend and silently returns, so a day that
+// had an afternoon must keep one.
+function afternoonSurvives(dayItems, middleIndexes, candidate) {
+  const merged = [...dayItems];
+  middleIndexes.forEach((index, i) => { merged[index] = candidate[i]; });
+
+  const gapFor = (items) => {
+    const lunch = items.findIndex((i) => i.mealType === 'lunch');
+    const dinner = items.findIndex((i) => i.mealType === 'dinner');
+    if (lunch < 0 || dinner < 0 || dinner < lunch) return 0;
+    return items.slice(lunch + 1, dinner).filter((i) => !i.mealType && i.type !== 'accommodation').length;
+  };
+  return gapFor(dayItems) === 0 || gapFor(merged) > 0;
 }
 
 function reorderDayGeographically(day) {
@@ -1198,7 +1240,7 @@ function reorderDayGeographically(day) {
     return !(start != null && start >= EVENING_PIN_MINUTES);
   });
   const activities = activitySlots.map((index) => day.items[index]);
-  if (activities.length < 2 || activities.length > MAX_REORDER_ACTIVITIES) return null;
+  if (activities.length < 2) return null;
 
   // Two different measurements, deliberately.
   //
@@ -1232,14 +1274,45 @@ function reorderDayGeographically(day) {
 
   let best = current;
   let bestShape = currentShape;
-  for (const arrangement of permutations(activities)) {
-    const candidate = sequenceFor(arrangement);
-    if (!mealsStillInOrder(candidate)) continue;
-    const shape = measure(candidate);
-    if (shape.worstTurn < bestShape.worstTurn ||
-        (shape.worstTurn === bestShape.worstTurn && shape.path < bestShape.path)) {
-      best = candidate;
-      bestShape = shape;
+  const better = (shape) =>
+    shape.worstTurn < bestShape.worstTurn ||
+    (shape.worstTurn === bestShape.worstTurn && shape.path < bestShape.path);
+
+  if (activities.length <= MAX_REORDER_BRUTE_FORCE) {
+    for (const arrangement of permutations(activities)) {
+      const candidate = sequenceFor(arrangement);
+      if (!mealsStillInOrder(day.items, middleIndexes, candidate)) continue;
+      if (!afternoonSurvives(day.items, middleIndexes, candidate)) continue;
+      const shape = measure(candidate);
+      if (better(shape)) {
+        best = candidate;
+        bestShape = shape;
+      }
+    }
+  } else {
+    // Too many to enumerate. Repeatedly swap the pair of stops that helps most
+    // until nothing does. Not guaranteed optimal, but it always improves what
+    // it can, which is the point: the previous behaviour was to do nothing.
+    let arrangement = [...activities];
+    let improved = true;
+    while (improved) {
+      improved = false;
+      for (let a = 0; a < arrangement.length - 1; a++) {
+        for (let b = a + 1; b < arrangement.length; b++) {
+          const trial = [...arrangement];
+          [trial[a], trial[b]] = [trial[b], trial[a]];
+          const candidate = sequenceFor(trial);
+          if (!mealsStillInOrder(day.items, middleIndexes, candidate)) continue;
+          if (!afternoonSurvives(day.items, middleIndexes, candidate)) continue;
+          const shape = measure(candidate);
+          if (better(shape)) {
+            arrangement = trial;
+            best = candidate;
+            bestShape = shape;
+            improved = true;
+          }
+        }
+      }
     }
   }
 
@@ -1279,8 +1352,8 @@ async function repositionStrandedMeals(day, anchor, usedPlaceIds, stay) {
   const activities = located.filter((i) => !i.mealType);
   if (activities.length < 2) return [];
 
-  const before = shapeOf(located.map((i) => i.location)).worstTurn;
-  if (before <= REORDER_REVERSAL_DEGREES) return [];
+  let worst = shapeOf(located.map((i) => i.location)).worstTurn;
+  if (worst <= REORDER_REVERSAL_DEGREES) return [];
 
   const centre = medoidOfLocations(activities.map((i) => i.location));
   if (!centre) return [];
@@ -1315,10 +1388,14 @@ async function repositionStrandedMeals(day, anchor, usedPlaceIds, stay) {
     const after = shapeOf(
       day.items.filter((i) => i.type !== 'accommodation' && i.location).map((i) => i.location)
     ).worstTurn;
-    if (after >= before) {
+    if (after >= worst) {
       item.location = original.location;
       continue;
     }
+    // Move the bar after every accepted swap. Comparing each swap against the
+    // ORIGINAL turn let a second swap that was worse than the first still pass,
+    // because it was still better than where the day started.
+    worst = after;
 
     moved.push(`${item.name} -> ${pick.name}`);
     item.name = pick.name;
@@ -1580,6 +1657,11 @@ async function resolveItinerary(itinerary, destination, anchor, transport, accom
     // Reorder first: it moves nothing and loses nothing, so it gets the first
     // attempt at straightening the day. Only if the day still doubles back does
     // a meal get re-picked.
+    // Early, before anything deliberately extends a stay. A 240-minute stop at
+    // a nightclub starting 23:10 is the model being implausible; a 210-minute
+    // museum after stretchPreDinnerGap is the scheduler doing its job.
+    clampStayDurations(day);
+
     const reordered = reorderDayGeographically(day);
     if (reordered) {
       console.info(

@@ -209,12 +209,28 @@ export const STAY_DURATION_INCREMENT_MINUTES = 15;
 export const MAX_STAY_MINUTES = 150;
 export const MIN_STAY_MINUTES = 45;
 
-export function roundStayDurations(day) {
+// Split out of roundStayDurations, which runs at the very end of the pipeline.
+// Clamping there undid stretchPreDinnerGap: that pass deliberately extends the
+// last afternoon stop, up to 240 minutes for somewhere worth lingering, to
+// close the gap before dinner - and the clamp immediately cut it back to 150,
+// reopening the exact hole the stretch exists to fill (Akber, 7 Sep 2026).
+//
+// The clamp is about rejecting an implausible duration from the model, not
+// about overruling the scheduler's own decisions, so it belongs early, before
+// anything has deliberately extended a stay.
+export function clampStayDurations(day) {
   for (const item of day.items) {
     if (item.type === 'accommodation') continue;
     if (item.durationMinutes == null) continue;
     if (item.durationMinutes > MAX_STAY_MINUTES) item.durationMinutes = MAX_STAY_MINUTES;
     if (item.durationMinutes < MIN_STAY_MINUTES) item.durationMinutes = MIN_STAY_MINUTES;
+  }
+}
+
+export function roundStayDurations(day) {
+  for (const item of day.items) {
+    if (item.type === 'accommodation') continue;
+    if (item.durationMinutes == null) continue;
     let rounded =
       Math.round(item.durationMinutes / STAY_DURATION_INCREMENT_MINUTES) *
       STAY_DURATION_INCREMENT_MINUTES;
