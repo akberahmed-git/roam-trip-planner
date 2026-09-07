@@ -44,6 +44,8 @@ const FIXED_MEAL_DURATION_MINUTES = 60;
 // existing realign/stretch/snap passes recascade every surrounding stop around
 // the longer meal automatically, so nothing else needs to know about it.
 const SLOW_MEAL_DURATION_MINUTES = 120;
+// Nothing on an unhurried day should be a 45-minute stop.
+const SLOW_MIN_STAY_MINUTES = 75;
 
 function clampToWindow(time, window) {
   const minutes = timeToMinutes(time);
@@ -1666,6 +1668,11 @@ async function resolveItinerary(itinerary, destination, anchor, transport, accom
       ? SLOW_MEAL_DURATION_MINUTES
       : FIXED_MEAL_DURATION_MINUTES;
 
+  // The shortest any stop on this variant may run. 45 minutes is a fine minimum
+  // on a Packed day and a contradiction on Slow & Immersive, where it produced a
+  // 45-minute Sensō-ji (Akber, 7 Sep 2026).
+  const minStayMinutes = itinerary.pacingLabel === 'Relaxed' ? SLOW_MIN_STAY_MINUTES : undefined;
+
   // Claude sometimes returns a day's items in non-chronological order (e.g. a
   // breakfast item with startTime 09:00 landing at array index 3, after items
   // whose startTimes are 11:00 and 13:00). Every downstream step - allItems
@@ -1932,58 +1939,73 @@ async function resolveItinerary(itinerary, destination, anchor, transport, accom
   // Meals sit on fixed times and the day is fitted around them: one pass, no
   // negotiation. See fixedSchedule.js for why the slack lives in the stop
   // durations rather than in the meal times.
+  //
+  // It runs as a loop because fitting a day can invalidate the checks made on
+  // the last one. The first version checked the hours once and then went on to
+  // drop stops, refit, add stops and refit again, so anything those later passes
+  // moved shipped unexamined - which is how a shrine reached 21:10 and a design
+  // gallery 21:00 on a generation where the rule was working perfectly (Akber,
+  // 7 Sep 2026). The check has to be the last word, so the day is refitted and
+  // rechecked until nothing more needs doing.
+  const settings = { cutoffMinutes: 0, transport, minStayMinutes };
+
   for (let index = 0; index < itinerary.days.length; index++) {
     const day = itinerary.days[index];
     const cutoff = dayCutoffMinutes(index, itinerary.days.length, interests);
-
-    const { moved, removed } = applyFixedSchedule(day, { cutoffMinutes: cutoff, transport });
-    if (moved.length > 0) {
-      console.info(
-        `[generate-resolved-itinerary] day ${day.day}: moved ${moved.length} stop(s) to fit the day's meal times: ${moved.join(', ')}`
-      );
-    }
-    if (removed.length > 0) {
-      console.info(
-        `[generate-resolved-itinerary] day ${day.day}: dropped ${removed.length} stop(s) the day had no room for: ${removed.join(', ')}`
-      );
-    }
-
-    // Only now, with every stop sitting on a real time, can the day be checked
-    // against what is actually open and what belongs at that hour.
     const weekday = weekdayForDay(checkInDate, day.day);
-    const unsuitable = unsuitableStops(day, weekday);
-    for (const entry of [...unsuitable].sort((a, b) => b.index - a.index)) {
-      if (entry.index > 0) day.items[entry.index - 1].travelToNext = null;
-      day.items.splice(entry.index, 1);
-    }
-    if (unsuitable.length > 0) {
-      console.info(
-        `[generate-resolved-itinerary] day ${day.day}: dropped ${unsuitable.length} stop(s) that did not belong at their hour: ` +
-          unsuitable.map((e) => `${e.name} (${e.reason})`).join('; ')
-      );
-    }
+    const options = { ...settings, cutoffMinutes: cutoff };
 
-    // Dropping leaves the day thinner, and a thin block is what produces a
-    // four-hour visit to a shopping street, so refit first and then go and find
-    // whatever the day is now short of.
-    if (unsuitable.length > 0) {
+    // Three rounds is enough for a day to settle in practice, and a bound means
+    // a day that cannot settle ships slightly imperfect rather than looping.
+    for (let round = 0; round < 3; round++) {
+      const { moved, removed } = applyFixedSchedule(day, options);
+      if (moved.length > 0) {
+        console.info(
+          `[generate-resolved-itinerary] day ${day.day}: moved ${moved.length} stop(s) to fit the day's meal times: ${moved.join(', ')}`
+        );
+      }
+      if (removed.length > 0) {
+        console.info(
+          `[generate-resolved-itinerary] day ${day.day}: dropped ${removed.length} stop(s) the day had no room for: ${removed.join(', ')}`
+        );
+      }
+
+      // Now, and only now, is every stop sitting on the time it will ship with.
+      const unsuitable = unsuitableStops(day, weekday);
+      for (const entry of [...unsuitable].sort((a, b) => b.index - a.index)) {
+        if (entry.index > 0) day.items[entry.index - 1].travelToNext = null;
+        day.items.splice(entry.index, 1);
+      }
+      if (unsuitable.length > 0) {
+        console.info(
+          `[generate-resolved-itinerary] day ${day.day}: dropped ${unsuitable.length} stop(s) that did not belong at their hour: ` +
+            unsuitable.map((e) => `${e.name} (${e.reason})`).join('; ')
+        );
+      }
+
+      // Dropping leaves the day thinner, and a thin block is what produces a
+      // four-hour visit to a shopping street, so it is worth going to find
+      // whatever the day is now short of.
+      const added = await fillStarvedBlocks(day, cutoff, anchor, usedPlaceIds, stay, interests);
+      if (added.length > 0) {
+        console.info(
+          `[generate-resolved-itinerary] day ${day.day}: added ${added.length} stop(s) to fill a stretch nothing could plausibly cover: ${added.join(', ')}`
+        );
+      }
+
+      // A round that changed nothing means the day is settled and the times it
+      // was just checked against are the times it ships with.
+      if (moved.length === 0 && removed.length === 0 && unsuitable.length === 0 && added.length === 0) break;
+
+      // Anything moved, dropped or added leaves legs pointing at somewhere the
+      // stop is no longer next to, so the day is re-routed before being refitted
+      // at the top of the next round.
       await computeTravelTimes(day.items, transport);
-      applyFixedSchedule(day, { cutoffMinutes: cutoff, transport });
-    }
 
-    const added = await fillStarvedBlocks(day, cutoff, anchor, usedPlaceIds, stay, interests);
-    if (added.length > 0) {
-      console.info(
-        `[generate-resolved-itinerary] day ${day.day}: added ${added.length} stop(s) to fill a stretch nothing could plausibly cover: ${added.join(', ')}`
-      );
-    }
-
-    // Anything moved, dropped or added leaves legs pointing at somewhere the
-    // stop is no longer next to, so the day is re-routed and re-fitted against
-    // real travel.
-    if (moved.length > 0 || removed.length > 0 || unsuitable.length > 0 || added.length > 0) {
-      await computeTravelTimes(day.items, transport);
-      applyFixedSchedule(day, { cutoffMinutes: cutoff, transport });
+      // A day that uses its last round has been re-routed but not refitted, and
+      // shipping the times from before that routing would be worse than shipping
+      // one unchecked round. Fit it and let it go.
+      if (round === 2) applyFixedSchedule(day, options);
     }
   }
 

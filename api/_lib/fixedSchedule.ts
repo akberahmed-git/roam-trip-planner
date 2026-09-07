@@ -38,13 +38,29 @@ export const MEAL_ANCHORS = {
 // Dinner gives ground only when the day would otherwise overrun its cutoff, and
 // only this far. Below it the evening loses stops instead: a 17:30 dinner is not
 // a fix for a day that is simply too full.
-const MIN_DINNER_MINUTES = 18 * 60 + 30;
+// How far dinner may slide before the evening has to give something up instead.
+// This was 18:30 and a Slow day took every minute of it: two post-dinner stops
+// totalling four and a half hours pushed dinner to 18:45 while the trip's other
+// three days ate at 20:00. Half past seven is the point at which a meal stops
+// reading as dinner, so below it the evening loses a stop rather than the meal
+// losing its hour (Akber, 7 Sep 2026).
+const MIN_DINNER_MINUTES = 19 * 60 + 30;
 
 // Places that only make sense after dinner, so they are never moved into the
 // afternoon to balance a day out. Everything else reads better in daylight.
 const NIGHTLIFE_KEYWORDS = ['bar', 'club', 'lounge', 'pub', 'izakaya', 'nightlife', 'karaoke', 'disco'];
 
 const MEAL_ORDER = ['breakfast', 'lunch', 'dinner'];
+
+// The shortest a stop may run, which depends on how the trip is paced and so is
+// set per call rather than fixed. 45 minutes is a reasonable minimum on a Packed
+// day; on Slow & Immersive it is a contradiction. A Slow morning with two stops
+// can only afford the floor for both, and that is how Sensō-ji came to get 45
+// minutes on a plan whose whole promise is an unhurried day (Akber, 7 Sep 2026).
+//
+// Raising it does not squeeze the stops - it makes a two-stop Slow morning
+// infeasible, so rebalanceBlocks moves one out and the survivor gets the time.
+let floorMinutes = MIN_STAY_MINUTES;
 
 // After this, the day is the evening and only nightlife belongs in it. Akber's
 // call (7 Sep 2026): by nine almost every museum, shop, temple and viewpoint has
@@ -239,7 +255,7 @@ function blocksOf(day, anchors) {
       endIndex: to,
       stopIndexes,
       available,
-      minNeed: stopIndexes.length * MIN_STAY_MINUTES,
+      minNeed: stopIndexes.length * floorMinutes,
       maxHold: stopIndexes.reduce((total, i) => total + activityCeiling(items[i]), 0),
     });
   }
@@ -270,7 +286,7 @@ export function starvedBlocks(day, cutoffMinutes) {
         || null,
       stops: block.stopIndexes.length,
     }))
-    .filter((block) => block.shortfall >= MIN_STAY_MINUTES && block.near);
+    .filter((block) => block.shortfall >= floorMinutes && block.near);
 }
 
 // A block with more time than its stops can plausibly hold wants another stop; a
@@ -452,8 +468,8 @@ function fitBlock(day, block) {
   const stops = block.stopIndexes.map((i) => day.items[i]);
   if (stops.length === 0) return block.available;
 
-  for (const stop of stops) stop.durationMinutes = MIN_STAY_MINUTES;
-  let remaining = block.available - stops.length * MIN_STAY_MINUTES;
+  for (const stop of stops) stop.durationMinutes = floorMinutes;
+  let remaining = block.available - stops.length * floorMinutes;
 
   let progress = true;
   while (remaining >= STAY_DURATION_INCREMENT_MINUTES && progress) {
@@ -567,8 +583,9 @@ function assignTimes(day, anchors, residuals, mode) {
 // One entry point, replacing the passes that used to negotiate over the clock
 // between them. Returns what it had to change about the day's contents so the
 // caller can re-route and log it.
-export function applyFixedSchedule(day, { cutoffMinutes, transport }) {
+export function applyFixedSchedule(day, { cutoffMinutes, transport, minStayMinutes }: { cutoffMinutes?: number | null; transport?: string; minStayMinutes?: number }) {
   const mode = transport === 'No car or taxi' ? 'walk' : 'drive';
+  floorMinutes = minStayMinutes || MIN_STAY_MINUTES;
   const duplicates = dedupeMeals(day);
   fillMissingLegs(day, mode);
 

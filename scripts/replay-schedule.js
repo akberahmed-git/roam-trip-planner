@@ -69,18 +69,30 @@ const hhmm = (m) => `${String(Math.floor(m / 60) % 24).padStart(2, '0')}:${Strin
 // will differ by whatever the real legs turn out to be.
 const NOMINAL_LEG_MINUTES = 15;
 
-function runTail(day, transport, cutoff) {
+function runTail(day, transport, cutoff, weekday, minStayMinutes) {
+  const options = { cutoffMinutes: cutoff, transport, minStayMinutes };
+  const mode = transport === 'No car or taxi' ? 'walk' : 'drive';
   clampStayDurations(day);
-  const first = applyFixedSchedule(day, { cutoffMinutes: cutoff, transport });
-  if (first.moved.length > 0 || first.removed.length > 0) {
-    const mode = transport === 'No car or taxi' ? 'walk' : 'drive';
+
+  // The same loop the route runs, minus the part this cannot do: it has no way
+  // to search Google for a stop to fill a thin block, so a block that needs one
+  // stays thin here and is reported instead.
+  for (let round = 0; round < 3; round++) {
+    const { moved, removed } = applyFixedSchedule(day, options);
+    const unsuitable = unsuitableStops(day, weekday);
+    for (const entry of [...unsuitable].sort((a, b) => b.index - a.index)) {
+      if (entry.index > 0) day.items[entry.index - 1].travelToNext = null;
+      day.items.splice(entry.index, 1);
+    }
+    if (moved.length > 0) console.log(`    (moved: ${moved.join(', ')})`);
+    if (removed.length > 0) console.log(`    (dropped, no room: ${removed.join(', ')})`);
+    if (unsuitable.length > 0) console.log(`    (dropped, wrong hour: ${unsuitable.map((e) => e.name).join(', ')})`);
+    if (moved.length === 0 && removed.length === 0 && unsuitable.length === 0) break;
     for (let i = 0; i < day.items.length - 1; i++) {
       if (!day.items[i].travelToNext) day.items[i].travelToNext = `${NOMINAL_LEG_MINUTES} minute ${mode}`;
     }
-    applyFixedSchedule(day, { cutoffMinutes: cutoff, transport });
+    if (round === 2) applyFixedSchedule(day, options);
   }
-  if (first.moved.length > 0) console.log(`    (moved: ${first.moved.join(', ')})`);
-  if (first.removed.length > 0) console.log(`    (dropped: ${first.removed.join(', ')})`);
   return day;
 }
 
@@ -137,12 +149,13 @@ for (const variant of ['packed', 'slow']) {
     console.log(`\n--- Day ${i + 1} ---   [cutoff ${hhmm(cutoff)}]`);
     show('SAVED ', day);
     console.log();
-    const fitted = runTail(clone(day), transport, cutoff);
+    const weekday = weekdayForDay(dump.trip?.startDate || dump.trip?.checkInDate, i + 1);
+    const slow = variant === 'slow';
+    const fitted = runTail(clone(day), transport, cutoff, weekday, slow ? 75 : undefined);
     show('REPLAY', fitted);
     const turn = Math.round(dayShape(fitted).worstTurn);
     console.log(`    route: worst turn ${turn} deg` +
       (turn > REORDER_REVERSAL_DEGREES ? `  << DOUBLES BACK (audit rejects above ${REORDER_REVERSAL_DEGREES})` : ', OK'));
-    const weekday = weekdayForDay(dump.trip?.startDate || dump.trip?.checkInDate, i + 1);
     const wrongHour = unsuitableStops(fitted, weekday);
     console.log(wrongHour.length === 0
       ? '    hours: OK, every stop belongs at the time it is scheduled'
