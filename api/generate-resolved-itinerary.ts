@@ -22,7 +22,7 @@ import {
 import { applyFixedSchedule, dedupeMeals, starvedBlocks, unsuitableStops, roomForAnotherStop, eveningInsertPoint } from './_lib/fixedSchedule.js';
 import { sortByBudgetFit } from './_lib/budgetFit.js';
 import { uncoveredInterests, satisfiesInterest, isEveningInterest } from './_lib/interestCoverage.js';
-import { weekdayForDay } from './_lib/openingHours.js';
+import { weekdayForDay, isOpenAt } from './_lib/openingHours.js';
 import { shapeOf, REORDER_REVERSAL_DEGREES } from './_lib/routeShape.js';
 import { describeAdoptedStops, stripAdoptionMarkers } from './_lib/describeAdoptedStops.js';
 
@@ -293,7 +293,7 @@ function describeAdoptedMeal(pick, mealType) {
   return pick.neighbourhood ? `${what} in ${pick.neighbourhood}.` : `${what}.`;
 }
 
-async function resolveMealPlaceholders(day, anchor, usedPlaceIds, stay, usedBrands, budget) {
+async function resolveMealPlaceholders(day, anchor, usedPlaceIds, stay, usedBrands, budget, weekdayIndex) {
   for (let i = 0; i < day.items.length; i++) {
     const item = day.items[i];
     if (!item.mealType) continue;
@@ -313,6 +313,12 @@ async function resolveMealPlaceholders(day, anchor, usedPlaceIds, stay, usedBran
       if (day.items[j].location) near = day.items[j].location;
     }
     const query = MEAL_SEARCH_QUERY[item.mealType] || 'restaurant';
+    const mealMinutes = timeToMinutes(item.startTime);
+    const openAtMealTime = (candidate) => {
+      if (weekdayIndex == null || mealMinutes == null) return true;
+      if (!candidate.weekdayDescriptions) return true; // silence is not evidence
+      return isOpenAt(candidate.weekdayDescriptions, weekdayIndex, mealMinutes) !== false;
+    };
     const pickNear = async (loc) => {
       if (!loc) return null;
       const candidates = await findNearbyCandidates(query, null, loc).catch(() => []);
@@ -323,7 +329,12 @@ async function resolveMealPlaceholders(day, anchor, usedPlaceIds, stay, usedBran
           !sharesBrand(c.name, usedBrands) &&
           hasReadableName(c.name) &&
           (!anchor || haversineMeters(anchor, c.location) <= MAX_BROAD_DISTANCE_METERS) &&
-          withinReachOfStay(c.location, stay)
+          withinReachOfStay(c.location, stay) &&
+          // Open at the hour this meal actually sits at. Without this the
+          // re-adoption below could hand back another restaurant that is shut at
+          // 20:00, the check would drop it again next round, and the day would
+          // spend its three rounds swapping one closed dinner for another.
+          openAtMealTime(c)
       );
       // Budget first, then fame. Reordering rather than filtering, so a band
       // with nothing nearby still gets the best available place instead of
@@ -1931,7 +1942,7 @@ async function resolveItinerary(itinerary, destination, anchor, transport, accom
   // placeholder (Akber, 1 Aug 2026). Sequential, not Promise.all, so the shared
   // usedPlaceIds stays consistent and two days can't adopt the same restaurant.
   for (const day of itinerary.days) {
-    await resolveMealPlaceholders(day, anchor, usedPlaceIds, stay, usedBrands, budget);
+    await resolveMealPlaceholders(day, anchor, usedPlaceIds, stay, usedBrands, budget, null);
   }
 
   // Then remove any non-meal stop that never resolved to a real place, so an
@@ -1957,7 +1968,7 @@ async function resolveItinerary(itinerary, destination, anchor, transport, accom
     // card, invisible on the map, with the legs either side of it nulled.
     // resolveMealPlaceholders is exactly the pass that repairs that, so run it
     // again now that the day's activities are settled (Akber, 4 Sep 2026).
-    await resolveMealPlaceholders(day, anchor, usedPlaceIds, stay, usedBrands, budget);
+    await resolveMealPlaceholders(day, anchor, usedPlaceIds, stay, usedBrands, budget, null);
     if (adopted.length > 0) {
       console.info(
         `[generate-resolved-itinerary] day ${day.day}: backfilled ${adopted.length} unresolved stop(s): ${adopted.join(', ')}`
@@ -2125,14 +2136,62 @@ async function resolveItinerary(itinerary, destination, anchor, transport, accom
 
       // Now, and only now, is every stop sitting on the time it will ship with.
       const unsuitable = unsuitableStops(day, weekday);
-      for (const entry of [...unsuitable].sort((a, b) => b.index - a.index)) {
+
+      // A meal is a slot, not a stop. Deleting one leaves a day with no dinner,
+      // and nothing downstream puts it back: fillStarvedBlocks only ever looks
+      // for an attraction, so the hole gets filled with a yakitori restaurant
+      // typed as an activity at 22:25 and the day ships with two meals.
+      //
+      // This surfaced the moment the place cache was versioned. Before that the
+      // cache was full of records written without regularOpeningHours, so the
+      // closed-at-this-hour check almost never fired; with real hours arriving
+      // it fires properly, and every dinner it rejected was simply vanishing.
+      //
+      // So a rejected meal is emptied rather than removed, and re-adopted below
+      // against a candidate that is actually open at the hour it sits at.
+      const rejectedMeals = unsuitable.filter((entry) => day.items[entry.index]?.mealType);
+      // Kept so a failed re-adoption can put the original back. A dinner at a
+      // place that may be closing is a worse dinner; a meal card with a name and
+      // no location is the unresolved-stop bug this codebase already fixed once.
+      const mealsBefore = new Map(rejectedMeals.map((e) => [e.index, { ...day.items[e.index] }]));
+      for (const entry of rejectedMeals) {
+        const meal = day.items[entry.index];
+        meal.location = null;
+        meal.placeId = null;
+        meal.address = null;
+        meal.photoUrl = null;
+        meal.weekdayDescriptions = null;
+        meal.hasHours = false;
+        meal.rating = null;
+        meal.ratingCount = null;
+        meal.priceLevel = null;
+      }
+      if (rejectedMeals.length > 0) {
+        console.info(
+          `[generate-resolved-itinerary] day ${day.day}: re-placing ${rejectedMeals.length} meal(s) shut at their hour: ` +
+            rejectedMeals.map((e) => `${e.name} (${e.reason})`).join('; ')
+        );
+        await resolveMealPlaceholders(day, anchor, usedPlaceIds, stay, usedBrands, budget, weekday);
+
+        for (const [index, before] of mealsBefore) {
+          if (!day.items[index]?.location) {
+            Object.assign(day.items[index], before);
+            console.info(
+              `[generate-resolved-itinerary] day ${day.day}: nothing open found for ${before.mealType}, keeping ${before.name}`
+            );
+          }
+        }
+      }
+
+      const dropped = unsuitable.filter((entry) => !day.items[entry.index]?.mealType);
+      for (const entry of [...dropped].sort((a, b) => b.index - a.index)) {
         if (entry.index > 0) day.items[entry.index - 1].travelToNext = null;
         day.items.splice(entry.index, 1);
       }
-      if (unsuitable.length > 0) {
+      if (dropped.length > 0) {
         console.info(
-          `[generate-resolved-itinerary] day ${day.day}: dropped ${unsuitable.length} stop(s) that did not belong at their hour: ` +
-            unsuitable.map((e) => `${e.name} (${e.reason})`).join('; ')
+          `[generate-resolved-itinerary] day ${day.day}: dropped ${dropped.length} stop(s) that did not belong at their hour: ` +
+            dropped.map((e) => `${e.name} (${e.reason})`).join('; ')
         );
       }
 
