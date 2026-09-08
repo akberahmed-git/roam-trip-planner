@@ -931,6 +931,19 @@ async function main() {
             BASE_URL
         );
       }
+      // Google Places refusing is not a draft that failed the audit, it is a
+      // run that cannot succeed until the quota resets. Say so and stop, rather
+      // than burning two more attempts at EUR 1.43 each against a dead API,
+      // which is what happened on 8 Sep.
+      if (response.status === 503) {
+        let detail = body;
+        try { detail = JSON.parse(body).error || body; } catch {}
+        throw new Error(
+          `Stopping: ${detail}\n` +
+            'Check Google Cloud > APIs & Services > Places API (New) > Quotas. A per-day cap on\n' +
+            'Text Search resets at midnight Pacific time; a per-minute cap clears in a minute.'
+        );
+      }
       throw new Error(`Generation failed (${response.status}): ${body.slice(0, 400)}`);
     }
 

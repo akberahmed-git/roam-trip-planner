@@ -311,6 +311,7 @@ async function _runSearch(name, textQuery) {
   }
 
   if (!response.ok) {
+    notePlacesRefusal(response.status, data, `verifying "${textQuery}"`);
     return {
       status: 'check_failed',
       reason: 'api_error',
@@ -392,6 +393,43 @@ export const MAX_PLAUSIBLE_DISTANCE_METERS = 150000;
 // where it actually is), this searches for a genuinely nearby alternative
 // instead, biased hard to a small radius around the previous stop rather
 // than just the destination as a whole.
+// What Google Places has refused during this invocation.
+//
+// Every search in this file returned an empty list on a non-OK response and
+// logged nothing. On 8 Sep a reseed run hit a quota partway through attempt 1:
+// searches went from 20 candidates to 0 mid-request and stayed at 0 for two
+// more attempts, the pipeline carried on gutting days it could not refill,
+// teamLab Planets failed verification, and the audit reported thin days as if
+// the code had chosen them. Nothing anywhere said "Google said no". The
+// handler reads this after resolution and turns a refusal into a 503 the
+// reseed script stops on, instead of a draft nobody should look at.
+//
+// Module-level and reset by the handler; the same trade-off as reviewFloor in
+// fixedSchedule.ts (Akber, 8 Sep 2026).
+const placesOutage = { count: 0, status: null as number | null, message: null as string | null, logged: 0 };
+
+export function resetPlacesOutage() {
+  placesOutage.count = 0;
+  placesOutage.status = null;
+  placesOutage.message = null;
+  placesOutage.logged = 0;
+}
+
+export function placesRefused() {
+  return placesOutage.count > 0 ? { ...placesOutage } : null;
+}
+
+function notePlacesRefusal(status, data, where) {
+  placesOutage.count += 1;
+  placesOutage.status = status;
+  placesOutage.message = buildApiErrorMessage(data);
+  // The first few, not all of them: a dead API produces hundreds.
+  if (placesOutage.logged < 3) {
+    placesOutage.logged += 1;
+    console.error(`[verifyPlace] Google Places refused ${where}: HTTP ${status} - ${placesOutage.message}`);
+  }
+}
+
 export async function findNearbyCandidates(name, type, near, radiusMeters = 20000) {
   const textQuery = type ? name + ' ' + type : name;
 
@@ -430,6 +468,7 @@ export async function findNearbyCandidates(name, type, near, radiusMeters = 2000
   }
 
   if (!response.ok) {
+    notePlacesRefusal(response.status, data, `searching "${textQuery}"`);
     return [];
   }
 

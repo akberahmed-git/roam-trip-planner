@@ -103,18 +103,32 @@ export function satisfiesInterest(item, interest) {
 
   // Whole words, so "Akihabara" is not read as a bar and "Barcelona" is not
   // read as one either.
-  const name = `${item.name || ''}`.toLowerCase();
-  if ((signals.not || []).some((phrase) => name.includes(phrase))) return false;
+  const name = plain(item.name);
+  if ((signals.not || []).some((phrase) => name.includes(plain(phrase)))) return false;
 
   // Some interests may not be read off the description. See the note on modern
   // architecture: prose about a place is not evidence of what it is.
   const text = signals.ignoreDescription
-    ? `${item.name || ''} ${item.categoryTag || ''}`.toLowerCase()
-    : `${item.name || ''} ${item.categoryTag || ''} ${item.description || ''}`.toLowerCase();
+    ? plain(`${item.name || ''} ${item.categoryTag || ''}`)
+    : plain(`${item.name || ''} ${item.categoryTag || ''} ${item.description || ''}`);
 
-  return signals.keywords.some((word) =>
-    word.includes(' ') ? text.includes(word) : new Set(text.split(/[^a-z]+/)).has(word)
-  );
+  const words = new Set(text.split(/[^a-z0-9]+/));
+  return signals.keywords.some((keyword) => {
+    const word = plain(keyword);
+    return word.includes(' ') ? text.includes(word) : words.has(word);
+  });
+}
+
+// Lowercased with the accents taken off, so "Pokémon Center Mega Tokyo" is
+// read as pokemon and not split into "pok" and "mon" by the word tokeniser.
+// The audit reported that stop as serving none of the chips and blocked a
+// draft on it, and the pipeline's own serves-nothing swap would have treated
+// the Pokémon Center as expendable for the same reason (Akber, 8 Sep 2026).
+function plain(value) {
+  return String(value || '')
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .toLowerCase();
 }
 
 // The interests no stop anywhere in the itinerary delivers. Coverage is judged

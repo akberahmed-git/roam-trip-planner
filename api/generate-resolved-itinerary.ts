@@ -4,7 +4,9 @@ import {
   geocodeDestination,
   haversineMeters,
   MAX_BROAD_DISTANCE_METERS,
-  findNearbyCandidates
+  findNearbyCandidates,
+  resetPlacesOutage,
+  placesRefused,
 } from './_lib/verifyPlace.js';
 import { computeTravelTimes, travelBetween } from './_lib/travelTime.js';
 import { refreshDescriptions } from './_lib/refreshDescriptions.js';
@@ -391,7 +393,11 @@ async function resolveMealPlaceholders(day, anchor, usedPlaceIds, stay, usedBran
       // with nothing nearby still gets the best available place instead of
       // nothing (see budgetFit.ts).
       const ranked = sortByBudgetFit(usable, budget);
-      return preferWellKnown(ranked.filter((c) => c.availablePhotoUrl)) || preferWithPhoto(ranked);
+      // Only with a photo. preferWithPhoto falls through to candidates[0]
+      // whatever it has, and a meal adopted without a photo ships as a blank
+      // card: three of them on one slow day, all re-placed dinners. Nothing
+      // with a photo means nothing, and the caller puts the original back.
+      return preferWellKnown(ranked.filter((c) => c.availablePhotoUrl));
     };
 
     // Prefer a place near the adjacent stop; fall back to the destination centre
@@ -2953,7 +2959,7 @@ async function resolveItinerary(itinerary, destination, anchor, transport, accom
         await resolveMealPlaceholders(day, anchor, usedPlaceIds, stay, usedBrands, budget, weekday);
 
         for (const [index, before] of mealsBefore) {
-          if (!day.items[index]?.location) {
+          if (!day.items[index]?.location || !day.items[index]?.photoUrl) {
             Object.assign(day.items[index], before);
             console.info(
               `[generate-resolved-itinerary] day ${day.day}: nothing open found for ${before.mealType}, keeping ${before.name}`
@@ -3232,7 +3238,7 @@ async function settleDay(day, context) {
       // goes back and the day ships with a dinner that closes early, which is a
       // smaller problem than a card with no address on it.
       for (const [index, original] of before) {
-        if (!day.items[index]?.location) Object.assign(day.items[index], original);
+        if (!day.items[index]?.location || !day.items[index]?.photoUrl) Object.assign(day.items[index], original);
       }
       await computeTravelTimes(day.items, transport);
       applyFixedSchedule(day, options);
@@ -3323,6 +3329,8 @@ export default async function handler(req, res) {
     return res.status(400).json({ error: 'destination and days are required' });
   }
 
+  resetPlacesOutage();
+
   let raw;
   let anchor;
   try {
@@ -3360,6 +3368,25 @@ export default async function handler(req, res) {
       raw.packed ? resolveItinerary(raw.packed, destination, anchor, transport, accommodationDetails, interests, checkInDate, budget) : Promise.resolve(),
       raw.slow ? resolveItinerary(raw.slow, destination, anchor, transport, accommodationDetails, interests, checkInDate, budget) : Promise.resolve(),
     ]);
+
+    // A draft built while Google Places was refusing is not a draft. Every
+    // search in verifyPlace returns an empty list on a refusal, so the
+    // resolution above cannot tell a quiet neighbourhood from a dead API; it
+    // gutted three days on 8 Sep and the audit blamed the code. A quota
+    // refusal (429, or 403 when billing has stopped) is a capacity problem
+    // and is reported as one. One or two failures on an otherwise working
+    // API are noise and the draft stands.
+    const refused = placesRefused();
+    if (refused && (refused.status === 429 || refused.status === 403) && refused.count >= 3) {
+      console.error(
+        `[generate-resolved-itinerary] Google Places refused ${refused.count} call(s) with HTTP ${refused.status}: ${refused.message}`
+      );
+      return res.status(503).json({
+        error: `Google Places refused ${refused.count} lookups (HTTP ${refused.status}): ${refused.message}`,
+        code: 'PLACES_UNAVAILABLE',
+        scope: 'capacity',
+      });
+    }
     res.status(200).json(raw);
   } catch (error) {
     // Same treatment for the resolution half: the place, route and description
