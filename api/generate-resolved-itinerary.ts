@@ -2594,50 +2594,31 @@ async function resolveItinerary(itinerary, destination, anchor, transport, accom
 async function settleDay(day, context) {
   const { options, anchor, usedPlaceIds, stay, interests, transport, label, weekday, budget } = context;
 
-  for (let round = 0; round < 3; round++) {
-    // Sixth instance of the shape, and it is the one that started the list.
-    //
-    // The hours check runs in the scheduling loop above, under a comment
-    // reading "now, and only now, is every stop sitting on the time it will
-    // ship with". That was true when it was written and has not been true
-    // since: settleDay moves stops, coverMissingInterests inserts them, and
-    // both run afterwards. So Yasukuni Shrine, which Google says shuts at
-    // 6pm, shipped at 23:20 with two and a half hours against it, in an app
-    // whose headline claim is that it checks opening hours.
-    //
-    // Only activities are dropped here. A rejected meal needs re-adopting
-    // rather than deleting, which the scheduling loop already does properly
-    // with the placeholder machinery; meals are also anchored to fixed times
-    // and do not drift into closed hours the way a moved activity does. The
-    // fill pass below then replaces whatever this removed, in the same round
-    // (Akber, 8 Sep 2026).
-    // Try moving the day around before deleting anything from it. A shrine that
-    // shuts at five is not a bad stop, it is a stop in the wrong half of an
-    // afternoon, and dropping it loses a real place for no reason. Only touches
-    // a day that already has something scheduled shut, and only keeps an order
-    // that leaves strictly fewer of them.
+  // Order matters inside this loop and it has been wrong twice.
+  //
+  // The repairs run first and end on a refit, so the day is on its final times
+  // for the round. THEN the hours check looks, because a refit is exactly what
+  // moves a stop into an hour it is shut. It used to look first, which meant it
+  // read the previous round's refit and never saw the last one at all - that is
+  // how Tokyo Daijingu shipped at 22:15.
+  //
+  // The fix for that was a drop-until-clean pass after the loop, and it was
+  // worse: dropping a stop from a stretch leaves the stops beside it to absorb
+  // its time, and nothing refilled the hole because the fill pass lives in here.
+  // Meiji Jingu got five hours and teamLab Borderless four. Seventh time this
+  // shape has cost a draft, and the first one I put there myself.
+  //
+  // So the check stays inside, at the end, and a drop simply means another
+  // round: the fill at the top of the next one replaces what the drop removed.
+  // The loop exits only on a round that changed nothing, which is the round
+  // where the hours check ran against the times the day will actually ship with
+  // and found none (Akber, 8 Sep 2026).
+  for (let round = 0; round < 5; round++) {
     const resorted = orderBlocksByOpeningHours(day, options, weekday);
     if (resorted) {
       console.info(
         `[generate-resolved-itinerary] day ${day.day}: reordered a stretch by closing time ${label}`
       );
-    }
-
-    const wrongHour =
-      weekday == null
-        ? []
-        : unsuitableStops(day, weekday, budget).filter((entry) => !day.items[entry.index]?.mealType);
-    for (const entry of [...wrongHour].sort((a, b) => b.index - a.index)) {
-      if (entry.index > 0) day.items[entry.index - 1].travelToNext = null;
-      day.items.splice(entry.index, 1);
-    }
-    if (wrongHour.length > 0) {
-      console.info(
-        `[generate-resolved-itinerary] day ${day.day}: dropped ${wrongHour.length} stop(s) shut at their hour ${label}: ` +
-          wrongHour.map((e) => `${e.name} (${e.reason})`).join('; ')
-      );
-      await computeTravelTimes(day.items, transport);
-      applyFixedSchedule(day, options);
     }
 
     const filled = await fillStarvedBlocks(
@@ -2664,40 +2645,32 @@ async function settleDay(day, context) {
       reorderDayGeographically(day);
     }
 
-    if (filled.length === 0 && !reordered && moved.length === 0 && wrongHour.length === 0 && !resorted) break;
+    if (resorted || filled.length > 0 || reordered || moved.length > 0) {
+      await computeTravelTimes(day.items, transport);
+      applyFixedSchedule(day, options);
+    }
 
-    await computeTravelTimes(day.items, transport);
-    applyFixedSchedule(day, options);
-  }
-
-  // The last word on the day, and a guarantee rather than a best effort.
-  //
-  // Every round above ends on a refit, and a refit moves stops. The hours check
-  // sits at the top of the next round, so it reads the previous round's refit -
-  // except on the round that hits the bound, whose refit nobody reads at all.
-  // That is how Tokyo Daijingu shipped at 22:15: not unchecked code, just a
-  // check that had already run for the last time.
-  //
-  // This cannot be fixed by reordering the loop, because any pass that ends in a
-  // refit has the same hole one level down. So the invariant is enforced
-  // separately: drop, refit, look again, until looking finds nothing. It
-  // terminates because every pass removes at least one stop, and a day with
-  // nothing left in it has nothing shut (Akber, 8 Sep 2026).
-  for (let guard = 0; weekday != null && guard < 4; guard++) {
-    const shut = unsuitableStops(day, weekday, budget).filter(
-      (entry) => !day.items[entry.index]?.mealType
-    );
-    if (shut.length === 0) break;
+    // Last, on the times the day is actually holding. Only activities: a
+    // rejected meal needs re-adopting rather than deleting, which the
+    // scheduling loop does properly with the placeholder machinery.
+    const shut =
+      weekday == null
+        ? []
+        : unsuitableStops(day, weekday, budget).filter((entry) => !day.items[entry.index]?.mealType);
     for (const entry of [...shut].sort((a, b) => b.index - a.index)) {
       if (entry.index > 0) day.items[entry.index - 1].travelToNext = null;
       day.items.splice(entry.index, 1);
     }
-    console.info(
-      `[generate-resolved-itinerary] day ${day.day}: dropped ${shut.length} stop(s) still shut after ${label}: ` +
-        shut.map((e) => `${e.name} (${e.reason})`).join('; ')
-    );
-    await computeTravelTimes(day.items, transport);
-    applyFixedSchedule(day, options);
+    if (shut.length > 0) {
+      console.info(
+        `[generate-resolved-itinerary] day ${day.day}: dropped ${shut.length} stop(s) shut at their hour ${label}: ` +
+          shut.map((e) => `${e.name} (${e.reason})`).join('; ')
+      );
+      await computeTravelTimes(day.items, transport);
+      applyFixedSchedule(day, options);
+    }
+
+    if (!resorted && filled.length === 0 && !reordered && moved.length === 0 && shut.length === 0) break;
   }
 }
 
