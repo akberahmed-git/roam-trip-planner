@@ -1486,8 +1486,7 @@ async function fillStarvedBlocks(day, cutoff, anchor, usedPlaceIds, stay, intere
       (interests || []).map(interestQuery).find(Boolean) || 'popular tourist attraction';
     const candidates = await findNearbyCandidates(query, null, block.near).catch(() => []);
 
-    const pick = preferWellKnown(
-      candidates.filter(
+    const usable = candidates.filter(
         (c) =>
           c.location &&
           c.availablePhotoUrl &&
@@ -1499,9 +1498,19 @@ async function fillStarvedBlocks(day, cutoff, anchor, usedPlaceIds, stay, intere
           hasEnoughReviews(c) &&
           (!anchor || haversineMeters(anchor, c.location) <= MAX_BROAD_DISTANCE_METERS) &&
           withinReachOfStay(c.location, stay)
-      )
     );
-    if (!pick) continue;
+    const pick = preferWellKnown(usable);
+    // A block that stays starved is how a shrine ends up with three and three
+    // quarter hours against it: every stop reaches its ceiling and the leftover
+    // goes to whichever can hold most of it. Working out why cost a generation
+    // each time, so it says so now (Akber, 8 Sep 2026).
+    if (!pick) {
+      console.info(
+        `[generate-resolved-itinerary] day ${day.day}: nothing to fill a ${Math.round(block.shortfall)}-minute gap with, ` +
+          `searched "${query}", ${candidates.length} candidate(s), 0 usable`
+      );
+      continue;
+    }
 
     const stop = buildAdoptedStop(pick, MIN_STAY_MINUTES_FOR_NEW_STOP);
 

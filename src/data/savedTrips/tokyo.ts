@@ -9,47 +9,47 @@ import type { ResolvedItinerary } from '../../types'
 export const TOKYO_2_DAYS: ResolvedItinerary = {
   "packed": {
     "label": "Packed & Varied",
-    "tagline": "Four neighbourhoods, five experiences per day, nonstop pace.",
-    "divergenceLabel": "This itinerary stacks more activities into each half-day, moving briskly across distinct districts rather than settling deep into one area.",
+    "tagline": "Four distinct Tokyo neighbourhoods, fast-paced and genre-spanning.",
+    "divergenceLabel": "This plan hits all four interests across two days with multiple short stops per day rather than one long visit per theme, moving through different parts of the city each day.",
     "days": [
       {
         "day": 1,
-        "theme": "Modern Tokyo & Anime Culture",
+        "theme": "Anime Culture & Modern Architecture",
         "breakfastAtAccommodation": false,
         "items": [
           {
             "type": "accommodation",
-            "name": "ONE@Tokyo by insomnia",
-            "categoryTag": "Hotel · Oshiage",
-            "address": "1-chōme-19-3 Oshiage, Sumida City, Tokyo 131-0045, Japan",
+            "name": "Mandarin Oriental, Tokyo",
+            "categoryTag": "Hotel · Nihonbashimuromachi",
+            "address": "2-chōme-1-1 Nihonbashimuromachi, Chuo City, Tokyo 103-8328, Japan",
             "rating": null,
             "ratingCount": null,
-            "photoUrl": "/demo/tokyo/01-one-tokyo-by-insomnia.jpg",
+            "photoUrl": "/demo/tokyo/01-mandarin-oriental-tokyo.jpg",
             "location": {
-              "lat": 35.711788899999995,
-              "lng": 139.81597779999998
+              "lat": 35.6870475,
+              "lng": 139.7730634
             },
             "hasHours": false,
             "weekdayDescriptions": null,
             "mealType": null,
             "durationMinutes": null,
-            "travelToNext": "30 minute drive",
-            "startTime": "08:30",
-            "description": "Leave ONE@Tokyo by insomnia for breakfast."
+            "travelToNext": "20 minute drive",
+            "startTime": "08:40",
+            "description": "Leave Mandarin Oriental, Tokyo for breakfast."
           },
           {
             "time": "breakfast",
             "type": "meal",
             "name": "bills Omotesando",
             "categoryTag": "Restaurant · Jingūmae",
-            "description": "Sydney-style breakfast institution famous for ricotta hotcakes and avocado toast; a lively, walk-in-friendly spot in the heart of Omotesando.",
+            "description": "A popular Australian-style café in Omotesando serving fluffy ricotta pancakes and modern brunch dishes in a bright, airy space.",
             "startTime": "09:00",
             "durationMinutes": 60,
             "mealType": "breakfast",
             "address": "Japan, 〒150-0001 Tokyo, Shibuya, Jingūmae, 4-chōme−30−３ 東急プラザ 表参道原宿 7F",
             "rating": 4,
             "ratingCount": 3549,
-            "priceLevel": "PRICE_LEVEL_MODERATE",
+            "priceLevel": null,
             "photoUrl": "/demo/tokyo/02-bills-omotesando.jpg",
             "hasHours": true,
             "weekdayDescriptions": [
@@ -65,165 +65,22 @@ export const TOKYO_2_DAYS: ResolvedItinerary = {
               "lat": 35.6685817,
               "lng": 139.7057812
             },
-            "travelToNext": "20 minute drive"
-          },
-          {
-            "time": "afternoon",
-            "type": "activity",
-            "name": "Pokemon Center Shibuya",
-            "categoryTag": "Shop · Udagawachō",
-            "description": "Official Pokemon retail and experience space with multiple floors of merchandise, interactive displays and a photo zone celebrating anime and gaming culture.",
-            "startTime": "10:20",
-            "durationMinutes": 180,
-            "mealType": null,
-            "address": "Japan, 〒150-8377 Tokyo, Shibuya, Udagawachō, 15−１ 渋谷PARCO 6F",
-            "rating": 4.3,
-            "ratingCount": 2892,
-            "priceLevel": null,
-            "photoUrl": "/demo/tokyo/03-pokemon-center-shibuya.jpg",
-            "hasHours": true,
-            "weekdayDescriptions": [
-              "Monday: 10:00 AM – 9:00 PM",
-              "Tuesday: 10:00 AM – 9:00 PM",
-              "Wednesday: 10:00 AM – 9:00 PM",
-              "Thursday: 10:00 AM – 9:00 PM",
-              "Friday: 10:00 AM – 9:00 PM",
-              "Saturday: 10:00 AM – 9:00 PM",
-              "Sunday: 10:00 AM – 9:00 PM"
-            ],
-            "location": {
-              "lat": 35.6619557,
-              "lng": 139.6984408
-            },
-            "travelToNext": "10 minute drive"
-          },
-          {
-            "time": "lunch",
-            "type": "meal",
-            "name": "Tsukishima Monja Okoge Shibuya",
-            "categoryTag": "Restaurant · Udagawachō",
-            "description": "A monjayaki restaurant in Shibuya serving the savory pan-fried batter dish that originated in Tokyo's downtown neighborhoods.",
-            "startTime": "13:30",
-            "durationMinutes": 60,
-            "mealType": "lunch",
-            "address": "Japan, 〒150-0042 Tokyo, Shibuya, Udagawachō, 24−８ Gintei Bldg., 1F, 2F & 3F",
-            "rating": 4.9,
-            "ratingCount": 33908,
-            "priceLevel": "PRICE_LEVEL_MODERATE",
-            "photoUrl": "/demo/tokyo/04-tsukishima-monja-okoge-shibuya.jpg",
-            "hasHours": true,
-            "weekdayDescriptions": [
-              "Monday: 10:45 AM – 11:00 PM",
-              "Tuesday: 10:45 AM – 11:00 PM",
-              "Wednesday: 10:45 AM – 11:00 PM",
-              "Thursday: 10:45 AM – 11:00 PM",
-              "Friday: 10:45 AM – 11:00 PM",
-              "Saturday: 10:30 AM – 11:00 PM",
-              "Sunday: 10:30 AM – 11:00 PM"
-            ],
-            "location": {
-              "lat": 35.660449299999996,
-              "lng": 139.699402
-            },
-            "placeId": "ChIJoSq01FyNGGARuu4izIPSdRs",
-            "travelToNext": "10 minute drive"
-          },
-          {
-            "time": "afternoon",
-            "type": "activity",
-            "name": "Shibuya Crossing",
-            "categoryTag": "Landmark · Udagawacho",
-            "description": "The world's busiest pedestrian crossing; an architectural and cultural icon best viewed from the Starbucks overlooking it or street level in the teeming energy.",
-            "startTime": "14:40",
-            "durationMinutes": 150,
-            "mealType": null,
-            "address": "21 Udagawacho, Shibuya, Tokyo 150-0042, Japan",
-            "rating": 4.5,
-            "ratingCount": 23581,
-            "priceLevel": null,
-            "photoUrl": "/demo/tokyo/05-shibuya-crossing.jpg",
-            "hasHours": false,
-            "weekdayDescriptions": null,
-            "location": {
-              "lat": 35.659482,
-              "lng": 139.7005596
-            },
-            "travelToNext": "10 minute drive"
-          },
-          {
-            "time": "evening",
-            "type": "activity",
-            "name": "Roppongi Hills Mori Tower",
-            "categoryTag": "Shopping · Roppongi",
-            "description": "Iconic mixed-use complex anchored by Mori Tower, featuring high-end shopping, the Mori Art Museum, and Tokyo City View observation deck offering sweeping city panoramas.",
-            "startTime": "17:20",
-            "durationMinutes": 150,
-            "mealType": null,
-            "address": "6-chōme-10-1 Roppongi, Minato City, Tokyo 106-0032, Japan",
-            "rating": 4.3,
-            "ratingCount": 4426,
-            "priceLevel": null,
-            "photoUrl": "/demo/tokyo/06-roppongi-hills-mori-tower.jpg",
-            "hasHours": true,
-            "weekdayDescriptions": [
-              "Monday: 11:00 AM – 11:00 PM",
-              "Tuesday: 11:00 AM – 11:00 PM",
-              "Wednesday: 11:00 AM – 11:00 PM",
-              "Thursday: 11:00 AM – 11:00 PM",
-              "Friday: 11:00 AM – 11:00 PM",
-              "Saturday: 11:00 AM – 11:00 PM",
-              "Sunday: 11:00 AM – 11:00 PM"
-            ],
-            "location": {
-              "lat": 35.6607345,
-              "lng": 139.7292066
-            },
-            "travelToNext": "10 minute drive"
-          },
-          {
-            "time": "dinner",
-            "type": "meal",
-            "name": "Gonpachi Nishi-Azabu",
-            "categoryTag": "Restaurant · Nishiazabu",
-            "description": "Lively izakaya in a converted warehouse with robata grill, communal seating and sake; a spirited, social space perfect for a group of two.",
-            "startTime": "20:00",
-            "durationMinutes": 60,
-            "mealType": "dinner",
-            "address": "1-chōme-13-11 Nishiazabu, Minato City, Tokyo 106-0031, Japan",
-            "rating": 4.3,
-            "ratingCount": 8348,
-            "priceLevel": null,
-            "photoUrl": "/demo/tokyo/07-gonpachi-nishi-azabu.jpg",
-            "hasHours": true,
-            "weekdayDescriptions": [
-              "Monday: 11:30 AM – 3:30 AM",
-              "Tuesday: 11:30 AM – 3:30 AM",
-              "Wednesday: 11:30 AM – 3:30 AM",
-              "Thursday: 11:30 AM – 3:30 AM",
-              "Friday: 11:30 AM – 3:30 AM",
-              "Saturday: 11:30 AM – 3:30 AM",
-              "Sunday: 11:30 AM – 3:30 AM"
-            ],
-            "location": {
-              "lat": 35.6601742,
-              "lng": 139.7235797
-            },
-            "travelToNext": "15 minute drive"
+            "travelToNext": "5 minute drive"
           },
           {
             "time": "afternoon",
             "type": "activity",
             "name": "Takeshita Street",
             "categoryTag": "Landmark · Jingūmae",
-            "description": "Harajuku's most famous pedestrian mall, packed with youth fashion, quirky boutiques and anime-themed shops; the epicentre of Tokyo pop culture.",
-            "startTime": "21:15",
-            "durationMinutes": 90,
+            "description": "Tokyo's most famous anime and pop-culture pedestrian alley, packed with character shops, vintage arcades and youth culture.",
+            "startTime": "10:05",
+            "durationMinutes": 195,
             "mealType": null,
             "address": "1-chōme-16-6 Jingūmae, Shibuya, Tokyo 150-0001, Japan",
             "rating": 4.2,
             "ratingCount": 1705,
             "priceLevel": null,
-            "photoUrl": "/demo/tokyo/08-takeshita-street.jpg",
+            "photoUrl": "/demo/tokyo/03-takeshita-street.jpg",
             "hasHours": true,
             "weekdayDescriptions": [
               "Monday: Open 24 hours",
@@ -238,694 +95,22 @@ export const TOKYO_2_DAYS: ResolvedItinerary = {
               "lat": 35.6712601,
               "lng": 139.7046761
             },
-            "travelToNext": "20 minute drive"
-          },
-          {
-            "time": "morning",
-            "type": "activity",
-            "name": "Meiji Jingu",
-            "categoryTag": "Landmark · Yoyogikamizonochō",
-            "description": "Tokyo's most important Shinto shrine, set within a tranquil forest of tall trees and known for its immense torii gates and serene atmosphere.",
-            "startTime": "23:05",
-            "durationMinutes": 75,
-            "mealType": null,
-            "address": "1-1 Yoyogikamizonochō, Shibuya, Tokyo 151-8557, Japan",
-            "rating": 4.6,
-            "ratingCount": 52732,
-            "priceLevel": null,
-            "photoUrl": "/demo/tokyo/09-meiji-jingu.jpg",
-            "hasHours": false,
-            "weekdayDescriptions": null,
-            "location": {
-              "lat": 35.6763976,
-              "lng": 139.6993259
-            },
-            "travelToNext": "15 minute drive"
-          },
-          {
-            "type": "activity",
-            "name": "T2 SHINJUKU (Nightclub)",
-            "address": "Japan, 〒160-0023 Tokyo, Shinjuku City, Nishishinjuku, 7-chōme−1−１ 新宿カレイドビル 7F",
-            "location": {
-              "lat": 35.6941128,
-              "lng": 139.69908709999999
-            },
-            "description": "A nightclub in Shinjuku offering live music and DJ performances in the area's vibrant entertainment district.",
-            "categoryTag": "Nightlife · Nishishinjuku",
-            "startTime": "00:35",
-            "durationMinutes": 60,
-            "mealType": null,
-            "travelToNext": "5 minute drive",
-            "photoUrl": "/demo/tokyo/10-t2-shinjuku-nightclub.jpg",
-            "rating": 4.8,
-            "ratingCount": 7183,
-            "priceLevel": "PRICE_LEVEL_MODERATE",
-            "hasHours": true,
-            "weekdayDescriptions": [
-              "Monday: 10:00 PM – 4:30 AM",
-              "Tuesday: 10:00 PM – 4:30 AM",
-              "Wednesday: 10:00 PM – 4:30 AM",
-              "Thursday: 10:00 PM – 4:30 AM",
-              "Friday: 10:00 PM – 4:30 AM",
-              "Saturday: 10:00 PM – 4:30 AM",
-              "Sunday: 10:00 PM – 4:30 AM"
-            ]
-          },
-          {
-            "type": "accommodation",
-            "name": "ONE@Tokyo by insomnia",
-            "categoryTag": "Hotel · Oshiage",
-            "address": "1-chōme-19-3 Oshiage, Sumida City, Tokyo 131-0045, Japan",
-            "rating": null,
-            "ratingCount": null,
-            "photoUrl": "/demo/tokyo/01-one-tokyo-by-insomnia.jpg",
-            "location": {
-              "lat": 35.711788899999995,
-              "lng": 139.81597779999998
-            },
-            "hasHours": false,
-            "weekdayDescriptions": null,
-            "mealType": null,
-            "durationMinutes": null,
-            "travelToNext": null,
-            "startTime": "01:40",
-            "description": "Back at ONE@Tokyo by insomnia."
-          }
-        ],
-        "stopCount": 9,
-        "pacingLevel": 1
-      },
-      {
-        "day": 2,
-        "theme": "Historic Tokyo & Nightlife District",
-        "breakfastAtAccommodation": true,
-        "breakfastTime": "09:00",
-        "items": [
-          {
-            "type": "accommodation",
-            "name": "ONE@Tokyo by insomnia",
-            "categoryTag": "Hotel · Oshiage",
-            "address": "1-chōme-19-3 Oshiage, Sumida City, Tokyo 131-0045, Japan",
-            "rating": null,
-            "ratingCount": null,
-            "photoUrl": "/demo/tokyo/01-one-tokyo-by-insomnia.jpg",
-            "location": {
-              "lat": 35.711788899999995,
-              "lng": 139.81597779999998
-            },
-            "hasHours": false,
-            "weekdayDescriptions": null,
-            "mealType": "breakfast",
-            "durationMinutes": 60,
-            "travelToNext": "15 minute drive",
-            "startTime": "09:00",
-            "description": "Breakfast at ONE@Tokyo by insomnia."
-          },
-          {
-            "time": "afternoon",
-            "type": "activity",
-            "name": "Tokyo Skytree",
-            "categoryTag": "Landmark · Oshiage",
-            "description": "Japan's tallest structure with observation decks offering 360-degree city views; a towering symbol of modern Tokyo.",
-            "startTime": "10:15",
-            "durationMinutes": 165,
-            "mealType": null,
-            "address": "1-chōme-1-2 Oshiage, Sumida City, Tokyo 131-0045, Japan",
-            "rating": 4.4,
-            "ratingCount": 119180,
-            "priceLevel": null,
-            "photoUrl": "/demo/tokyo/11-tokyo-skytree.jpg",
-            "hasHours": true,
-            "weekdayDescriptions": [
-              "Monday: 10:00 AM – 10:00 PM",
-              "Tuesday: 10:00 AM – 10:00 PM",
-              "Wednesday: 10:00 AM – 10:00 PM",
-              "Thursday: 10:00 AM – 10:00 PM",
-              "Friday: 10:00 AM – 10:00 PM",
-              "Saturday: 9:00 AM – 10:00 PM",
-              "Sunday: 9:00 AM – 10:00 PM"
-            ],
-            "location": {
-              "lat": 35.7100627,
-              "lng": 139.81070040000003
-            },
-            "travelToNext": "30 minute drive"
+            "travelToNext": "10 minute drive"
           },
           {
             "time": "lunch",
-            "type": "meal",
-            "name": "Ichiran Asakusa",
-            "categoryTag": "Restaurant · Asakusa",
-            "description": "Counter-style tonkotsu ramen specialist with efficient service and premium broth; a standby for quality ramen in a busy neighbourhood.",
-            "startTime": "13:30",
-            "durationMinutes": 60,
-            "mealType": "lunch",
-            "address": "Japan, 〒111-0032 Tokyo, Taito City, Asakusa, 1-chōme−1−１６ ＨＫ浅草ビル B1F",
-            "rating": 4.3,
-            "ratingCount": 5472,
-            "priceLevel": "PRICE_LEVEL_MODERATE",
-            "photoUrl": "/demo/tokyo/12-ichiran-asakusa.jpg",
-            "hasHours": true,
-            "weekdayDescriptions": [
-              "Monday: 9:30 AM – 10:00 PM",
-              "Tuesday: 9:30 AM – 10:00 PM",
-              "Wednesday: 9:30 AM – 10:00 PM",
-              "Thursday: 9:30 AM – 10:00 PM",
-              "Friday: 9:30 AM – 10:00 PM",
-              "Saturday: 9:30 AM – 10:00 PM",
-              "Sunday: 9:30 AM – 10:00 PM"
-            ],
-            "location": {
-              "lat": 35.711182799999996,
-              "lng": 139.79761639999998
-            },
-            "travelToNext": "10 minute drive"
-          },
-          {
-            "time": "morning",
-            "type": "activity",
-            "name": "Sensō-ji",
-            "categoryTag": "Landmark · Asakusa",
-            "description": "Tokyo's oldest and most visited temple, with its iconic red lantern and bustling Nakamise street lined with traditional craft shops and snack vendors.",
-            "startTime": "14:40",
-            "durationMinutes": 150,
-            "mealType": null,
-            "address": "2-chōme-3-1 Asakusa, Taito City, Tokyo 111-0032, Japan",
-            "rating": 4.6,
-            "ratingCount": 98594,
-            "priceLevel": null,
-            "photoUrl": "/demo/tokyo/13-senso-ji.jpg",
-            "hasHours": false,
-            "weekdayDescriptions": null,
-            "location": {
-              "lat": 35.7147651,
-              "lng": 139.7966553
-            },
-            "travelToNext": "10 minute drive"
-          },
-          {
-            "time": "morning",
-            "type": "activity",
-            "name": "Asakusa Culture Tourist Information Center",
-            "categoryTag": "Landmark · Kaminarimon",
-            "description": "Modern multi-storey building overlooking Asakusa with traditional craft exhibits, observation decks and cultural displays; bridges historic and contemporary Tokyo.",
-            "startTime": "17:20",
-            "durationMinutes": 135,
-            "mealType": null,
-            "address": "Japan, 〒111-0034 Tokyo, Taito City, Kaminarimon, 2-chōme−18−９ 浅草文化観光センタ",
-            "rating": 4.5,
-            "ratingCount": 4623,
-            "priceLevel": null,
-            "photoUrl": "/demo/tokyo/14-asakusa-culture-tourist-information-cent.jpg",
-            "hasHours": true,
-            "weekdayDescriptions": [
-              "Monday: 9:00 AM – 8:00 PM",
-              "Tuesday: 9:00 AM – 8:00 PM",
-              "Wednesday: 9:00 AM – 8:00 PM",
-              "Thursday: 9:00 AM – 8:00 PM",
-              "Friday: 9:00 AM – 8:00 PM",
-              "Saturday: 9:00 AM – 8:00 PM",
-              "Sunday: 9:00 AM – 8:00 PM"
-            ],
-            "location": {
-              "lat": 35.7107074,
-              "lng": 139.7965461
-            },
-            "travelToNext": "15 minute drive"
-          },
-          {
-            "type": "meal",
-            "name": "Maidreamin Akihabara Head Store",
-            "categoryTag": "Café · Sotokanda",
-            "description": "A maid cafe in Akihabara where staff in costume serve food and drinks in a theatrical, playful atmosphere typical of the neighborhood.",
-            "startTime": "19:50",
-            "durationMinutes": 60,
-            "mealType": "dinner",
-            "travelToNext": "5 minute drive",
-            "photoUrl": "/demo/tokyo/15-maidreamin-akihabara-head-store.jpg",
-            "location": {
-              "lat": 35.702008299999996,
-              "lng": 139.7712982
-            },
-            "address": "Japan, 〒101-0021 Tokyo, Chiyoda City, Sotokanda, 3-chōme−16−１７ 住吉ビル 6階",
-            "rating": 4.9,
-            "ratingCount": 13306,
-            "hasHours": true,
-            "weekdayDescriptions": [
-              "Monday: 11:30 AM – 11:00 PM",
-              "Tuesday: 11:30 AM – 11:00 PM",
-              "Wednesday: 11:30 AM – 11:00 PM",
-              "Thursday: 11:30 AM – 11:00 PM",
-              "Friday: 11:30 AM – 11:00 PM",
-              "Saturday: 10:30 AM – 11:00 PM",
-              "Sunday: 10:30 AM – 11:00 PM"
-            ],
-            "priceLevel": "PRICE_LEVEL_MODERATE",
-            "placeId": "ChIJyR7AdR6MGGAROowxIYdMsj0"
-          },
-          {
-            "time": "afternoon",
-            "type": "activity",
-            "name": "Akihabara Electric Town",
-            "categoryTag": "Landmark · Sotokanda",
-            "description": "Tokyo's electronics and anime district packed with arcades, anime shops, manga stores and tech retailers; a sensory dive into Japan's gaming and pop-culture obsessions.",
-            "startTime": "20:55",
-            "durationMinutes": 75,
-            "mealType": null,
-            "address": "1 Chome-12 Sotokanda, Chiyoda City, Tokyo 101-0021, Japan",
-            "rating": 4.5,
-            "ratingCount": 8883,
-            "priceLevel": null,
-            "photoUrl": "/demo/tokyo/16-akihabara-electric-town.jpg",
-            "hasHours": false,
-            "weekdayDescriptions": null,
-            "location": {
-              "lat": 35.699717799999995,
-              "lng": 139.7713799
-            },
-            "travelToNext": "15 minute drive"
-          },
-          {
-            "type": "accommodation",
-            "name": "ONE@Tokyo by insomnia",
-            "categoryTag": "Hotel · Oshiage",
-            "address": "1-chōme-19-3 Oshiage, Sumida City, Tokyo 131-0045, Japan",
-            "rating": null,
-            "ratingCount": null,
-            "photoUrl": "/demo/tokyo/01-one-tokyo-by-insomnia.jpg",
-            "location": {
-              "lat": 35.711788899999995,
-              "lng": 139.81597779999998
-            },
-            "hasHours": false,
-            "weekdayDescriptions": null,
-            "mealType": null,
-            "durationMinutes": null,
-            "travelToNext": null,
-            "startTime": "22:25",
-            "description": "Back at ONE@Tokyo by insomnia."
-          }
-        ],
-        "stopCount": 7,
-        "pacingLevel": 0.88
-      }
-    ],
-    "pacingLabel": "Busy"
-  },
-  "slow": {
-    "label": "Slow & Immersive",
-    "tagline": "Fewer stops, deeper dives, unhurried Tokyo.",
-    "divergenceLabel": "This plan lingers at each neighbourhood and attraction rather than rushing through a checklist, giving you time to absorb Tokyo's layers without constant transitions.",
-    "days": [
-      {
-        "day": 1,
-        "theme": "Temples, Anime & Modern Tokyo",
-        "breakfastAtAccommodation": false,
-        "items": [
-          {
-            "type": "accommodation",
-            "name": "ONE@Tokyo by insomnia",
-            "categoryTag": "Hotel · Oshiage",
-            "address": "1-chōme-19-3 Oshiage, Sumida City, Tokyo 131-0045, Japan",
-            "rating": null,
-            "ratingCount": null,
-            "photoUrl": "/demo/tokyo/01-one-tokyo-by-insomnia.jpg",
-            "location": {
-              "lat": 35.711788899999995,
-              "lng": 139.81597779999998
-            },
-            "hasHours": false,
-            "weekdayDescriptions": null,
-            "mealType": null,
-            "durationMinutes": null,
-            "travelToNext": "30 minute drive",
-            "startTime": "08:30",
-            "description": "Leave ONE@Tokyo by insomnia for breakfast."
-          },
-          {
-            "time": "breakfast",
-            "type": "meal",
-            "name": "bills Omotesando",
-            "categoryTag": "Restaurant · Jingūmae",
-            "description": "A beloved brunch institution with ricotta hotcakes and languid mornings; perfect for settling into Tokyo's pace.",
-            "startTime": "09:00",
-            "durationMinutes": 120,
-            "mealType": "breakfast",
-            "address": "Japan, 〒150-0001 Tokyo, Shibuya, Jingūmae, 4-chōme−30−３ 東急プラザ 表参道原宿 7F",
-            "rating": 4,
-            "ratingCount": 3549,
-            "priceLevel": "PRICE_LEVEL_MODERATE",
-            "photoUrl": "/demo/tokyo/02-bills-omotesando.jpg",
-            "hasHours": true,
-            "weekdayDescriptions": [
-              "Monday: 8:30 AM – 10:00 PM",
-              "Tuesday: 8:30 AM – 10:00 PM",
-              "Wednesday: 8:30 AM – 10:00 PM",
-              "Thursday: 8:30 AM – 10:00 PM",
-              "Friday: 8:30 AM – 10:00 PM",
-              "Saturday: 8:30 AM – 10:00 PM",
-              "Sunday: 8:30 AM – 10:00 PM"
-            ],
-            "location": {
-              "lat": 35.6685817,
-              "lng": 139.7057812
-            },
-            "travelToNext": "10 minute drive"
-          },
-          {
-            "time": "late-morning",
-            "type": "activity",
-            "name": "Takeshita Street",
-            "categoryTag": "Landmark · Jingūmae",
-            "description": "Wander Harajuku's famous pedestrian street and the elegant tree-lined avenue, absorbing the mix of anime-culture fashion boutiques and high-end galleries.",
-            "startTime": "11:10",
-            "durationMinutes": 120,
-            "mealType": null,
-            "address": "1-chōme-16-6 Jingūmae, Shibuya, Tokyo 150-0001, Japan",
-            "rating": 4.2,
-            "ratingCount": 1705,
-            "priceLevel": null,
-            "photoUrl": "/demo/tokyo/17-takeshita-street.jpg",
-            "hasHours": true,
-            "weekdayDescriptions": [
-              "Monday: Open 24 hours",
-              "Tuesday: Open 24 hours",
-              "Wednesday: Open 24 hours",
-              "Thursday: Open 24 hours",
-              "Friday: Open 24 hours",
-              "Saturday: Open 24 hours",
-              "Sunday: Open 24 hours"
-            ],
-            "location": {
-              "lat": 35.6712601,
-              "lng": 139.7046761
-            },
-            "travelToNext": "20 minute drive"
-          },
-          {
-            "time": "lunch",
-            "type": "meal",
-            "name": "Gonpachi Nishi-Azabu",
-            "categoryTag": "Restaurant · Nishiazabu",
-            "description": "A boisterous izakaya in a converted warehouse serving yakitori and sake; lively enough for two to enjoy the energy without formality.",
-            "startTime": "13:30",
-            "durationMinutes": 120,
-            "mealType": "lunch",
-            "address": "1-chōme-13-11 Nishiazabu, Minato City, Tokyo 106-0031, Japan",
-            "rating": 4.3,
-            "ratingCount": 8348,
-            "priceLevel": null,
-            "photoUrl": "/demo/tokyo/07-gonpachi-nishi-azabu.jpg",
-            "hasHours": true,
-            "weekdayDescriptions": [
-              "Monday: 11:30 AM – 3:30 AM",
-              "Tuesday: 11:30 AM – 3:30 AM",
-              "Wednesday: 11:30 AM – 3:30 AM",
-              "Thursday: 11:30 AM – 3:30 AM",
-              "Friday: 11:30 AM – 3:30 AM",
-              "Saturday: 11:30 AM – 3:30 AM",
-              "Sunday: 11:30 AM – 3:30 AM"
-            ],
-            "location": {
-              "lat": 35.6601742,
-              "lng": 139.7235797
-            },
-            "travelToNext": "10 minute drive"
-          },
-          {
-            "time": "afternoon",
-            "type": "activity",
-            "name": "Tokyo Tower",
-            "categoryTag": "Landmark · Shibakōen",
-            "description": "An iconic red lattice tower offering panoramic observation decks with sweeping views across Tokyo, plus shopping and dining facilities at its base.",
-            "startTime": "15:40",
-            "durationMinutes": 120,
-            "mealType": null,
-            "address": "4-chōme-2-8 Shibakōen, Minato City, Tokyo 105-0011, Japan",
-            "rating": 4.5,
-            "ratingCount": 100169,
-            "priceLevel": null,
-            "photoUrl": "/demo/tokyo/18-tokyo-tower.jpg",
-            "hasHours": true,
-            "weekdayDescriptions": [
-              "Monday: 9:00 AM – 11:00 PM",
-              "Tuesday: 9:00 AM – 11:00 PM",
-              "Wednesday: 9:00 AM – 11:00 PM",
-              "Thursday: 9:00 AM – 11:00 PM",
-              "Friday: 9:00 AM – 11:00 PM",
-              "Saturday: 9:00 AM – 11:00 PM",
-              "Sunday: 9:00 AM – 11:00 PM"
-            ],
-            "location": {
-              "lat": 35.6585805,
-              "lng": 139.7454329
-            },
-            "travelToNext": "10 minute drive"
-          },
-          {
-            "type": "activity",
-            "name": "Hagi Mohri Residence Ruins",
-            "address": "9 Chome-7 Akasaka, Minato City, Tokyo 107-0052, Japan",
-            "location": {
-              "lat": 35.6669641,
-              "lng": 139.73305249999999
-            },
-            "description": "Historical ruins in Akasaka marking the former estate of the Mōri clan, offering a glimpse into Tokyo's feudal past.",
-            "categoryTag": "Landmark · Akasaka",
-            "startTime": "17:50",
-            "durationMinutes": 105,
-            "mealType": null,
-            "travelToNext": "25 minute drive",
-            "photoUrl": "/demo/tokyo/19-hagi-mohri-residence-ruins.jpg",
-            "rating": 4.4,
-            "ratingCount": 159,
-            "priceLevel": null,
-            "hasHours": true,
-            "weekdayDescriptions": [
-              "Monday: Open 24 hours",
-              "Tuesday: Open 24 hours",
-              "Wednesday: Open 24 hours",
-              "Thursday: Open 24 hours",
-              "Friday: Open 24 hours",
-              "Saturday: Open 24 hours",
-              "Sunday: Open 24 hours"
-            ],
-            "placeId": "ChIJASI99XiLGGARguYLHPgPenY"
-          },
-          {
-            "time": "dinner",
-            "type": "meal",
-            "name": "MO-MO-PARADISE Shibuya Center-gai",
-            "categoryTag": "Restaurant · Udagawachō",
-            "description": "A hot pot restaurant in the lively Shibuya Center-gai district where diners cook their own shabu-shabu and sukiyaki at the table.",
-            "startTime": "20:00",
-            "durationMinutes": 120,
-            "mealType": "dinner",
-            "address": "Japan, 〒150-0042 Tokyo, Shibuya, Udagawachō, 31−2 渋谷 6F",
-            "rating": 4.9,
-            "ratingCount": 10005,
-            "priceLevel": "PRICE_LEVEL_MODERATE",
-            "photoUrl": "/demo/tokyo/20-mo-mo-paradise-shibuya-center-gai.jpg",
-            "hasHours": true,
-            "weekdayDescriptions": [
-              "Monday: 11:30 AM – 3:00 PM, 5:00 – 10:30 PM",
-              "Tuesday: 11:30 AM – 3:00 PM, 5:00 – 10:30 PM",
-              "Wednesday: 11:30 AM – 3:00 PM, 5:00 – 10:30 PM",
-              "Thursday: 11:30 AM – 3:00 PM, 5:00 – 10:30 PM",
-              "Friday: 11:30 AM – 3:00 PM, 5:00 – 10:30 PM",
-              "Saturday: 11:30 AM – 3:00 PM, 5:00 – 10:30 PM",
-              "Sunday: 11:30 AM – 3:00 PM, 5:00 – 10:30 PM"
-            ],
-            "location": {
-              "lat": 35.6613618,
-              "lng": 139.6976195
-            },
-            "travelToNext": "15 minute drive"
-          },
-          {
-            "time": "night",
-            "type": "activity",
-            "name": "New York Bar",
-            "categoryTag": "Bar · Nishishinjuku",
-            "description": "Tokyo's iconic 52nd-floor cocktail bar overlooking the neon-lit city; a quintessential nightlife experience with style and views.",
-            "startTime": "22:15",
-            "durationMinutes": 90,
-            "mealType": null,
-            "address": "パークハイアット東京, 52階, 3-chōme-7-1-2 Nishishinjuku, Shinjuku City, Tokyo 163-1055, Japan",
-            "rating": 4.4,
-            "ratingCount": 489,
-            "priceLevel": null,
-            "photoUrl": "/demo/tokyo/21-new-york-bar.jpg",
-            "hasHours": true,
-            "weekdayDescriptions": [
-              "Monday: 5:00 PM – 12:00 AM",
-              "Tuesday: 5:00 PM – 12:00 AM",
-              "Wednesday: 5:00 PM – 12:00 AM",
-              "Thursday: 5:00 PM – 12:00 AM",
-              "Friday: 5:00 PM – 12:00 AM",
-              "Saturday: 5:00 PM – 12:00 AM",
-              "Sunday: 5:00 PM – 12:00 AM"
-            ],
-            "location": {
-              "lat": 35.686113,
-              "lng": 139.6904009
-            },
-            "travelToNext": "30 minute drive"
-          },
-          {
-            "type": "accommodation",
-            "name": "ONE@Tokyo by insomnia",
-            "categoryTag": "Hotel · Oshiage",
-            "address": "1-chōme-19-3 Oshiage, Sumida City, Tokyo 131-0045, Japan",
-            "rating": null,
-            "ratingCount": null,
-            "photoUrl": "/demo/tokyo/01-one-tokyo-by-insomnia.jpg",
-            "location": {
-              "lat": 35.711788899999995,
-              "lng": 139.81597779999998
-            },
-            "hasHours": false,
-            "weekdayDescriptions": null,
-            "mealType": null,
-            "durationMinutes": null,
-            "travelToNext": null,
-            "startTime": "00:15",
-            "description": "Back at ONE@Tokyo by insomnia."
-          }
-        ],
-        "stopCount": 7,
-        "pacingLevel": 0.88
-      },
-      {
-        "day": 2,
-        "theme": "Modern Architecture & Neighbourhoods",
-        "breakfastAtAccommodation": true,
-        "breakfastTime": "09:00",
-        "items": [
-          {
-            "type": "accommodation",
-            "name": "ONE@Tokyo by insomnia",
-            "categoryTag": "Hotel · Oshiage",
-            "address": "1-chōme-19-3 Oshiage, Sumida City, Tokyo 131-0045, Japan",
-            "rating": null,
-            "ratingCount": null,
-            "photoUrl": "/demo/tokyo/01-one-tokyo-by-insomnia.jpg",
-            "location": {
-              "lat": 35.711788899999995,
-              "lng": 139.81597779999998
-            },
-            "hasHours": false,
-            "weekdayDescriptions": null,
-            "mealType": "breakfast",
-            "durationMinutes": 120,
-            "travelToNext": "25 minute drive",
-            "startTime": "09:00",
-            "description": "Breakfast at ONE@Tokyo by insomnia."
-          },
-          {
-            "time": "late-morning",
-            "type": "activity",
-            "name": "Odaiba Marine Park",
-            "categoryTag": "Park · Daiba",
-            "description": "A waterfront promenade and beach with views of Rainbow Bridge and Tokyo's futuristic skyline; a calm outdoor counterpoint to the art.",
-            "startTime": "11:25",
-            "durationMinutes": 105,
-            "mealType": null,
-            "address": "1-chōme-4-4 Daiba, Minato City, Tokyo 135-0091, Japan",
-            "rating": 4.4,
-            "ratingCount": 15915,
-            "priceLevel": null,
-            "photoUrl": "/demo/tokyo/22-odaiba-marine-park.jpg",
-            "hasHours": true,
-            "weekdayDescriptions": [
-              "Monday: Open 24 hours",
-              "Tuesday: Open 24 hours",
-              "Wednesday: Open 24 hours",
-              "Thursday: Open 24 hours",
-              "Friday: Open 24 hours",
-              "Saturday: Open 24 hours",
-              "Sunday: Open 24 hours"
-            ],
-            "location": {
-              "lat": 35.6300488,
-              "lng": 139.77569119999998
-            },
-            "travelToNext": "20 minute drive"
-          },
-          {
-            "time": "lunch",
-            "type": "meal",
-            "name": "Sushizanmai Main Store",
-            "categoryTag": "Restaurant · Tsukiji",
-            "description": "A popular sushi restaurant in Tsukiji known for fresh seafood and generous portions, open late into the night for post-market diners.",
-            "startTime": "13:30",
-            "durationMinutes": 120,
-            "mealType": "lunch",
-            "address": "4-chōme-11-9 Tsukiji, Chuo City, Tokyo 104-0045, Japan",
-            "rating": 4.2,
-            "ratingCount": 9127,
-            "priceLevel": "PRICE_LEVEL_MODERATE",
-            "photoUrl": "/demo/tokyo/23-sushizanmai-main-store.jpg",
-            "hasHours": true,
-            "weekdayDescriptions": [
-              "Monday: Open 24 hours",
-              "Tuesday: Open 24 hours",
-              "Wednesday: Open 24 hours",
-              "Thursday: Open 24 hours",
-              "Friday: Open 24 hours",
-              "Saturday: Open 24 hours",
-              "Sunday: Open 24 hours"
-            ],
-            "location": {
-              "lat": 35.6659044,
-              "lng": 139.77064919999998
-            },
-            "travelToNext": "15 minute drive"
-          },
-          {
-            "time": "morning",
-            "type": "activity",
-            "name": "teamLab Borderless: MORI Building DIGITAL ART MUSEUM",
-            "categoryTag": "Museum · Toranomon",
-            "description": "An immersive digital art museum featuring interactive installations and light projections that flow between rooms, created by the art collective teamLab.",
-            "startTime": "15:45",
-            "durationMinutes": 225,
-            "mealType": null,
-            "address": "Japan, 〒106-0041 Tokyo, Minato City, Toranomon, 5-chōme−9−９ Azabudai Hills Garden Plaza B, B1",
-            "rating": 4.6,
-            "ratingCount": 29830,
-            "priceLevel": null,
-            "photoUrl": "/demo/tokyo/24-teamlab-borderless-mori-building-digital.jpg",
-            "hasHours": true,
-            "weekdayDescriptions": [
-              "Monday: 8:30 AM – 9:00 PM",
-              "Tuesday: 8:30 AM – 9:00 PM",
-              "Wednesday: 8:30 AM – 9:00 PM",
-              "Thursday: 8:30 AM – 9:00 PM",
-              "Friday: 8:30 AM – 9:00 PM",
-              "Saturday: 8:30 AM – 9:00 PM",
-              "Sunday: 8:30 AM – 9:00 PM"
-            ],
-            "location": {
-              "lat": 35.6620689,
-              "lng": 139.7432671
-            },
-            "travelToNext": "25 minute drive"
-          },
-          {
-            "time": "dinner",
             "type": "meal",
             "name": "ICHIRAN Shinjuku Station Central East Exit",
             "categoryTag": "Restaurant · Shinjuku",
-            "description": "A ramen chain restaurant near Shinjuku Station where diners enjoy tonkotsu ramen in private booth seating with customizable flavors and spice levels.",
-            "startTime": "19:55",
-            "durationMinutes": 120,
-            "mealType": "dinner",
+            "description": "A branch of the famous ramen chain near Shinjuku Station where diners order via vending machine and eat in private booths.",
+            "startTime": "13:30",
+            "durationMinutes": 60,
+            "mealType": "lunch",
             "address": "Japan, 〒160-0022 Tokyo, Shinjuku City, Shinjuku, 3-chōme−34−１１ Peace Bldg., B1F",
             "rating": 4.3,
             "ratingCount": 7757,
             "priceLevel": null,
-            "photoUrl": "/demo/tokyo/25-ichiran-shinjuku-station-central-east-ex.jpg",
+            "photoUrl": "/demo/tokyo/04-ichiran-shinjuku-station-central-east-ex.jpg",
             "hasHours": true,
             "weekdayDescriptions": [
               "Monday: Open 24 hours",
@@ -940,31 +125,852 @@ export const TOKYO_2_DAYS: ResolvedItinerary = {
               "lat": 35.690585899999995,
               "lng": 139.7028052
             },
-            "travelToNext": "35 minute drive"
+            "travelToNext": "15 minute drive"
+          },
+          {
+            "time": "morning",
+            "type": "activity",
+            "name": "Omotesando Hills",
+            "categoryTag": "Shopping · Jingūmae",
+            "description": "Landmark modernist shopping complex with striking facade and interior by Tadao Ando, showcasing contemporary Tokyo design philosophy.",
+            "startTime": "14:45",
+            "durationMinutes": 150,
+            "mealType": null,
+            "address": "4-chōme-12-10 Jingūmae, Shibuya, Tokyo 150-0001, Japan",
+            "rating": 4,
+            "ratingCount": 8519,
+            "priceLevel": null,
+            "photoUrl": "/demo/tokyo/05-omotesando-hills.jpg",
+            "hasHours": true,
+            "weekdayDescriptions": [
+              "Monday: 11:00 AM – 8:00 PM",
+              "Tuesday: 11:00 AM – 8:00 PM",
+              "Wednesday: 11:00 AM – 8:00 PM",
+              "Thursday: 11:00 AM – 8:00 PM",
+              "Friday: 11:00 AM – 8:00 PM",
+              "Saturday: 11:00 AM – 8:00 PM",
+              "Sunday: 11:00 AM – 8:00 PM"
+            ],
+            "location": {
+              "lat": 35.6672869,
+              "lng": 139.7086162
+            },
+            "travelToNext": "25 minute drive"
+          },
+          {
+            "time": "afternoon",
+            "type": "activity",
+            "name": "Tokyo Tower",
+            "categoryTag": "Landmark · Shibakōen",
+            "description": "An iconic red lattice tower offering observation decks with sweeping city views, plus shopping and dining at its base.",
+            "startTime": "17:40",
+            "durationMinutes": 135,
+            "mealType": null,
+            "address": "4-chōme-2-8 Shibakōen, Minato City, Tokyo 105-0011, Japan",
+            "rating": 4.5,
+            "ratingCount": 100183,
+            "priceLevel": null,
+            "photoUrl": "/demo/tokyo/06-tokyo-tower.jpg",
+            "hasHours": true,
+            "weekdayDescriptions": [
+              "Monday: 9:00 AM – 11:00 PM",
+              "Tuesday: 9:00 AM – 11:00 PM",
+              "Wednesday: 9:00 AM – 11:00 PM",
+              "Thursday: 9:00 AM – 11:00 PM",
+              "Friday: 9:00 AM – 11:00 PM",
+              "Saturday: 9:00 AM – 11:00 PM",
+              "Sunday: 9:00 AM – 11:00 PM"
+            ],
+            "location": {
+              "lat": 35.6585805,
+              "lng": 139.7454329
+            },
+            "travelToNext": "5 minute drive"
+          },
+          {
+            "time": "dinner",
+            "type": "meal",
+            "name": "Gonpachi Nishi-Azabu",
+            "categoryTag": "Restaurant · Nishiazabu",
+            "description": "Stylish izakaya in Nishi-Azabu known for modern takes on Japanese small plates, with standing and group seating.",
+            "startTime": "20:00",
+            "durationMinutes": 60,
+            "mealType": "dinner",
+            "address": "1-chōme-13-11 Nishiazabu, Minato City, Tokyo 106-0031, Japan",
+            "rating": 4.3,
+            "ratingCount": 8348,
+            "priceLevel": null,
+            "photoUrl": "/demo/tokyo/07-gonpachi-nishi-azabu.jpg",
+            "hasHours": true,
+            "weekdayDescriptions": [
+              "Monday: 11:30 AM – 3:30 AM",
+              "Tuesday: 11:30 AM – 3:30 AM",
+              "Wednesday: 11:30 AM – 3:30 AM",
+              "Thursday: 11:30 AM – 3:30 AM",
+              "Friday: 11:30 AM – 3:30 AM",
+              "Saturday: 11:30 AM – 3:30 AM",
+              "Sunday: 11:30 AM – 3:30 AM"
+            ],
+            "location": {
+              "lat": 35.6601742,
+              "lng": 139.7235797
+            },
+            "travelToNext": "20 minute drive"
+          },
+          {
+            "type": "activity",
+            "name": "Kanda Myoujin Shrine",
+            "address": "2-chōme-16-2 Sotokanda, Chiyoda City, Tokyo 101-0021, Japan",
+            "location": {
+              "lat": 35.702018599999995,
+              "lng": 139.7678943
+            },
+            "description": "A colourful Shinto shrine in Akihabara known for its connection to technology and frequented by those seeking blessings for electronic devices.",
+            "categoryTag": "Landmark · Sotokanda",
+            "startTime": "21:20",
+            "durationMinutes": 150,
+            "mealType": null,
+            "travelToNext": "25 minute drive",
+            "photoUrl": "/demo/tokyo/08-kanda-myoujin-shrine.jpg",
+            "rating": 4.4,
+            "ratingCount": 26051,
+            "priceLevel": null,
+            "hasHours": true,
+            "weekdayDescriptions": [
+              "Monday: Open 24 hours",
+              "Tuesday: Open 24 hours",
+              "Wednesday: Open 24 hours",
+              "Thursday: Open 24 hours",
+              "Friday: Open 24 hours",
+              "Saturday: Open 24 hours",
+              "Sunday: Open 24 hours"
+            ]
+          },
+          {
+            "type": "activity",
+            "name": "T2 SHINJUKU (Nightclub)",
+            "address": "Japan, 〒160-0023 Tokyo, Shinjuku City, Nishishinjuku, 7-chōme−1−１ 新宿カレイドビル 7F",
+            "location": {
+              "lat": 35.6941128,
+              "lng": 139.69908709999999
+            },
+            "description": "A nightclub in Shinjuku featuring multiple floors of dance music with both international DJs and live performances.",
+            "categoryTag": "Nightlife · Nishishinjuku",
+            "startTime": "00:15",
+            "durationMinutes": 60,
+            "mealType": null,
+            "travelToNext": "5 minute drive",
+            "photoUrl": "/demo/tokyo/09-t2-shinjuku-nightclub.jpg",
+            "rating": 4.8,
+            "ratingCount": 7182,
+            "priceLevel": "PRICE_LEVEL_MODERATE",
+            "hasHours": true,
+            "weekdayDescriptions": [
+              "Monday: 10:00 PM – 4:30 AM",
+              "Tuesday: 10:00 PM – 4:30 AM",
+              "Wednesday: 10:00 PM – 4:30 AM",
+              "Thursday: 10:00 PM – 4:30 AM",
+              "Friday: 10:00 PM – 4:30 AM",
+              "Saturday: 10:00 PM – 4:30 AM",
+              "Sunday: 10:00 PM – 4:30 AM"
+            ]
           },
           {
             "type": "accommodation",
-            "name": "ONE@Tokyo by insomnia",
-            "categoryTag": "Hotel · Oshiage",
-            "address": "1-chōme-19-3 Oshiage, Sumida City, Tokyo 131-0045, Japan",
+            "name": "Mandarin Oriental, Tokyo",
+            "categoryTag": "Hotel · Nihonbashimuromachi",
+            "address": "2-chōme-1-1 Nihonbashimuromachi, Chuo City, Tokyo 103-8328, Japan",
             "rating": null,
             "ratingCount": null,
-            "photoUrl": "/demo/tokyo/01-one-tokyo-by-insomnia.jpg",
+            "photoUrl": "/demo/tokyo/01-mandarin-oriental-tokyo.jpg",
             "location": {
-              "lat": 35.711788899999995,
-              "lng": 139.81597779999998
+              "lat": 35.6870475,
+              "lng": 139.7730634
             },
             "hasHours": false,
             "weekdayDescriptions": null,
             "mealType": null,
             "durationMinutes": null,
             "travelToNext": null,
-            "startTime": "22:30",
-            "description": "Back at ONE@Tokyo by insomnia."
+            "startTime": "01:20",
+            "description": "Back at Mandarin Oriental, Tokyo."
           }
         ],
-        "stopCount": 5,
-        "pacingLevel": 0.63
+        "stopCount": 8,
+        "pacingLevel": 1
+      },
+      {
+        "day": 2,
+        "theme": "Temples, Shrines & Nightlife",
+        "breakfastAtAccommodation": true,
+        "breakfastTime": "09:00",
+        "items": [
+          {
+            "type": "accommodation",
+            "name": "Mandarin Oriental, Tokyo",
+            "categoryTag": "Hotel · Nihonbashimuromachi",
+            "address": "2-chōme-1-1 Nihonbashimuromachi, Chuo City, Tokyo 103-8328, Japan",
+            "rating": null,
+            "ratingCount": null,
+            "photoUrl": "/demo/tokyo/01-mandarin-oriental-tokyo.jpg",
+            "location": {
+              "lat": 35.6870475,
+              "lng": 139.7730634
+            },
+            "hasHours": false,
+            "weekdayDescriptions": null,
+            "mealType": "breakfast",
+            "durationMinutes": 60,
+            "travelToNext": "25 minute drive",
+            "startTime": "09:00",
+            "description": "Breakfast at Mandarin Oriental, Tokyo."
+          },
+          {
+            "time": "morning",
+            "type": "activity",
+            "name": "Meiji Jingu",
+            "categoryTag": "Landmark · Yoyogikamizonochō",
+            "description": "A serene forested shrine dedicated to Emperor Meiji and Empress Shoken, offering a peaceful retreat from the surrounding city bustle.",
+            "startTime": "10:25",
+            "durationMinutes": 75,
+            "mealType": null,
+            "address": "1-1 Yoyogikamizonochō, Shibuya, Tokyo 151-8557, Japan",
+            "rating": 4.6,
+            "ratingCount": 52732,
+            "priceLevel": null,
+            "photoUrl": "/demo/tokyo/10-meiji-jingu.jpg",
+            "hasHours": false,
+            "weekdayDescriptions": null,
+            "location": {
+              "lat": 35.6763976,
+              "lng": 139.6993259
+            },
+            "travelToNext": "25 minute drive"
+          },
+          {
+            "time": "morning",
+            "type": "activity",
+            "name": "Yoyogi Park",
+            "categoryTag": "Park · Yoyogikamizonochō",
+            "description": "Tokyo's largest urban park, verdant and peaceful, adjacent to Meiji Shrine and ideal for a restorative walk.",
+            "startTime": "12:05",
+            "durationMinutes": 60,
+            "mealType": null,
+            "address": "2-1 Yoyogikamizonochō, Shibuya, Tokyo 151-0052, Japan",
+            "rating": 4.4,
+            "ratingCount": 27504,
+            "priceLevel": null,
+            "photoUrl": "/demo/tokyo/11-yoyogi-park.jpg",
+            "hasHours": true,
+            "weekdayDescriptions": [
+              "Monday: Open 24 hours",
+              "Tuesday: Open 24 hours",
+              "Wednesday: Open 24 hours",
+              "Thursday: Open 24 hours",
+              "Friday: Open 24 hours",
+              "Saturday: Open 24 hours",
+              "Sunday: Open 24 hours"
+            ],
+            "location": {
+              "lat": 35.6700649,
+              "lng": 139.6949656
+            },
+            "travelToNext": "25 minute drive"
+          },
+          {
+            "type": "meal",
+            "name": "Tsukishima Monja Kuuya Shibuya",
+            "categoryTag": "Restaurant · Shibuya",
+            "description": "A Japanese restaurant in Shibuya specializing in monjayaki, a savory pan-fried batter dish with various toppings cooked at your table.",
+            "startTime": "13:30",
+            "durationMinutes": 60,
+            "mealType": "lunch",
+            "travelToNext": "30 minute drive",
+            "photoUrl": "/demo/tokyo/12-tsukishima-monja-kuuya-shibuya.jpg",
+            "location": {
+              "lat": 35.6595867,
+              "lng": 139.7014739
+            },
+            "address": "Japan, 〒150-0002 Tokyo, Shibuya, 1-chōme−25−６ パークサイド共同ビル 1F",
+            "rating": 4.8,
+            "ratingCount": 19019,
+            "hasHours": true,
+            "weekdayDescriptions": [
+              "Monday: 11:00 AM – 4:00 AM",
+              "Tuesday: 11:00 AM – 4:00 AM",
+              "Wednesday: 11:00 AM – 4:00 AM",
+              "Thursday: 11:00 AM – 4:00 AM",
+              "Friday: 11:00 AM – 4:00 AM",
+              "Saturday: 11:00 AM – 4:00 AM",
+              "Sunday: 11:00 AM – 4:00 AM"
+            ],
+            "priceLevel": "PRICE_LEVEL_MODERATE",
+            "placeId": "ChIJn7-CYDSLGGARlsaGBSAggqo"
+          },
+          {
+            "time": "afternoon",
+            "type": "activity",
+            "name": "Sensō-ji",
+            "categoryTag": "Landmark · Asakusa",
+            "description": "Tokyo's oldest temple, a sacred Buddhist landmark in Asakusa with iconic red lantern gate and atmospheric pilgrimage precinct.",
+            "startTime": "15:00",
+            "durationMinutes": 150,
+            "mealType": null,
+            "address": "2-chōme-3-1 Asakusa, Taito City, Tokyo 111-0032, Japan",
+            "rating": 4.6,
+            "ratingCount": 98594,
+            "priceLevel": null,
+            "photoUrl": "/demo/tokyo/13-senso-ji.jpg",
+            "hasHours": false,
+            "weekdayDescriptions": null,
+            "location": {
+              "lat": 35.7147651,
+              "lng": 139.7966553
+            },
+            "travelToNext": "5 minute drive"
+          },
+          {
+            "time": "afternoon",
+            "type": "activity",
+            "name": "Nakamise Shopping Street",
+            "categoryTag": "Landmark · Asakusa",
+            "description": "Traditional arcade of craft and souvenir shops leading to Senso-ji Temple, preserving old Tokyo merchant culture.",
+            "startTime": "17:35",
+            "durationMinutes": 135,
+            "mealType": null,
+            "address": "1-chōme-36-3 Asakusa, Taito City, Tokyo 111-0032, Japan",
+            "rating": 4.3,
+            "ratingCount": 15710,
+            "priceLevel": null,
+            "photoUrl": "/demo/tokyo/14-nakamise-shopping-street.jpg",
+            "hasHours": true,
+            "weekdayDescriptions": [
+              "Monday: 10:00 AM – 5:00 PM",
+              "Tuesday: 10:00 AM – 5:00 PM",
+              "Wednesday: 10:00 AM – 5:00 PM",
+              "Thursday: 10:00 AM – 5:00 PM",
+              "Friday: 10:00 AM – 5:00 PM",
+              "Saturday: 10:00 AM – 5:00 PM",
+              "Sunday: 10:00 AM – 5:00 PM"
+            ],
+            "location": {
+              "lat": 35.711841299999996,
+              "lng": 139.7964542
+            },
+            "travelToNext": "10 minute drive"
+          },
+          {
+            "type": "meal",
+            "name": "GYUKATSU Kyoto Katsugyu Asakusa Orange Street",
+            "categoryTag": "Restaurant · Asakusa",
+            "description": "A restaurant in Asakusa serving gyukatsu, breaded and deep-fried beef cutlet sliced into strips and served with dipping sauces.",
+            "startTime": "20:00",
+            "durationMinutes": 60,
+            "mealType": "dinner",
+            "travelToNext": "20 minute drive",
+            "photoUrl": "/demo/tokyo/15-gyukatsu-kyoto-katsugyu-asakusa-orange-s.jpg",
+            "location": {
+              "lat": 35.7115624,
+              "lng": 139.79463339999998
+            },
+            "address": "1-chōme-16-11 Asakusa, Taito City, Tokyo 111-0032, Japan",
+            "rating": 4.9,
+            "ratingCount": 5659,
+            "hasHours": true,
+            "weekdayDescriptions": [
+              "Monday: 10:30 AM – 10:30 PM",
+              "Tuesday: 10:30 AM – 10:30 PM",
+              "Wednesday: 10:30 AM – 10:30 PM",
+              "Thursday: 10:30 AM – 10:30 PM",
+              "Friday: 10:30 AM – 10:30 PM",
+              "Saturday: 10:30 AM – 10:30 PM",
+              "Sunday: 10:30 AM – 10:30 PM"
+            ],
+            "priceLevel": "PRICE_LEVEL_MODERATE",
+            "placeId": "ChIJR8pQxuePGGAR5uyYFMGlO1E"
+          },
+          {
+            "type": "accommodation",
+            "name": "Mandarin Oriental, Tokyo",
+            "categoryTag": "Hotel · Nihonbashimuromachi",
+            "address": "2-chōme-1-1 Nihonbashimuromachi, Chuo City, Tokyo 103-8328, Japan",
+            "rating": null,
+            "ratingCount": null,
+            "photoUrl": "/demo/tokyo/01-mandarin-oriental-tokyo.jpg",
+            "location": {
+              "lat": 35.6870475,
+              "lng": 139.7730634
+            },
+            "hasHours": false,
+            "weekdayDescriptions": null,
+            "mealType": null,
+            "durationMinutes": null,
+            "travelToNext": null,
+            "startTime": "21:20",
+            "description": "Back at Mandarin Oriental, Tokyo."
+          }
+        ],
+        "stopCount": 7,
+        "pacingLevel": 0.88
+      }
+    ],
+    "pacingLabel": "Busy"
+  },
+  "slow": {
+    "label": "Slow & Immersive",
+    "tagline": "Fewer stops, deeper time, neighbourhoods across the city",
+    "divergenceLabel": "This plan moves through distinct areas of Tokyo with just 3-4 activities per day, spending unhurried time at each rather than rushing through a crowded itinerary.",
+    "days": [
+      {
+        "day": 1,
+        "theme": "Temples, Anime Culture & Urban Design",
+        "breakfastAtAccommodation": true,
+        "breakfastTime": "09:00",
+        "items": [
+          {
+            "type": "accommodation",
+            "name": "Mandarin Oriental, Tokyo",
+            "categoryTag": "Hotel · Nihonbashimuromachi",
+            "address": "2-chōme-1-1 Nihonbashimuromachi, Chuo City, Tokyo 103-8328, Japan",
+            "rating": null,
+            "ratingCount": null,
+            "photoUrl": "/demo/tokyo/01-mandarin-oriental-tokyo.jpg",
+            "location": {
+              "lat": 35.6870475,
+              "lng": 139.7730634
+            },
+            "hasHours": false,
+            "weekdayDescriptions": null,
+            "mealType": "breakfast",
+            "durationMinutes": 120,
+            "travelToNext": "15 minute drive",
+            "startTime": "09:00",
+            "description": "Breakfast at Mandarin Oriental, Tokyo."
+          },
+          {
+            "time": "morning",
+            "type": "activity",
+            "name": "Sensō-ji",
+            "categoryTag": "Landmark · Asakusa",
+            "description": "Tokyo's most iconic shrine in Asakusa, a centuries-old sacred site approached through the famous Nakamise shopping street, offering deep immersion in spiritual atmosphere and traditional architecture.",
+            "startTime": "11:15",
+            "durationMinutes": 120,
+            "mealType": null,
+            "address": "2-chōme-3-1 Asakusa, Taito City, Tokyo 111-0032, Japan",
+            "rating": 4.6,
+            "ratingCount": 98594,
+            "priceLevel": null,
+            "photoUrl": "/demo/tokyo/13-senso-ji.jpg",
+            "hasHours": false,
+            "weekdayDescriptions": null,
+            "location": {
+              "lat": 35.7147651,
+              "lng": 139.7966553
+            },
+            "travelToNext": "15 minute drive"
+          },
+          {
+            "time": "lunch",
+            "type": "meal",
+            "name": "Maidreamin Akihabara Head Store",
+            "categoryTag": "Café · Sotokanda",
+            "description": "A themed maid cafe in the heart of Akihabara where servers in costume provide entertainment alongside Japanese comfort food and drinks.",
+            "startTime": "13:30",
+            "durationMinutes": 120,
+            "mealType": "lunch",
+            "address": "Japan, 〒101-0021 Tokyo, Chiyoda City, Sotokanda, 3-chōme−16−１７ 住吉ビル 6階",
+            "rating": 4.9,
+            "ratingCount": 13308,
+            "priceLevel": "PRICE_LEVEL_MODERATE",
+            "photoUrl": "/demo/tokyo/16-maidreamin-akihabara-head-store.jpg",
+            "hasHours": true,
+            "weekdayDescriptions": [
+              "Monday: 11:30 AM – 11:00 PM",
+              "Tuesday: 11:30 AM – 11:00 PM",
+              "Wednesday: 11:30 AM – 11:00 PM",
+              "Thursday: 11:30 AM – 11:00 PM",
+              "Friday: 11:30 AM – 11:00 PM",
+              "Saturday: 10:30 AM – 11:00 PM",
+              "Sunday: 10:30 AM – 11:00 PM"
+            ],
+            "location": {
+              "lat": 35.702008299999996,
+              "lng": 139.7712982
+            },
+            "travelToNext": "15 minute drive",
+            "placeId": "ChIJyR7AdR6MGGAROowxIYdMsj0"
+          },
+          {
+            "type": "activity",
+            "name": "Kanda Myoujin Shrine",
+            "address": "2-chōme-16-2 Sotokanda, Chiyoda City, Tokyo 101-0021, Japan",
+            "location": {
+              "lat": 35.702018599999995,
+              "lng": 139.7678943
+            },
+            "description": "A historic Shinto shrine in Akihabara known as a place of worship for technology and business success, with traditional architecture and grounds.",
+            "categoryTag": "Landmark · Sotokanda",
+            "startTime": "15:45",
+            "durationMinutes": 225,
+            "mealType": null,
+            "travelToNext": "30 minute drive",
+            "photoUrl": "/demo/tokyo/17-kanda-myoujin-shrine.jpg",
+            "rating": 4.4,
+            "ratingCount": 26051,
+            "priceLevel": null,
+            "hasHours": true,
+            "weekdayDescriptions": [
+              "Monday: Open 24 hours",
+              "Tuesday: Open 24 hours",
+              "Wednesday: Open 24 hours",
+              "Thursday: Open 24 hours",
+              "Friday: Open 24 hours",
+              "Saturday: Open 24 hours",
+              "Sunday: Open 24 hours"
+            ]
+          },
+          {
+            "type": "meal",
+            "name": "Teppan Baby",
+            "categoryTag": "Restaurant · Kabukichō",
+            "description": "An izakaya restaurant in Kabukicho serving Japanese pub-style dishes and drinks in the heart of Shinjuku's entertainment district.",
+            "startTime": "20:00",
+            "durationMinutes": 120,
+            "mealType": "dinner",
+            "travelToNext": "5 minute drive",
+            "photoUrl": "/demo/tokyo/18-teppan-baby.jpg",
+            "location": {
+              "lat": 35.6940479,
+              "lng": 139.7012389
+            },
+            "address": "Japan, 〒160-0021 Tokyo, Shinjuku City, Kabukichō, 1-chōme−17−４ Pocket Building, B1F",
+            "rating": 4.7,
+            "ratingCount": 3725,
+            "hasHours": true,
+            "weekdayDescriptions": [
+              "Monday: 5:00 PM – 2:00 AM",
+              "Tuesday: 5:00 PM – 2:00 AM",
+              "Wednesday: 5:00 PM – 2:00 AM",
+              "Thursday: 5:00 PM – 2:00 AM",
+              "Friday: 5:00 PM – 2:00 AM",
+              "Saturday: 5:00 PM – 2:00 AM",
+              "Sunday: 5:00 PM – 12:00 AM"
+            ],
+            "priceLevel": "PRICE_LEVEL_MODERATE",
+            "placeId": "ChIJLZrOfdeMGGARdcjAP55yY00"
+          },
+          {
+            "time": "dinner",
+            "type": "meal",
+            "name": "Omoide Yokocho Memory Lane",
+            "categoryTag": "Landmark · Nishishinjuku",
+            "description": "A narrow alley lined with tiny yakitori stalls and nostalgic izakayas, where locals and visitors gather for grilled skewers and drinks in a post-war Showa-era atmosphere.",
+            "startTime": "22:05",
+            "durationMinutes": 60,
+            "mealType": null,
+            "address": "1-chōme-2-2 Nishishinjuku, Shinjuku City, Tokyo 160-0023, Japan",
+            "rating": 4.2,
+            "ratingCount": 15414,
+            "priceLevel": null,
+            "photoUrl": "/demo/tokyo/19-omoide-yokocho-memory-lane.jpg",
+            "hasHours": true,
+            "weekdayDescriptions": [
+              "Monday: Open 24 hours",
+              "Tuesday: Open 24 hours",
+              "Wednesday: Open 24 hours",
+              "Thursday: Open 24 hours",
+              "Friday: Open 24 hours",
+              "Saturday: Open 24 hours",
+              "Sunday: Open 24 hours"
+            ],
+            "location": {
+              "lat": 35.692703699999996,
+              "lng": 139.6995778
+            },
+            "travelToNext": "20 minute drive"
+          },
+          {
+            "time": "evening",
+            "type": "activity",
+            "name": "New York Bar",
+            "categoryTag": "Bar · Nishishinjuku",
+            "description": "An iconic 52nd-floor cocktail bar with floor-to-ceiling windows overlooking Shinjuku and Tokyo's glittering night, a quintessential nightlife venue for both visitors and locals.",
+            "startTime": "23:25",
+            "durationMinutes": 90,
+            "mealType": null,
+            "address": "パークハイアット東京, 52階, 3-chōme-7-1-2 Nishishinjuku, Shinjuku City, Tokyo 163-1055, Japan",
+            "rating": 4.4,
+            "ratingCount": 489,
+            "priceLevel": "PRICE_LEVEL_VERY_EXPENSIVE",
+            "photoUrl": "/demo/tokyo/20-new-york-bar.jpg",
+            "hasHours": true,
+            "weekdayDescriptions": [
+              "Monday: 5:00 PM – 12:00 AM",
+              "Tuesday: 5:00 PM – 12:00 AM",
+              "Wednesday: 5:00 PM – 12:00 AM",
+              "Thursday: 5:00 PM – 12:00 AM",
+              "Friday: 5:00 PM – 12:00 AM",
+              "Saturday: 5:00 PM – 12:00 AM",
+              "Sunday: 5:00 PM – 12:00 AM"
+            ],
+            "location": {
+              "lat": 35.686113,
+              "lng": 139.6904009
+            },
+            "travelToNext": "20 minute drive"
+          },
+          {
+            "type": "accommodation",
+            "name": "Mandarin Oriental, Tokyo",
+            "categoryTag": "Hotel · Nihonbashimuromachi",
+            "address": "2-chōme-1-1 Nihonbashimuromachi, Chuo City, Tokyo 103-8328, Japan",
+            "rating": null,
+            "ratingCount": null,
+            "photoUrl": "/demo/tokyo/01-mandarin-oriental-tokyo.jpg",
+            "location": {
+              "lat": 35.6870475,
+              "lng": 139.7730634
+            },
+            "hasHours": false,
+            "weekdayDescriptions": null,
+            "mealType": null,
+            "durationMinutes": null,
+            "travelToNext": null,
+            "startTime": "01:15",
+            "description": "Back at Mandarin Oriental, Tokyo."
+          }
+        ],
+        "stopCount": 6,
+        "pacingLevel": 0.75
+      },
+      {
+        "day": 2,
+        "theme": "Modern Architecture & Pop Culture",
+        "breakfastAtAccommodation": false,
+        "items": [
+          {
+            "type": "accommodation",
+            "name": "Mandarin Oriental, Tokyo",
+            "categoryTag": "Hotel · Nihonbashimuromachi",
+            "address": "2-chōme-1-1 Nihonbashimuromachi, Chuo City, Tokyo 103-8328, Japan",
+            "rating": null,
+            "ratingCount": null,
+            "photoUrl": "/demo/tokyo/01-mandarin-oriental-tokyo.jpg",
+            "location": {
+              "lat": 35.6870475,
+              "lng": 139.7730634
+            },
+            "hasHours": false,
+            "weekdayDescriptions": null,
+            "mealType": null,
+            "durationMinutes": null,
+            "travelToNext": "20 minute drive",
+            "startTime": "08:40",
+            "description": "Leave Mandarin Oriental, Tokyo for breakfast."
+          },
+          {
+            "type": "meal",
+            "name": "Blue Bottle Coffee Aoyama",
+            "categoryTag": "Café · Minamiaoyama",
+            "description": "A specialty coffee shop in the upscale Aoyama neighborhood offering carefully prepared pour-over coffee, espresso drinks, and light breakfast items.",
+            "startTime": "09:00",
+            "durationMinutes": 120,
+            "mealType": "breakfast",
+            "travelToNext": "15 minute drive",
+            "photoUrl": "/demo/tokyo/21-blue-bottle-coffee-aoyama.jpg",
+            "location": {
+              "lat": 35.6652485,
+              "lng": 139.7138799
+            },
+            "address": "Japan, 〒107-0062 Tokyo, Minato City, Minamiaoyama, 3-chōme−13−１４ 増田ビル 2階",
+            "rating": 4.2,
+            "ratingCount": 3150,
+            "hasHours": true,
+            "weekdayDescriptions": [
+              "Monday: 8:00 AM – 7:00 PM",
+              "Tuesday: 8:00 AM – 7:00 PM",
+              "Wednesday: 8:00 AM – 7:00 PM",
+              "Thursday: 8:00 AM – 7:00 PM",
+              "Friday: 8:00 AM – 7:00 PM",
+              "Saturday: 8:00 AM – 7:00 PM",
+              "Sunday: 8:00 AM – 7:00 PM"
+            ],
+            "priceLevel": "PRICE_LEVEL_INEXPENSIVE",
+            "placeId": "ChIJ6VIU1J-MGGARbBb5g_Wg8Ec"
+          },
+          {
+            "time": "morning",
+            "type": "activity",
+            "name": "Mori Art Museum",
+            "categoryTag": "Museum · Roppongi",
+            "description": "A contemporary art museum on the 53rd floor of Roppongi Hills showcasing cutting-edge works and architecture, with sweeping city views and carefully curated exhibitions.",
+            "startTime": "11:15",
+            "durationMinutes": 120,
+            "mealType": null,
+            "address": "Japan, 〒106-6150 Tokyo, Minato City, Roppongi, 6-chōme−10−１ Roppongi Hills Mori Tower, 53階",
+            "rating": 4.3,
+            "ratingCount": 7410,
+            "priceLevel": null,
+            "photoUrl": "/demo/tokyo/22-mori-art-museum.jpg",
+            "hasHours": true,
+            "weekdayDescriptions": [
+              "Monday: 10:00 AM – 10:00 PM",
+              "Tuesday: 10:00 AM – 5:00 PM",
+              "Wednesday: 10:00 AM – 10:00 PM",
+              "Thursday: 10:00 AM – 10:00 PM",
+              "Friday: 10:00 AM – 10:00 PM",
+              "Saturday: 10:00 AM – 10:00 PM",
+              "Sunday: 10:00 AM – 10:00 PM"
+            ],
+            "location": {
+              "lat": 35.6604621,
+              "lng": 139.7292785
+            },
+            "travelToNext": "15 minute drive"
+          },
+          {
+            "type": "meal",
+            "name": "Tsukishima Monja Okoge Shibuya",
+            "categoryTag": "Restaurant · Udagawachō",
+            "description": "A restaurant in Shibuya specializing in monjayaki, a Tokyo-style savory pancake cooked on a griddle at your table with various toppings.",
+            "startTime": "13:30",
+            "durationMinutes": 120,
+            "mealType": "lunch",
+            "travelToNext": "20 minute drive",
+            "photoUrl": "/demo/tokyo/23-tsukishima-monja-okoge-shibuya.jpg",
+            "location": {
+              "lat": 35.660449299999996,
+              "lng": 139.699402
+            },
+            "address": "Japan, 〒150-0042 Tokyo, Shibuya, Udagawachō, 24−８ Gintei Bldg., 1F, 2F & 3F",
+            "rating": 4.9,
+            "ratingCount": 33908,
+            "hasHours": true,
+            "weekdayDescriptions": [
+              "Monday: 10:45 AM – 11:00 PM",
+              "Tuesday: 10:45 AM – 11:00 PM",
+              "Wednesday: 10:45 AM – 11:00 PM",
+              "Thursday: 10:45 AM – 11:00 PM",
+              "Friday: 10:45 AM – 11:00 PM",
+              "Saturday: 10:30 AM – 11:00 PM",
+              "Sunday: 10:30 AM – 11:00 PM"
+            ],
+            "priceLevel": "PRICE_LEVEL_MODERATE",
+            "placeId": "ChIJoSq01FyNGGARuu4izIPSdRs"
+          },
+          {
+            "time": "lunch",
+            "type": "meal",
+            "name": "bills Omotesando",
+            "categoryTag": "Restaurant · Jingūmae",
+            "description": "A casual restaurant and cafe in Omotesando known for serving Australian-style breakfast dishes and brunch throughout the day.",
+            "startTime": "15:50",
+            "durationMinutes": 120,
+            "mealType": null,
+            "address": "Japan, 〒150-0001 Tokyo, Shibuya, Jingūmae, 4-chōme−30−３ 東急プラザ 表参道原宿 7F",
+            "rating": 4,
+            "ratingCount": 3549,
+            "priceLevel": null,
+            "photoUrl": "/demo/tokyo/02-bills-omotesando.jpg",
+            "hasHours": true,
+            "weekdayDescriptions": [
+              "Monday: 8:30 AM – 10:00 PM",
+              "Tuesday: 8:30 AM – 10:00 PM",
+              "Wednesday: 8:30 AM – 10:00 PM",
+              "Thursday: 8:30 AM – 10:00 PM",
+              "Friday: 8:30 AM – 10:00 PM",
+              "Saturday: 8:30 AM – 10:00 PM",
+              "Sunday: 8:30 AM – 10:00 PM"
+            ],
+            "location": {
+              "lat": 35.6685817,
+              "lng": 139.7057812
+            },
+            "travelToNext": "10 minute drive"
+          },
+          {
+            "time": "afternoon",
+            "type": "activity",
+            "name": "Takeshita Street",
+            "categoryTag": "Landmark · Jingūmae",
+            "description": "Harajuku's iconic fashion and anime pop-culture hub where anime shops, character boutiques and youth culture converge on Japan's most vibrant style street.",
+            "startTime": "18:00",
+            "durationMinutes": 105,
+            "mealType": null,
+            "address": "1-chōme-16-6 Jingūmae, Shibuya, Tokyo 150-0001, Japan",
+            "rating": 4.2,
+            "ratingCount": 1707,
+            "priceLevel": null,
+            "photoUrl": "/demo/tokyo/24-takeshita-street.jpg",
+            "hasHours": true,
+            "weekdayDescriptions": [
+              "Monday: Open 24 hours",
+              "Tuesday: Open 24 hours",
+              "Wednesday: Open 24 hours",
+              "Thursday: Open 24 hours",
+              "Friday: Open 24 hours",
+              "Saturday: Open 24 hours",
+              "Sunday: Open 24 hours"
+            ],
+            "location": {
+              "lat": 35.6712601,
+              "lng": 139.7046761
+            },
+            "travelToNext": "15 minute drive"
+          },
+          {
+            "time": "dinner",
+            "type": "meal",
+            "name": "Momo Paradise Shinjuku Higashi-guchi",
+            "categoryTag": "Restaurant · Shinjuku",
+            "description": "A hot pot restaurant in Shinjuku offering all-you-eat shabu-shabu and sukiyaki with a variety of meats and vegetables cooked at the table.",
+            "startTime": "20:00",
+            "durationMinutes": 120,
+            "mealType": "dinner",
+            "address": "Japan, 〒160-0022 Tokyo, Shinjuku City, Shinjuku, 3-chōme−28−１０ ヒューマックスパビリオン新宿東口 3F・4F",
+            "rating": 4.9,
+            "ratingCount": 12441,
+            "priceLevel": "PRICE_LEVEL_MODERATE",
+            "photoUrl": "/demo/tokyo/25-momo-paradise-shinjuku-higashi-guchi.jpg",
+            "hasHours": true,
+            "weekdayDescriptions": [
+              "Monday: 11:30 AM – 3:00 PM, 5:00 – 10:30 PM",
+              "Tuesday: 11:30 AM – 3:00 PM, 5:00 – 10:30 PM",
+              "Wednesday: 11:30 AM – 3:00 PM, 5:00 – 10:30 PM",
+              "Thursday: 11:30 AM – 3:00 PM, 5:00 – 10:30 PM",
+              "Friday: 11:30 AM – 3:00 PM, 5:00 – 10:30 PM",
+              "Saturday: 11:30 AM – 3:00 PM, 5:00 – 10:30 PM",
+              "Sunday: 11:30 AM – 3:00 PM, 5:00 – 10:30 PM"
+            ],
+            "location": {
+              "lat": 35.6910075,
+              "lng": 139.7026367
+            },
+            "travelToNext": "25 minute drive"
+          },
+          {
+            "type": "accommodation",
+            "name": "Mandarin Oriental, Tokyo",
+            "categoryTag": "Hotel · Nihonbashimuromachi",
+            "address": "2-chōme-1-1 Nihonbashimuromachi, Chuo City, Tokyo 103-8328, Japan",
+            "rating": null,
+            "ratingCount": null,
+            "photoUrl": "/demo/tokyo/01-mandarin-oriental-tokyo.jpg",
+            "location": {
+              "lat": 35.6870475,
+              "lng": 139.7730634
+            },
+            "hasHours": false,
+            "weekdayDescriptions": null,
+            "mealType": null,
+            "durationMinutes": null,
+            "travelToNext": null,
+            "startTime": "22:25",
+            "description": "Back at Mandarin Oriental, Tokyo."
+          }
+        ],
+        "stopCount": 6,
+        "pacingLevel": 0.75
       }
     ],
     "pacingLabel": "Relaxed"
@@ -975,15 +981,15 @@ export const TOKYO_2_DAYS: ResolvedItinerary = {
 // rather than keeping its own copy, so the card, the Finalise screen and the
 // itinerary's bookend stops can never disagree about which hotel this is.
 export const TOKYO_ACCOMMODATION = {
-  "placeId": "ChIJ718ioimPGGARcwFhGRknToY",
-  "name": "ONE@Tokyo by insomnia",
-  "categoryTag": "Hotel · Oshiage",
-  "address": "1-chōme-19-3 Oshiage, Sumida City, Tokyo 131-0045, Japan",
+  "placeId": "ChIJ281VfFWJGGARYaR_hmZuo0I",
+  "name": "Mandarin Oriental, Tokyo",
+  "categoryTag": "Hotel · Nihonbashimuromachi",
+  "address": "2-chōme-1-1 Nihonbashimuromachi, Chuo City, Tokyo 103-8328, Japan",
   "priceLevelLabel": null,
-  "photoUrl": "/demo/tokyo/01-one-tokyo-by-insomnia.jpg",
+  "photoUrl": "/demo/tokyo/01-mandarin-oriental-tokyo.jpg",
   "location": {
-    "lat": 35.711788899999995,
-    "lng": 139.81597779999998
+    "lat": 35.6870475,
+    "lng": 139.7730634
   },
   "budget": "Standard",
   "nights": 2,

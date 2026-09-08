@@ -272,10 +272,13 @@ export const TOKYO_ACCOMMODATION = ${JSON.stringify(accommodation, null, 2)}
 // The last day is a departure day: the traveller checks out and travels, and
 // the pipeline trims its late stops for exactly that reason. Holding it to the
 // same count as a full day deadlocked against that trim.
-// Above this a stop has stopped being a visit. Set clear of the 240-minute
-// ceiling a genuinely absorbing place (a teamLab, a big museum) can justify, so
-// this only catches a block that had nothing else to give its minutes to.
-const MAX_PLAUSIBLE_STAY_MINUTES = 250;
+// Above this a stop has stopped being a visit. First set at 250, clear of the
+// 240 a teamLab or a big museum can justify, which let a shrine ship with 3h45m
+// against it and a shopping street with 3h15m. Neither is a visit; both are a
+// block with too few stops handing its leftover minutes to whatever could hold
+// most of them. 200 is above anything worth three hours and below anything that
+// only got there by default (Akber, 8 Sep 2026).
+const MAX_PLAUSIBLE_STAY_MINUTES = 200;
 
 const MIN_ACTIVITIES_PER_DAY = 3;
 const MIN_ACTIVITIES_FINAL_DAY = 2;
