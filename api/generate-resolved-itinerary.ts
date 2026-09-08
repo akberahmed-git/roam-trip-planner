@@ -1634,8 +1634,24 @@ async function coverMissingInterests(itinerary, { interests, anchor, usedPlaceId
     hasEnoughReviews(candidate) &&
     !isFoodOnly(candidate) &&
     (!anchor || haversineMeters(anchor, candidate.location) <= MAX_BROAD_DISTANCE_METERS) &&
-    withinReachOfStay(candidate.location, stay) &&
-    satisfiesInterest({ ...candidate, placeTypes: candidate.types, mealType: null }, interest);
+    withinReachOfStay(candidate.location, stay);
+
+// Deliberately no satisfiesInterest check on the candidate.
+//
+// That function has two jobs and is only good at one of them. Deciding whether
+// a day already HAS an interest, from a stop the model named, it does well.
+// Validating what a search for that interest just returned, it does terribly:
+// its keyword lists reject Mandarake, Animate, Super Potato, Nakano Broadway
+// and Radio Kaikan as "not anime", and Golden Gai, Womb and Bar Trench as "not
+// nightlife". So this pass would search "anime shop", get Tokyo's best anime
+// shops back, throw every one of them away, and report the interest still
+// missing. That is why the coverage and rebalance passes could never place
+// anything, and why draft after draft was rejected for delivering nothing.
+//
+// The query IS the evidence here. Google was asked for that interest and
+// answered; second-guessing the answer with a word list is how the pass
+// silently did nothing. The other filters still apply: real photo, enough
+// reviews, not food-only, within reach (Akber, 8 Sep 2026).
 
   // One placement per round, and the round picks the best stop available for ANY
   // interest still missing rather than working down the list in order. Then it
@@ -1889,7 +1905,11 @@ async function rebalanceInterests(day, { interests, anchor, usedPlaceIds, stay, 
             !isFoodOnly(c) &&
             (!anchor || haversineMeters(anchor, c.location) <= MAX_BROAD_DISTANCE_METERS) &&
             withinReachOfStay(c.location, stay) &&
-            satisfiesInterest({ ...c, placeTypes: c.types, mealType: null }, wanted) &&
+            // Same reasoning as usable() above: the search was for `wanted`, so
+            // trust it. The one thing still worth checking is that the
+            // replacement is not another of the interest we are trying to thin
+            // out, and satisfiesInterest is reliable in that direction because a
+            // shrine really does say shrine.
             !satisfiesInterest({ ...c, placeTypes: c.types, mealType: null }, interest)
         )
       );
