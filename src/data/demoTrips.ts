@@ -28,7 +28,7 @@ export const DEMO_TRIPS: DemoTrip[] = [
     // The hotel is no longer named there, it is whatever this tier ranks
     // first, so this line is the only thing deciding which tier the demo
     // represents. (8 Sep 2026)
-    budget: 'Standard',
+    budget: 'Luxury',
     accommodation: TOKYO_ACCOMMODATION.name,
     accommodationDetails: TOKYO_ACCOMMODATION,
     savedItinerary: TOKYO_2_DAYS,

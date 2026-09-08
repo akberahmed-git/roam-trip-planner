@@ -996,11 +996,11 @@ export const TOKYO_ACCOMMODATION = {
     "lat": 35.6870475,
     "lng": 139.7730634
   },
-  "budget": "Standard",
+  "budget": "Luxury",
   "nights": 2,
   "priceRange": {
-    "min": 15000,
-    "max": 80000,
+    "min": 120000,
+    "max": 250000,
     "currencyCode": "JPY",
     "estimated": true
   },
