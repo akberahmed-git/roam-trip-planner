@@ -22,6 +22,7 @@ export function parseTravelMinutes(label) {
 // just guards against a negative minutesToAdd, which shouldn't happen here
 // but costs nothing to handle.
 export function addMinutesToTime(time, minutesToAdd) {
+  if (typeof time !== 'string') return time;
   const [hours, minutes] = time.split(':').map(Number);
   if (Number.isNaN(hours) || Number.isNaN(minutes)) {
     return time;
@@ -32,7 +33,14 @@ export function addMinutesToTime(time, minutesToAdd) {
   return `${String(newHours).padStart(2, '0')}:${String(newMinutes).padStart(2, '0')}`;
 }
 
+// Returns null for anything it cannot read, which now includes a time that is
+// not there at all. A stop the fill pass has just inserted has startTime null
+// until the day is refitted, and the late passes look at the day in between -
+// so this threw "Cannot read properties of null" and failed the whole
+// generation with a 500. The contract was already "null if I cannot parse it";
+// null in now means null out rather than a crash (Akber, 8 Sep 2026).
 export function timeToMinutes(time) {
+  if (typeof time !== 'string') return null;
   const [hours, minutes] = time.split(':').map(Number);
   if (Number.isNaN(hours) || Number.isNaN(minutes)) {
     return null;

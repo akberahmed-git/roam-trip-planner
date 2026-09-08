@@ -53,8 +53,10 @@ function clampToWindow(time, window) {
   const minutes = timeToMinutes(time);
   const startMinutes = timeToMinutes(window.start);
   const endMinutes = timeToMinutes(window.end);
-  if (minutes == null) {
-    return window.start;
+  // A window whose own bounds will not parse cannot clamp anything, so the time
+  // is handed back untouched rather than snapped to a value that means nothing.
+  if (minutes == null || startMinutes == null || endMinutes == null) {
+    return minutes == null ? window.start : time;
   }
   if (minutes < startMinutes) {
     return window.start;
@@ -461,9 +463,12 @@ function applyAccommodationBookends(day, accommodationDetails, mealDuration) {
 // saved trip / a hotel with no captured location, where
 // applyAccommodationBookends is skipped entirely and the day could still
 // open on a non-meal item with an out-of-range startTime.
+const EARLIEST_START_MINUTES = 9 * 60;
+
 function enforceEarliestStart(day) {
   const first = day.items[0];
-  if (first?.startTime && timeToMinutes(first.startTime) < timeToMinutes('09:00')) {
+  const startsAt = first?.startTime ? timeToMinutes(first.startTime) : null;
+  if (startsAt != null && startsAt < EARLIEST_START_MINUTES) {
     first.startTime = '09:00';
   }
 }
