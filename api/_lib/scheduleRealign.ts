@@ -346,7 +346,14 @@ export const TRAVEL_GRID_MINUTES = 5;
 // (which reads as absurd) while still letting four hours land on a castle
 // (which doesn't). Keyword-based, so it is a heuristic nudge: a place whose name
 // gives nothing away just gets the neutral middle.
-const LINGER_ACTIVITY_CEILING_MINUTES = 240;
+// Must stay BELOW the demo audit's marathon cap (200 minutes, in
+// reseed-tokyo-demo.js). At 240 the two disagreed: the scheduler thought a
+// four-hour stop was fine, so starvedBlocks saw no shortfall and never asked for
+// another stop, and the audit then rejected the draft for a stay the scheduler
+// had deliberately chosen. Under the cap, anything that ships over it can only
+// have come from fitBlock's overflow, which starvedBlocks does catch
+// (Akber, 8 Sep 2026).
+const LINGER_ACTIVITY_CEILING_MINUTES = 180;
 const NEUTRAL_ACTIVITY_CEILING_MINUTES = 150;
 const QUICK_ACTIVITY_CEILING_MINUTES = 90;
 
@@ -358,7 +365,11 @@ const LINGER_KEYWORDS = ['park', 'garden', 'jardim', 'beach', 'praia', 'spa', 't
 const QUICK_KEYWORDS = ['viewpoint', 'miradouro', 'lookout', 'church', 'igreja', 'chapel', 'capela', 'monument', 'statue', 'memorial', 'fountain'];
 
 export function activityCeiling(item) {
-  const text = `${item.name || ''} ${item.description || ''}`.toLowerCase();
+  // Name only. Reading the description too made Meiji Jingu a park, because the
+  // model wrote that the shrine sits in a forested park, and a shrine then drew
+  // the four-hour ceiling meant for the park itself. The name says what a place
+  // is; the description says what is near it (Akber, 8 Sep 2026).
+  const text = `${item.name || ''}`.toLowerCase();
   if (LINGER_KEYWORDS.some((word) => text.includes(word))) return LINGER_ACTIVITY_CEILING_MINUTES;
   if (QUICK_KEYWORDS.some((word) => text.includes(word))) return QUICK_ACTIVITY_CEILING_MINUTES;
   return NEUTRAL_ACTIVITY_CEILING_MINUTES;
