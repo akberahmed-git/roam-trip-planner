@@ -168,7 +168,36 @@ Use this exact structure:
 }`;
 }
 
-function buildSlowPrompt(p) {
+// Every place the other plan already took, as a flat unique list of names.
+function placeNamesOf(itinerary) {
+  const names: string[] = [];
+  for (const day of itinerary?.days || []) {
+    for (const item of day?.items || []) {
+      if (item?.name) names.push(String(item.name));
+    }
+  }
+  return [...new Set(names)];
+}
+
+// The rule that stops the second option being the first one reshuffled. Empty
+// when the packed call failed, in which case the slow plan is generated blind
+// exactly as it always was rather than the whole trip failing with it.
+function buildSecondOptionRule(avoid) {
+  if (!avoid || avoid.length === 0) return '';
+  return `
+
+CRITICAL SECOND-OPTION RULE (strictly enforced): The traveller sees this plan side by side with a busier alternative, and picks one. That alternative already uses the places listed at the end of this rule. Choose different ones.
+
+A second option built from the same restaurants and the same landmarks is not a second option, it is the first one shuffled, and the comparison is the entire reason two are shown. This applies to other branches of the same business as much as to the exact place: if the other plan eats at one branch of a ramen chain, do not pick another branch of it.
+
+A city large enough to visit has more than enough alternatives, so treat this as a hard rule. The single exception: if a sight is so essential that a first-time visitor leaving without it would be strange, you may reuse ONE such place across the whole plan, and only one.
+
+Already used by the other plan, do not reuse:
+${avoid.map((name) => `- ${name}`).join('\n')}
+`;
+}
+
+function buildSlowPrompt(p, avoid) {
   return `You are generating a trip itinerary for a travel planning app.
 
 Trip details:
@@ -218,6 +247,7 @@ This is deliberately weaker than the rules marked strictly enforced, because it 
 
 CRITICAL SEQUENCE RULE (strictly enforced): The order of the stops must make sense on a map, not just on a clock. Once the day moves to a new area, finish everything there before moving on. Never travel a long way to a place and then travel a long way back past where you started — no going across town, then back across town, then across again. Two stops that sit near each other must be consecutive, never separated by a stop on the far side of the city. Read the day back to yourself as a line on a map before you answer: it should read as a progression, not a zig-zag.
 
+${buildSecondOptionRule(avoid)}
 ${ITEM_SHAPE_INSTRUCTIONS}
 
 Use this exact structure:
@@ -348,15 +378,21 @@ async function callClaude(prompt) {
 export async function generateRawItinerary(params) {
   const p = buildTripPreamble(params);
 
-  // Two parallel calls - one per variant - instead of one combined call.
-  // Haiku is ~5-10x faster per token than Sonnet, and parallelising the two
-  // variants cuts wall-clock time roughly in half compared to running them
-  // sequentially. Each call only needs to produce ~3,150 tokens for a 3-day
-  // trip, so 8192 max_tokens is plenty.
-  const [packedRaw, slowRaw] = await Promise.all([
-    callClaude(buildPackedPrompt(p)),
-    callClaude(buildSlowPrompt(p)),
-  ]);
+  // These used to run as two parallel calls, which halved wall-clock time and
+  // was the right trade until you looked at what came back. Neither call could
+  // see the other, so both reached for the same city's obvious answers: the
+  // Tokyo demo shipped Ichiran, Gonpachi, Kanda Myoujin, Tsukiji, Meiji Jingu,
+  // Roppongi Hills and two branches of Afuri in BOTH plans. More than half of
+  // the slow trip was the packed trip reshuffled, in a product whose entire
+  // interaction is comparing the two.
+  //
+  // So packed goes first and slow is told what it took. The cost is real and
+  // paid by every live generation, not just the demo: this is now sequential,
+  // so roughly double the wall-clock of the parallel version. Worth it, because
+  // a second option that duplicates the first is not a second option and the
+  // time spent producing it was wasted anyway (Akber, 8 Sep 2026).
+  const packedRaw = await callClaude(buildPackedPrompt(p));
+  const slowRaw = await callClaude(buildSlowPrompt(p, placeNamesOf(packedRaw)));
 
   const parsed = { packed: packedRaw, slow: slowRaw };
 
