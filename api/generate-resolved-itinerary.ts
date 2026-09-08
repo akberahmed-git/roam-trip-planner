@@ -21,7 +21,7 @@ import {
   clampStayDurations,
   dayCutoffMinutes
 } from './_lib/scheduleRealign.js';
-import { applyFixedSchedule, orderBlocksByOpeningHours, dedupeMeals, starvedBlocks, unsuitableStops, roomForAnotherStop, eveningInsertPoint, hasEnoughReviews, numberedStopCount, setReviewFloor, currentReviewFloor, isNightVenue, MAX_NUMBERED_STOPS_PER_DAY } from './_lib/fixedSchedule.js';
+import { applyFixedSchedule, orderBlocksByOpeningHours, dedupeMeals, starvedBlocks, unsuitableStops, roomForAnotherStop, eveningInsertPoint, hasEnoughReviews, numberedStopCount, setReviewFloor, currentReviewFloor, isNightVenue, lastShortenedStops, MAX_NUMBERED_STOPS_PER_DAY } from './_lib/fixedSchedule.js';
 import { sortByBudgetFit, isOffBandDining } from './_lib/budgetFit.js';
 import { uncoveredInterests, satisfiesInterest, isEveningInterest, interestKey } from './_lib/interestCoverage.js';
 import { isDeclinedPlace } from './_lib/declinedPlaces.js';
@@ -3011,7 +3011,12 @@ async function resolveItinerary(itinerary, destination, anchor, transport, accom
         }
       }
 
-      const dropped = unsuitable.filter((entry) => !day.items[entry.index]?.mealType);
+      // Never a must-see. Same rule as settleDay: it is moved or shortened,
+      // and what cannot be fixed ships with the audit saying so.
+      const dropped = unsuitable.filter((entry) => {
+        const item = day.items[entry.index];
+        return item && !item.mealType && !pinned(item);
+      });
       for (const entry of [...dropped].sort((a, b) => b.index - a.index)) {
         if (entry.index > 0) day.items[entry.index - 1].travelToNext = null;
         day.items.splice(entry.index, 1);
@@ -3250,7 +3255,24 @@ async function settleDay(day, context) {
     const shut =
       weekday == null
         ? []
-        : unsuitableStops(day, weekday, budget).filter((entry) => !day.items[entry.index]?.mealType);
+        : unsuitableStops(day, weekday, budget).filter((entry) => {
+            const item = day.items[entry.index];
+            if (!item || item.mealType) return false;
+            // A must-see is never dropped by this loop. If it is shut at its
+            // hour the reorder above moves it and the shortening in
+            // unsuitableStops trims it; what neither can fix ships as it is
+            // and the audit says so, rather than the plan quietly losing the
+            // one stop the traveller named.
+            if (typeof pinned === 'function' && pinned(item)) {
+              console.info(`[generate-resolved-itinerary] day ${day.day}: keeping ${item.name} despite "${entry.reason}", the traveller asked for it`);
+              return false;
+            }
+            return true;
+          });
+    const shortened = weekday == null ? [] : lastShortenedStops();
+    if (shortened.length > 0) {
+      console.info(`[generate-resolved-itinerary] day ${day.day}: ${shortened.join('; ')} ${label}`);
+    }
     for (const entry of [...shut].sort((a, b) => b.index - a.index)) {
       if (entry.index > 0) day.items[entry.index - 1].travelToNext = null;
       day.items.splice(entry.index, 1);
@@ -3260,6 +3282,8 @@ async function settleDay(day, context) {
         `[generate-resolved-itinerary] day ${day.day}: dropped ${shut.length} stop(s) shut at their hour ${label}: ` +
           shut.map((e) => `${e.name} (${e.reason})`).join('; ')
       );
+    }
+    if (shut.length > 0 || shortened.length > 0) {
       await computeTravelTimes(day.items, transport);
       applyFixedSchedule(day, options);
     }
@@ -3318,6 +3342,7 @@ async function settleDay(day, context) {
       shut.length === 0 &&
       rebalanced.length === 0 &&
       overrunMeals.length === 0 &&
+      shortened.length === 0 &&
       !stillBent
     )
       break;

@@ -241,7 +241,16 @@ function closedStopCount(day, weekdayIndex) {
     if (item.type === 'accommodation' || !item.startTime || !item.weekdayDescriptions) continue;
     const at = timeToMinutes(item.startTime);
     if (at == null) continue;
-    if (isOpenAt(item.weekdayDescriptions, weekdayIndex, at) === false) count++;
+    if (isOpenAt(item.weekdayDescriptions, weekdayIndex, at) === false) { count++; continue; }
+    // A stop that opens fine and shuts before the traveller leaves counts too,
+    // or the reorder never moves the museum that closes at 18:00 ahead of the
+    // tower that closes at 22:00. The Ghibli Museum was dropped for exactly
+    // that on the slow plan, and it was the one stop the traveller had asked
+    // for by name (Akber, 8 Sep 2026).
+    if (!item.mealType) {
+      const closing = closesAt(item.weekdayDescriptions, weekdayIndex);
+      if (closing != null && at + (item.durationMinutes || 0) > closing + CLOSING_GRACE_MINUTES) count++;
+    }
   }
   return count;
 }
@@ -331,7 +340,15 @@ export function isNightVenue(item) {
   return NIGHT_VENUE.test(`${item.name || ''} ${item.categoryTag || ''}`);
 }
 
+// What the last unsuitableStops call shortened rather than dropped. Read by
+// settleDay so a shortened stay counts as a change and buys a refit.
+let shortenedStops: string[] = [];
+export function lastShortenedStops() {
+  return shortenedStops;
+}
+
 export function unsuitableStops(day, weekdayIndex, budget, minReviews = undefined) {
+  shortenedStops = [];
   const found: any[] = [];
   const dinnerIndex = indexOfMeal(day, 'dinner');
 
@@ -366,6 +383,18 @@ export function unsuitableStops(day, weekdayIndex, budget, minReviews = undefine
       const closing = closesAt(item.weekdayDescriptions, weekdayIndex);
       const ends = at + (item.durationMinutes || 0);
       if (closing != null && ends > closing + CLOSING_GRACE_MINUTES) {
+        // Shorten before dropping. A museum reached at 15:50 that shuts at
+        // 18:00 is a two-hour visit, not a stop to delete; deleting it was how
+        // the Ghibli Museum left the slow plan. The stay is cut to what fits,
+        // the refit spreads the freed time, and only a visit that would be left
+        // shorter than the floor is dropped.
+        const fits = closing + CLOSING_GRACE_MINUTES - at;
+        const shortened = Math.floor(fits / STAY_DURATION_INCREMENT_MINUTES) * STAY_DURATION_INCREMENT_MINUTES;
+        if (shortened >= floorMinutes) {
+          item.durationMinutes = shortened;
+          shortenedStops.push(`${item.name} cut to ${shortened}m to finish by ${minutesToTime(closing)}`);
+          return;
+        }
         found.push({
           index,
           name: item.name,
