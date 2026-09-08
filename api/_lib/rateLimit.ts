@@ -48,9 +48,28 @@ const DAY_SECONDS = 60 * 60 * 24;
 //
 // Turning someone away is cheap here: the 429 renders as an example trip, not
 // an error, so a visitor past the cap still sees the product working.
+//
+// Both ceilings can be raised from the environment without touching this file.
+// The reason is a real one: an afternoon of re-seeding the demo spent the whole
+// day's twenty generations and locked the live link for everyone, because
+// maintenance and visitors draw on the same budget. Raising the number in code
+// meant a commit to raise it and a second commit to put it back, with the
+// obvious failure mode of forgetting the second one and leaving production
+// uncapped in a way nobody would notice until the bill.
+//
+// So the safe value lives here as the default and the override lives in Vercel,
+// where it can be deleted again in one action. Anything missing, unparseable or
+// not positive falls back to the default rather than to no limit, because a
+// typo in an environment variable must not be the thing that removes the only
+// spend ceiling this app has (Akber, 8 Sep 2026).
+function dailyLimit(name, fallback) {
+  const raw = Number(process.env[name]);
+  return Number.isFinite(raw) && raw > 0 ? Math.floor(raw) : fallback;
+}
+
 export const LIMITS = {
-  trip: { perIp: null, global: 20 },
-  hotel: { perIp: null, global: 200 },
+  trip: { perIp: null, global: dailyLimit('TRIP_DAILY_LIMIT', 20) },
+  hotel: { perIp: null, global: dailyLimit('HOTEL_DAILY_LIMIT', 200) },
 };
 
 // Vercel puts the real client address at the front of x-forwarded-for; the
