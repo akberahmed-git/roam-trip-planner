@@ -11,10 +11,12 @@ import {
 import { dayShape } from './routeShape.js';
 import { isOpenAt, closesAt } from './openingHours.js';
 import { isOffBandDining } from './budgetFit.js';
+import { isDeclinedPlace } from './declinedPlaces.js';
 
 // Fifteen minutes of grace, so a stop finishing exactly as the doors close is
 // not a rejection. Used by the closing-overrun check below.
 const CLOSING_GRACE_MINUTES = 15;
+
 function minutesToTime(minutes) {
   const total = ((Math.round(minutes) % 1440) + 1440) % 1440;
   return `${String(Math.floor(total / 60)).padStart(2, '0')}:${String(total % 60).padStart(2, '0')}`;
@@ -390,6 +392,13 @@ export function unsuitableStops(day, weekdayIndex, budget, minReviews = undefine
     // userRatingCount, so hours present and reviews absent means Google has none,
     // while hours absent means we cannot tell and the stop is left alone. Same
     // principle as the hours check above: silence is not evidence.
+    // Named by the traveller as somewhere they do not want to go. Dropped like
+    // any other unsuitable stop, so the fill puts something else in its place.
+    if (isDeclinedPlace(item.name)) {
+      found.push({ index, name: item.name, reason: 'the traveller asked for this one to be left out' });
+      return;
+    }
+
     if (MEMBERS_ONLY.test(`${item.name || ''} ${item.description || ''}`)) {
       found.push({ index, name: item.name, reason: 'members only, the traveller cannot go' });
       return;

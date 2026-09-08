@@ -69,6 +69,9 @@ if (!process.execArgv.includes(STRIP)) {
 }
 
 const { isOpenAt, weekdayForDay, closesAt } = await import('../api/_lib/openingHours.ts');
+// Also self-contained, so it loads here too. The audit asks the same list the
+// pipeline does rather than keeping its own.
+const { isDeclinedPlace } = await import('../api/_lib/declinedPlaces.ts');
 // The pipeline's own interest matcher, imported rather than reimplemented.
 // This script used to carry its own keyword lists and they drifted: the
 // pipeline counted a 1393 temple as modern architecture off its description
@@ -524,6 +527,16 @@ function auditDemo(itinerary) {
           );
         }
       }
+      // Blocking. Akber has asked for Tokyo Tower to be gone three times and it
+      // has shipped three times; the pipeline now refuses it in every adoption
+      // path and drops it from the model's draft, and this is the backstop.
+      const declined = items.filter((i) => isDeclinedPlace(i.name));
+      if (declined.length > 0) {
+        problems.push(
+          `${label}: ${declined.map((i) => i.name).join(', ')} - the traveller asked for this to be left out`
+        );
+      }
+
       const noPhoto = items.filter((i) => !i.photoUrl);
       if (noPhoto.length > 0) {
         problems.push(`${label}: ${noPhoto.length} stop(s) with no photo: ${noPhoto.map((i) => i.name).join(', ')}`);

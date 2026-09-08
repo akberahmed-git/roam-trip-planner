@@ -22,6 +22,7 @@ import {
 import { applyFixedSchedule, orderBlocksByOpeningHours, dedupeMeals, starvedBlocks, unsuitableStops, roomForAnotherStop, eveningInsertPoint, hasEnoughReviews, numberedStopCount, setReviewFloor, currentReviewFloor, isNightVenue, MAX_NUMBERED_STOPS_PER_DAY } from './_lib/fixedSchedule.js';
 import { sortByBudgetFit, isOffBandDining } from './_lib/budgetFit.js';
 import { uncoveredInterests, satisfiesInterest, isEveningInterest, interestKey } from './_lib/interestCoverage.js';
+import { isDeclinedPlace } from './_lib/declinedPlaces.js';
 import { weekdayForDay, isOpenAt, closesAt } from './_lib/openingHours.js';
 import { shapeOf, dayShape, REORDER_REVERSAL_DEGREES } from './_lib/routeShape.js';
 import { describeAdoptedStops, stripAdoptionMarkers } from './_lib/describeAdoptedStops.js';
@@ -550,6 +551,7 @@ function isUsableCandidate(candidate) {
   if (!candidate.availablePhotoUrl) return false;
   if (!hasReadableName(candidate.name)) return false;
   if (MARKER_NAME_PATTERNS.some((pattern) => pattern.test(candidate.name))) return false;
+  if (isDeclinedPlace(candidate.name)) return false;
   // pickSubstitute and enforceDriveCap are the two adoption paths that ran with
   // no review check whatsoever - they filter on this function alone and then
   // take preferWithPhoto, which has no threshold either. Every other pass had a
