@@ -468,9 +468,10 @@ function auditDemo(itinerary) {
         // Per stop and per variant, not one merged blob for the whole trip.
         // Merged, a single incidental word anywhere cleared an interest for
         // both plans at once.
-        seenInterestText[variant].push(
-          `${item.name} ${item.categoryTag || ''} ${item.description || ''}`.toLowerCase()
-        );
+        seenInterestText[variant].push({
+          name: (item.name || '').toLowerCase(),
+          text: `${item.name} ${item.categoryTag || ''} ${item.description || ''}`.toLowerCase(),
+        });
       }
 
       // Prominence, which the prompt has asked for all along and nothing has
@@ -623,8 +624,37 @@ function auditDemo(itinerary) {
     'temples & shrines': ['temple', 'shrine', 'jinja', 'jingu', 'taisha', 'sensō', 'senso-ji', 'zōjō', 'zojo', 'buddhist', 'shinto', 'pagoda'],
     'anime & pop culture': ['anime', 'manga', 'ghibli', 'akihabara', 'nakano broadway', 'pokemon', 'nintendo', 'gundam', 'otaku', 'cosplay', 'arcade', 'figure', 'pop culture', 'kawaii', 'game centre', 'game center', 'character cafe'],
     nightlife: ['bar', 'club', 'nightlife', 'izakaya', 'golden gai', 'yokocho', 'live music', 'jazz', 'lounge', 'rooftop', 'kabukich', 'night'],
-    'modern architecture': ['architecture', 'tower', 'skytree', 'observation', 'observatory', 'hills', 'midtown', 'forum', 'teamlab', 'skyscraper', 'building', 'deck', 'city view'],
+    'modern architecture': ['skytree', 'hills', 'midtown', 'forum', 'teamlab', 'skyscraper', 'building', 'city view', 'observation deck', 'design sight', 'cocoon'],
   };
+
+  // Places that carry an evidence word but are not the thing the chip means.
+  //
+  // The alternative was dropping 'tower' from the architecture list, which
+  // throws out Mode Gakuen Cocoon Tower and Tokyo Skytree along with it. The
+  // problem was never the word, it was one specific 1958 broadcast tower that
+  // is a landmark rather than a piece of contemporary design, so name that
+  // instead. Matched against the stop's NAME only: a rooftop bar whose
+  // description mentions the view of Tokyo Tower is still a perfectly good
+  // stop, it just is not Tokyo Tower (Akber, 8 Sep 2026).
+  const INTEREST_NOT_EVIDENCE = {
+    'modern architecture': ['tokyo tower'],
+  };
+
+  // Interests that may only be matched on a stop's NAME, never its description.
+  //
+  // Modern architecture is the one category a description will lie about,
+  // because prose mentions buildings constantly. Against name and description
+  // together, Zojo-ji - a temple from 1393 - counted as modern architecture,
+  // because its description says the word. So did Odaiba Marine Park, and so
+  // did amiami Akihabara Figure Tower, which is an anime shop that happens to
+  // occupy a tower.
+  //
+  // Names are far more honest here: Roppongi Hills, Tokyo Midtown and the MORI
+  // Building say what they are, and a temple does not accidentally call itself
+  // a skyscraper. 'tower' came out of the list entirely for the same reason -
+  // it was matching a figure shop and a temple standing near one - which is why
+  // the exclusion above is not enough on its own (Akber, 8 Sep 2026).
+  const INTEREST_NAME_ONLY = new Set(['modern architecture']);
 
   // Whole words. Substring matching is what put "bar" inside Barbecue.
   const mentions = (text, word) =>
@@ -634,8 +664,12 @@ function auditDemo(itinerary) {
     for (const interest of wantedInterests) {
       const evidence = INTEREST_EVIDENCE[interest];
       if (!evidence) continue;
-      const delivered = seenInterestText[variant].some((text) =>
-        evidence.some((word) => mentions(text, word))
+      const excluded = INTEREST_NOT_EVIDENCE[interest] || [];
+      const nameOnly = INTEREST_NAME_ONLY.has(interest);
+      const delivered = seenInterestText[variant].some(
+        (entry) =>
+          !excluded.some((name) => mentions(entry.name, name)) &&
+          evidence.some((word) => mentions(nameOnly ? entry.name : entry.text, word))
       );
       if (!delivered) {
         problems.push(`${variant}: nothing in this plan delivers "${interest}"`);
