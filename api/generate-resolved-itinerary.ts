@@ -2317,9 +2317,23 @@ async function rebalanceInterests(day, { interests, anchor, usedPlaceIds, stay, 
 // activities or fewer. Below it, thinning the day is worse than the repeat.
 const MIN_ACTIVITIES_TO_DROP_A_SURPLUS = 3;
 
+// Whether the day's worst turn is the far end of a trip to a must-see: the
+// pivot itself, or a stop within a short walk of one. Used by the repositioning
+// pass and by the settle loop's bent-day guard, so neither spends rounds
+// trying to straighten a day the traveller drew that shape on purpose.
+const EXCURSION_RADIUS_METERS = 2500;
+function excursionToMustSee(located, shape, pinned) {
+  if (!shape || shape.worstAt == null || shape.worstAt < 0) return false;
+  const pivot = located[shape.worstAt];
+  if (!pivot?.location) return false;
+  return located.some(
+    (item) => pinned(item) && item.location && haversineMeters(item.location, pivot.location) <= EXCURSION_RADIUS_METERS
+  );
+}
+
 const MEAL_LEASH_KM = 4;
 
-async function repositionStrandedStops(day, anchor, usedPlaceIds, stay, interests, itinerary, weekday: number | null = null) {
+async function repositionStrandedStops(day, anchor, usedPlaceIds, stay, interests, itinerary, weekday: number | null = null, pinned: ((item: any) => boolean) | null = null) {
   const capped = interestsAtDayCap(day, itinerary, interests);
   const located = day.items.filter((i) => i.type !== 'accommodation' && i.location);
   const activities = located.filter((i) => !i.mealType);
@@ -2334,6 +2348,14 @@ async function repositionStrandedStops(day, anchor, usedPlaceIds, stay, interest
   // failure: a stop can sit comfortably inside the day and still be the reason
   // the day goes out and comes straight back.
   const pivot = shape.worstAt >= 0 ? located[shape.worstAt] : null;
+
+  // A must-see is never the thing this pass replaces, and a day that goes out
+  // to one and comes back is not stranded, it is an excursion the traveller
+  // asked for. The Ghibli Museum is 11 km out in Mitaka and every route to it
+  // turns around at the far end. Without this the pass would swap the museum
+  // for a nearer shop to straighten the day (Akber, 8 Sep 2026).
+  if (pivot && typeof pinned === 'function' && pinned(pivot)) return [];
+  if (typeof pinned === 'function' && excursionToMustSee(located, shape, pinned)) return [];
 
   // Where to look for the pivot's replacement. NOT the day's centre: a stop is
   // the pivot precisely because it sits off the line between its neighbours, so
@@ -2805,7 +2827,7 @@ async function resolveItinerary(itinerary, destination, anchor, transport, accom
       );
     }
 
-    const restranded = await repositionStrandedStops(day, anchor, usedPlaceIds, stay, interests, itinerary, weekdayForDay(checkInDate, day.day));
+    const restranded = await repositionStrandedStops(day, anchor, usedPlaceIds, stay, interests, itinerary, weekdayForDay(checkInDate, day.day), pinned);
     if (restranded.length > 0) {
       console.info(
         `[generate-resolved-itinerary] day ${day.day}: moved ${restranded.length} stranded stop(s) back to the day: ${restranded.join('; ')}`
@@ -3209,7 +3231,7 @@ async function settleDay(day, context) {
       );
     }
 
-    const moved = await repositionStrandedStops(day, anchor, usedPlaceIds, stay, interests, itinerary, weekday);
+    const moved = await repositionStrandedStops(day, anchor, usedPlaceIds, stay, interests, itinerary, weekday, pinned);
     if (moved.length > 0) {
       console.info(
         `[generate-resolved-itinerary] day ${day.day}: moved ${moved.length} stranded stop(s) ${label}: ${moved.join('; ')}`
@@ -3277,8 +3299,11 @@ async function settleDay(day, context) {
     // So the day is measured on the way out, and a bent one buys another round
     // rather than shipping. Bounded by the loop, so a day that cannot be
     // straightened ships as it is instead of spinning (Akber, 8 Sep 2026).
-    const turnOnExit = dayShape(day).worstTurn;
-    const stillBent = turnOnExit > REORDER_REVERSAL_DEGREES;
+    const exitShape = dayShape(day);
+    const turnOnExit = exitShape.worstTurn;
+    const exitLocated = day.items.filter((i) => i.type !== 'accommodation' && i.location);
+    const excursion = typeof pinned === 'function' && excursionToMustSee(exitLocated, exitShape, pinned);
+    const stillBent = turnOnExit > REORDER_REVERSAL_DEGREES && !excursion;
     if (stillBent) {
       console.info(
         `[generate-resolved-itinerary] day ${day.day}: ${Math.round(turnOnExit)}° turn after refitting ${label}, another round`

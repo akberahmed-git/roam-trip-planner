@@ -79,7 +79,7 @@ function buildTripPreamble(params) {
     : [];
   const mustVisitLine = mustVisit.length === 0
     ? ''
-    : `- MUST INCLUDE (strictly enforced): the traveller has asked for these places by name, and every one of them appears in this plan exactly once, as an activity, on the day and at the hour where it fits best: ${mustVisit.map((name) => `"${name}"`).join(', ')}. Use each place's real name exactly as given. If one of them is a museum or a day trip, give it the morning of a day that suits it. Nothing else in this prompt overrides this line.`;
+    : `- MUST INCLUDE (strictly enforced): the traveller has asked for these places by name, and every one of them appears in this plan exactly once, as an activity, on the day and at the hour where it fits best: ${mustVisit.map((name) => `"${name}"`).join(', ')}. Use each place's real name exactly as given. If one of them is far from the accommodation (more than about 8 km), it takes the FIRST activity slot of its day, the stops around it that morning are in the same neighbourhood, and lunch that day is within 2 km of it, so the day goes out once and comes back once rather than crossing the city twice. Nothing else in this prompt overrides this line.`;
 
   return { destination, days, budget, accommodation, endTimeLine, groupLine, interestsLine, mustVisit, mustVisitLine };
 }

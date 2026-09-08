@@ -413,20 +413,45 @@ function findBacktracking(stops) {
   for (let k = 0; k < pts.length - 1; k++) {
     const km = haversineKm(pts[k].location, pts[k + 1].location);
     if (km >= LONG_LEG_KM) {
-      legs.push({ km, deg: bearing(pts[k].location, pts[k + 1].location), from: pts[k].name, to: pts[k + 1].name });
+      legs.push({
+        km, deg: bearing(pts[k].location, pts[k + 1].location),
+        from: pts[k].name, to: pts[k + 1].name,
+        // The stops between this leg's end and the next long leg's start are
+        // where the day turned around: the far end of the excursion.
+        toIndex: k + 1,
+      });
     }
   }
   const found = [];
   for (let k = 0; k < legs.length - 1; k++) {
     const turn = angleBetween(legs[k].deg, legs[k + 1].deg);
-    if (turn > REVERSAL_DEGREES) {
-      found.push(
-        `${legs[k].from} to ${legs[k].to} (${legs[k].km.toFixed(1)} km) then doubles back ` +
-          `${legs[k + 1].from} to ${legs[k + 1].to} (${legs[k + 1].km.toFixed(1)} km), a ${Math.round(turn)}° turn`
-      );
-    }
+    if (turn <= REVERSAL_DEGREES) continue;
+    // An out-and-back to a place the traveller asked for by name is their
+    // choice, not the planner's mistake. The Ghibli Museum is 11 km out in
+    // Mitaka; every day that visits it and comes home turns 165 degrees at the
+    // far end, and the only way to avoid that turn is to leave the museum out.
+    // So a reversal whose far end holds a must-see is reported as a note. The
+    // pipeline exempts the same pivot from its repositioning pass.
+    const nextFrom = pts.findIndex((p) => p.name === legs[k + 1].from);
+    const farEnd = pts.slice(legs[k].toIndex, nextFrom < 0 ? legs[k].toIndex + 1 : nextFrom + 1);
+    const excursion = farEnd.some((p) => isMustSee(p.name));
+    const line =
+      `${legs[k].from} to ${legs[k].to} (${legs[k].km.toFixed(1)} km) then doubles back ` +
+      `${legs[k + 1].from} to ${legs[k + 1].to} (${legs[k + 1].km.toFixed(1)} km), a ${Math.round(turn)}° turn`;
+    found.push({ line, excursion });
   }
   return found;
+}
+
+// Loose match on both sides, as in the pipeline: Google's name for a place is
+// rarely the traveller's.
+function isMustSee(name) {
+  const plain = (v) => String(v || '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase().trim();
+  const n = plain(name);
+  return (TRIP.mustVisit || []).some((wanted) => {
+    const w = plain(wanted);
+    return w.length > 0 && (n.includes(w) || w.includes(n));
+  });
 }
 
 function haversineKm(a, b) {
@@ -658,7 +683,11 @@ function auditDemo(itinerary) {
       // Order, not just spread: the stops can cover the whole city and still be
       // sequenced so the traveller crosses it three times.
       for (const hop of findBacktracking(items.filter((i) => i.type !== 'accommodation'))) {
-        problems.push(`${label}: route doubles back - ${hop}`);
+        if (hop.excursion) {
+          notes.push(`${label}: out and back to a must-see - ${hop.line}`);
+        } else {
+          problems.push(`${label}: route doubles back - ${hop.line}`);
+        }
       }
 
       // Opening hours, checked here as well as in the pipeline, because the
