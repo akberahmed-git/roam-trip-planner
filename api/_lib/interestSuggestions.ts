@@ -26,6 +26,7 @@
 // So the only thing ever shown without generation having succeeded is the
 // three categories that are safe unconditionally.
 import Anthropic from '@anthropic-ai/sdk';
+import { cached } from './kvCache.js';
 import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -88,8 +89,33 @@ function saveCache(cache) {
   }
 }
 
+// Destinations whose chips are fixed rather than generated. Tokyo is the demo
+// city: its interest row appears in the case study and on the shipped demo, so
+// it has to read the same today as it does in a screenshot taken last month.
+// Everything else is generated once and then cached (Akber, 8 Sep 2026).
+const PINNED_INTERESTS = {
+  'tokyo, japan': ['Temples & Shrines', 'Anime & Pop Culture', 'Nightlife', 'Modern Architecture'],
+  tokyo: ['Temples & Shrines', 'Anime & Pop Culture', 'Nightlife', 'Modern Architecture'],
+};
+
 export async function getInterestSuggestions(destination) {
   const cacheKey = destination.trim().toLowerCase();
+
+  const pinned = PINNED_INTERESTS[cacheKey];
+  if (pinned) {
+    return { interests: [...STAPLE_INTERESTS, ...pinned] };
+  }
+
+  // The file cache below only ever worked locally. On Vercel the deployment
+  // filesystem is read-only at runtime, so every saveCache call failed and every
+  // request regenerated - which is why the same city offered different chips on
+  // every visit. KV is shared across instances and survives a deploy, so a city
+  // is generated once and then reads the same for everyone.
+  const fromKv = await cached('interests', cacheKey, async () => null, {
+    shouldCache: () => false,
+  }).catch(() => null);
+  if (fromKv) return fromKv;
+
   const cache = loadCache();
   if (cache[cacheKey]) {
     return cache[cacheKey];
@@ -192,6 +218,9 @@ Respond with ONLY valid JSON, no markdown formatting, no code fences, no comment
       ...dynamic,
     ],
   };
+
+  // Written to KV first, since that is the copy that actually survives.
+  await cached('interests', cacheKey, async () => result).catch(() => {});
 
   cache[cacheKey] = result;
   // Plain object keys preserve insertion order for string keys in JS, same
