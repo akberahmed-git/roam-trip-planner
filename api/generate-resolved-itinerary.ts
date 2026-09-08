@@ -976,7 +976,11 @@ function isSubstantialActivity(candidate) {
 const INTEREST_SEARCH_QUERY = {
   'temples & shrines': 'temple shrine',
   'anime & pop culture': 'anime shop',
-  'modern architecture': 'modern architecture landmark',
+  // Was 'modern architecture landmark', and the word landmark is why Tokyo
+  // Tower kept turning up: a 1958 broadcast tower is a landmark, and Google was
+  // being asked for one. Modern architecture is a building people go to look at
+  // BECAUSE of how it was designed (Akber, 8 Sep 2026).
+  'modern architecture': 'contemporary architecture notable building',
   'art galleries': 'art gallery',
   'museums': 'museum',
   'nature': 'park',

@@ -621,7 +621,7 @@ function auditDemo(itinerary) {
   // building is (Akber, 8 Sep 2026).
   const INTEREST_EVIDENCE = {
     'temples & shrines': ['temple', 'shrine', 'jinja', 'jingu', 'taisha', 'sensō', 'senso-ji', 'zōjō', 'zojo', 'buddhist', 'shinto', 'pagoda'],
-    'anime & pop culture': ['anime', 'manga', 'ghibli', 'akihabara', 'nakano broadway', 'pokemon', 'nintendo', 'gundam', 'otaku', 'cosplay', 'arcade', 'figure', 'pop culture', 'kawaii', 'takeshita'],
+    'anime & pop culture': ['anime', 'manga', 'ghibli', 'akihabara', 'nakano broadway', 'pokemon', 'nintendo', 'gundam', 'otaku', 'cosplay', 'arcade', 'figure', 'pop culture', 'kawaii', 'game centre', 'game center', 'character cafe'],
     nightlife: ['bar', 'club', 'nightlife', 'izakaya', 'golden gai', 'yokocho', 'live music', 'jazz', 'lounge', 'rooftop', 'kabukich', 'night'],
     'modern architecture': ['architecture', 'tower', 'skytree', 'observation', 'observatory', 'hills', 'midtown', 'forum', 'teamlab', 'skyscraper', 'building', 'deck', 'city view'],
   };
