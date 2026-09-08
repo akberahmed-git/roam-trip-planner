@@ -471,6 +471,8 @@ function auditDemo(itinerary) {
         seenInterestText[variant].push({
           name: (item.name || '').toLowerCase(),
           text: `${item.name} ${item.categoryTag || ''} ${item.description || ''}`.toLowerCase(),
+          day: day.day,
+          isActivity: !item.mealType && item.type !== 'accommodation',
         });
       }
 
@@ -659,6 +661,49 @@ function auditDemo(itinerary) {
   // Whole words. Substring matching is what put "bar" inside Barbecue.
   const mentions = (text, word) =>
     new RegExp(`(^|[^a-z0-9])${word.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}([^a-z0-9]|$)`, 'i').test(text);
+
+  // Balance, enforced rather than merely asked for.
+  //
+  // The prompt has told the model since 8 Sep that no single interest may take
+  // more than about a third of a plan's activities. It ignored it and shipped a
+  // day of five activities, four of which were shrines, with the other three
+  // chips getting nothing. An instruction nothing checks is a suggestion.
+  //
+  // Half rather than a third, because the audit should catch a day that is
+  // plainly lopsided rather than adjudicate a close call, and because every
+  // false rejection here costs a real generation. A day of two activities is
+  // left alone: one of each is not a pattern (Akber, 8 Sep 2026).
+  const matchesInterest = (entry, interest) => {
+    const evidence = INTEREST_EVIDENCE[interest] || [];
+    const excluded = INTEREST_NOT_EVIDENCE[interest] || [];
+    if (excluded.some((name) => mentions(entry.name, name))) return false;
+    const haystack = INTEREST_NAME_ONLY.has(interest) ? entry.name : entry.text;
+    return evidence.some((word) => mentions(haystack, word));
+  };
+
+  for (const variant of ['packed', 'slow']) {
+    const days = [...new Set(seenInterestText[variant].map((entry) => entry.day))];
+    for (const dayNumber of days) {
+      const activities = seenInterestText[variant].filter(
+        (entry) => entry.day === dayNumber && entry.isActivity
+      );
+      // Four is the floor, not three. On a three-activity day, two stops sharing
+      // an interest is a themed afternoon, which is the thing the chips are for
+      // - a day of Akihabara, Super Potato and teamLab is exactly what someone
+      // picking Anime & Pop Culture wants, and rejecting it would be the audit
+      // arguing with the traveller.
+      if (activities.length < 4) continue;
+      for (const interest of wantedInterests) {
+        const count = activities.filter((entry) => matchesInterest(entry, interest)).length;
+        if (count * 2 > activities.length) {
+          problems.push(
+            `${variant} day ${dayNumber}: ${count} of ${activities.length} activities are "${interest}", ` +
+              `which crowds out the other interests`
+          );
+        }
+      }
+    }
+  }
 
   for (const variant of ['packed', 'slow']) {
     for (const interest of wantedInterests) {
