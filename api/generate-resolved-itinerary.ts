@@ -1034,7 +1034,12 @@ function isSubstantialActivity(candidate) {
 // what Google actually indexes differ enough to matter.
 const INTEREST_SEARCH_QUERY = {
   'temples & shrines': 'temple shrine',
-  'anime & pop culture': 'anime shop',
+  // Was 'anime shop', and a query that says shop gets shops: Animate, Gamers,
+  // JUMP SHOP, amiami, three in a row on one demo day. The chip is pop culture,
+  // and the fun version of it is the Pokémon Center, Nintendo TOKYO, a floor of
+  // arcades, the Godzilla head, the Ghibli Museum. Named in the query so the
+  // flagships come back ahead of the fifth figure shop (Akber, 8 Sep 2026).
+  'anime & pop culture': 'anime pop culture attraction Pokémon Center Nintendo arcade',
   // Was 'modern architecture landmark', and the word landmark is why Tokyo
   // Tower kept turning up: a 1958 broadcast tower is a landmark, and Google was
   // being asked for one. Modern architecture is a building people go to look at
