@@ -47,7 +47,7 @@
 // Routes call per leg) and counts against the daily rate limit, so run it when
 // the pipeline has changed, not casually.
 import { writeFile, mkdir } from 'node:fs/promises';
-import { readFileSync } from 'node:fs';
+import { readFileSync, readdirSync, rmSync } from 'node:fs';
 import path from 'node:path';
 import { spawnSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
@@ -1069,6 +1069,20 @@ async function main() {
     'utf-8'
   );
   console.log(`Wrote ${path.relative(ROOT, FIXTURE_PATH)}`);
+
+  // Every draft that fails the audit still bakes its photos before the audit
+  // runs, so the folder fills with pictures nothing references - 71 of them
+  // went into one commit, the deathplace and three Tokyo Towers among them,
+  // and static files are public whether or not a page links to them. Anything
+  // the fixture does not name is removed here (Akber, 8 Sep 2026).
+  {
+    const fixture = readFileSync(FIXTURE_PATH, 'utf8');
+    const referenced = new Set([...fixture.matchAll(/\/demo\/tokyo\/([^"']+)/g)].map((m) => m[1]));
+    const folder = path.join(ROOT, 'public/demo/tokyo');
+    const orphans = readdirSync(folder).filter((f) => !referenced.has(f));
+    for (const f of orphans) rmSync(path.join(folder, f));
+    if (orphans.length > 0) console.log(`  removed ${orphans.length} photo(s) no longer referenced`);
+  }
 
   console.log('\nDone. Commit public/demo/tokyo/ and tokyo.ts together.');
 }
