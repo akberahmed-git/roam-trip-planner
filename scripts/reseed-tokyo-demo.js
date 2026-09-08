@@ -346,6 +346,12 @@ const MIN_WELL_KNOWN_PER_DAY = 2;
 // stone for an afternoon. In a city the size of Tokyo anywhere worth an hour has
 // four figures of reviews; this is a demo-only number for exactly that reason.
 const MIN_REVIEWS_FOR_ANY_DEMO_STOP = 1000;
+// Matches MAX_STOPS_PER_INTEREST_PER_DAY in generate-resolved-itinerary.ts,
+// which is where the pipeline now repairs a day that breaks it. The audit is
+// the backstop, not the enforcement: refusing a draft fifteen times taught it
+// nothing, and the previous "more than half a day" rule was both looser and
+// harder to reason about than a plain cap of one (Akber, 8 Sep 2026).
+const MAX_STOPS_PER_INTEREST_PER_DAY = 1;
 const LONG_LEG_KM = 4;
 const REVERSAL_DEGREES = 140;
 
@@ -665,13 +671,12 @@ function auditDemo(itinerary) {
       // - a day of Akihabara, Super Potato and teamLab is exactly what someone
       // picking Anime & Pop Culture wants, and rejecting it would be the audit
       // arguing with the traveller.
-      if (activities.length < 4) continue;
       for (const interest of wantedInterests) {
         const count = activities.filter((entry) => matchesInterest(entry, interest)).length;
-        if (count * 2 > activities.length) {
+        if (count > MAX_STOPS_PER_INTEREST_PER_DAY) {
           problems.push(
-            `${variant} day ${dayNumber}: ${count} of ${activities.length} activities are "${interest}", ` +
-              `which crowds out the other interests`
+            `${variant} day ${dayNumber}: ${count} activities are "${interest}", the cap is ` +
+              `${MAX_STOPS_PER_INTEREST_PER_DAY} a day`
           );
         }
       }

@@ -1821,6 +1821,92 @@ function reorderDayGeographically(day) {
 //     re-picking would have made it worse, 138 to 172, and this refuses it.
 //   - measured against the day's own ACTIVITY centre, not a mean that the
 //     offending meal itself drags outward.
+// At most one stop per interest per day.
+//
+// Tokyo's most famous places overwhelmingly ARE shrines and temples, so a rule
+// asking for prominent stops and a rule asking for balance pull against each
+// other, and the model resolved that by giving days of four shrines out of four.
+// Fifteen re-seeds were rejected for it. Refusing a draft does not teach it
+// anything; the fix has to repair rather than refuse.
+//
+// One per day is the traveller's own instruction and it generalises: with four
+// chips and four or five activities a day, one each leaves a slot spare. An
+// activity matching no chosen interest is untouched - not everything has to
+// serve the list.
+const MAX_STOPS_PER_INTEREST_PER_DAY = 1;
+
+// Swaps a day's surplus stops for places serving an interest the day is short
+// of. Never drops without replacing: a day one stop lighter is how a museum
+// ends up with four hours against it.
+async function rebalanceInterests(day, { interests, anchor, usedPlaceIds, stay, transport }) {
+  if (!interests || interests.length < 2) return [];
+
+  const activities = day.items.filter(
+    (item) => item.type !== 'accommodation' && !item.mealType && item.location
+  );
+  if (activities.length === 0) return [];
+
+  const servedBy = (item, interest) =>
+    satisfiesInterest({ ...item, placeTypes: item.placeTypes }, interest);
+
+  const countFor = (interest) => activities.filter((item) => servedBy(item, interest)).length;
+
+  const swapped: string[] = [];
+
+  for (const interest of interests) {
+    let over = countFor(interest) - MAX_STOPS_PER_INTEREST_PER_DAY;
+    if (over <= 0) continue;
+
+    // Keep the best of them and swap the rest. Review count is the only measure
+    // of which shrine a traveller would actually be told to visit.
+    const surplus = activities
+      .filter((item) => servedBy(item, interest))
+      .sort((a, b) => (b.ratingCount || 0) - (a.ratingCount || 0))
+      .slice(MAX_STOPS_PER_INTEREST_PER_DAY);
+
+    for (const item of surplus) {
+      if (over <= 0) break;
+
+      // Which interest is this day shortest of? That is what the swap should buy.
+      const wanted = interests
+        .filter((other) => other !== interest)
+        .sort((a, b) => countFor(a) - countFor(b))[0];
+      const query = wanted ? interestQuery(wanted) : null;
+      if (!query) continue;
+
+      const candidates = await findNearbyCandidates(query, null, item.location).catch(() => []);
+      const pick = preferWellKnown(
+        candidates.filter(
+          (c) =>
+            c.location &&
+            c.availablePhotoUrl &&
+            !usedPlaceIds.has(c.placeId) &&
+            hasReadableName(c.name) &&
+            hasEnoughReviews(c) &&
+            !isFoodOnly(c) &&
+            (!anchor || haversineMeters(anchor, c.location) <= MAX_BROAD_DISTANCE_METERS) &&
+            withinReachOfStay(c.location, stay) &&
+            satisfiesInterest({ ...c, placeTypes: c.types, mealType: null }, wanted) &&
+            !satisfiesInterest({ ...c, placeTypes: c.types, mealType: null }, interest)
+        )
+      );
+      if (!pick) continue;
+
+      const replacement = buildAdoptedStop(pick, item.durationMinutes || MIN_STAY_MINUTES_FOR_NEW_STOP);
+      const index = day.items.indexOf(item);
+      if (index < 0) continue;
+      if (index > 0) day.items[index - 1].travelToNext = null;
+      day.items[index] = replacement;
+      usedPlaceIds.add(pick.placeId);
+      swapped.push(`${item.name} -> ${pick.name} (${wanted})`);
+      over -= 1;
+    }
+  }
+
+  if (swapped.length > 0) await computeTravelTimes(day.items, transport);
+  return swapped;
+}
+
 const MEAL_LEASH_KM = 4;
 
 async function repositionStrandedStops(day, anchor, usedPlaceIds, stay) {
@@ -2660,6 +2746,14 @@ async function settleDay(day, context) {
   // where the hours check ran against the times the day will actually ship with
   // and found none (Akber, 8 Sep 2026).
   for (let round = 0; round < 5; round++) {
+    const rebalanced = await rebalanceInterests(day, { interests, anchor, usedPlaceIds, stay, transport });
+    if (rebalanced.length > 0) {
+      console.info(
+        `[generate-resolved-itinerary] day ${day.day}: rebalanced ${rebalanced.length} stop(s) ${label}: ${rebalanced.join('; ')}`
+      );
+      applyFixedSchedule(day, options);
+    }
+
     const resorted = orderBlocksByOpeningHours(day, options, weekday);
     if (resorted) {
       console.info(
@@ -2716,7 +2810,7 @@ async function settleDay(day, context) {
       applyFixedSchedule(day, options);
     }
 
-    if (!resorted && filled.length === 0 && !reordered && moved.length === 0 && shut.length === 0) break;
+    if (!resorted && filled.length === 0 && !reordered && moved.length === 0 && shut.length === 0 && rebalanced.length === 0) break;
   }
 }
 
