@@ -1614,45 +1614,75 @@ function buildAdoptedStop(pick, durationMinutes) {
 async function coverMissingInterests(itinerary, { interests, anchor, usedPlaceIds, stay, cutoffFor }) {
   const added: string[] = [];
 
-  for (const interest of uncoveredInterests(itinerary.days, interests)) {
-    const query = interestQuery(interest);
-    if (!query) continue;
+  // How many of the traveller's chosen interests one candidate satisfies.
+  //
+  // This is the difference between covering a list and planning a trip. A
+  // shrine that is also the centre of a city's anime culture closes two gaps
+  // with one stop and leaves the day shorter than two mediocre ones would. So
+  // candidates rank by how many interests they serve first, and by how many
+  // people have actually been there second.
+  const interestsServed = (candidate) =>
+    (interests || []).filter((interest) =>
+      satisfiesInterest({ ...candidate, placeTypes: candidate.types, mealType: null }, interest)
+    ).length;
 
-    let placed = false;
-    for (let index = 0; index < itinerary.days.length && !placed; index++) {
-      const day = itinerary.days[index];
+  const usable = (candidate, interest) =>
+    candidate.location &&
+    candidate.availablePhotoUrl &&
+    !usedPlaceIds.has(candidate.placeId) &&
+    hasReadableName(candidate.name) &&
+    hasEnoughReviews(candidate) &&
+    !isFoodOnly(candidate) &&
+    (!anchor || haversineMeters(anchor, candidate.location) <= MAX_BROAD_DISTANCE_METERS) &&
+    withinReachOfStay(candidate.location, stay) &&
+    satisfiesInterest({ ...candidate, placeTypes: candidate.types, mealType: null }, interest);
 
-      // Nightlife goes after dinner or not at all; everything else goes wherever
-      // the day still has room for a stop of a sensible length.
-      const slot = isEveningInterest(interest)
-        ? eveningInsertPoint(day)
-        : roomForAnotherStop(day, cutoffFor(index));
-      if (!slot) continue;
+  // One placement per round, and the round picks the best stop available for ANY
+  // interest still missing rather than working down the list in order. Then it
+  // looks again, because the stop just placed may have covered two interests at
+  // once and the next round should not go hunting for one it already has.
+  //
+  // Walking the list in order is how a traveller who picked six interests got
+  // six thin stops wedged into a two-day trip. When the days fill up this loop
+  // simply stops, which is the intended behaviour rather than a failure:
+  // covering three interests with places worth travelling for beats covering six
+  // with places nobody would (Akber, 8 Sep 2026).
+  for (let round = 0; round < (interests || []).length; round++) {
+    const missing = uncoveredInterests(itinerary.days, interests);
+    if (missing.length === 0) break;
 
-      const candidates = await findNearbyCandidates(query, null, slot.near).catch(() => []);
-      const pick = preferWellKnown(
-        candidates.filter(
-          (c) =>
-            c.location &&
-            c.availablePhotoUrl &&
-            !usedPlaceIds.has(c.placeId) &&
-            hasReadableName(c.name) &&
-            hasEnoughReviews(c) &&
-            !isFoodOnly(c) &&
-            (!anchor || haversineMeters(anchor, c.location) <= MAX_BROAD_DISTANCE_METERS) &&
-            withinReachOfStay(c.location, stay) &&
-            satisfiesInterest({ ...c, placeTypes: c.types, mealType: null }, interest)
-        )
-      );
-      if (!pick) continue;
-
-      const stop = buildAdoptedStop(pick, MIN_STAY_MINUTES_FOR_NEW_STOP);
-      if (slot.insertAt > 0) day.items[slot.insertAt - 1].travelToNext = null;
-      day.items.splice(slot.insertAt, 0, stop);
-      usedPlaceIds.add(pick.placeId);
-      added.push(`${pick.name} (${interest})`);
-      placed = true;
+    let best: any = null;
+    for (const interest of missing) {
+      const query = interestQuery(interest);
+      if (!query) continue;
+      for (let index = 0; index < itinerary.days.length; index++) {
+        const day = itinerary.days[index];
+        const slot = isEveningInterest(interest)
+          ? eveningInsertPoint(day)
+          : roomForAnotherStop(day, cutoffFor(index));
+        if (!slot) continue;
+        const candidates = await findNearbyCandidates(query, null, slot.near).catch(() => []);
+        for (const candidate of candidates) {
+          if (!usable(candidate, interest)) continue;
+          const serves = interestsServed(candidate);
+          const reviews = typeof candidate.ratingCount === 'number' ? candidate.ratingCount : 0;
+          if (best === null || serves > best.serves || (serves === best.serves && reviews > best.reviews)) {
+            best = { candidate, interest, day, slot, serves, reviews };
+          }
+        }
+        break; // first day with room is enough; the ranking decides, not day order
+      }
     }
+
+    if (!best) break;
+
+    const stop = buildAdoptedStop(best.candidate, MIN_STAY_MINUTES_FOR_NEW_STOP);
+    if (best.slot.insertAt > 0) best.day.items[best.slot.insertAt - 1].travelToNext = null;
+    best.day.items.splice(best.slot.insertAt, 0, stop);
+    usedPlaceIds.add(best.candidate.placeId);
+    added.push(
+      `${best.candidate.name} (${best.interest}${best.serves > 1 ? `, +${best.serves - 1} more` : ''})`
+    );
   }
 
   return added;
