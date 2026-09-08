@@ -998,6 +998,12 @@ const MARKER_NAME_PATTERNS = [
   /\bsite of\b/i,
   /\bformer site\b/i,
   /\bbirthplace\b/i,
+  // "Tayama Katai's Deathplace" shipped in a demo draft with 150 minutes
+  // against it. A literary marker on a street corner, and grim with it.
+  /\bdeathplace\b/i,
+  /\bdeath place\b/i,
+  /\bplace of death\b/i,
+  /終焉の地/,
   /\bplaque\b/i,
   /\bmemorial stone\b/i,
   /\bstele\b/i,
