@@ -248,6 +248,28 @@ export function orderBlocksByOpeningHours(day, options, weekdayIndex) {
   return false;
 }
 
+// Somewhere that is closed to the public whatever its opening hours say.
+// Roppongi Hills Club is a private members club on the 51st floor of Mori
+// Tower. It is real, well rated, open late and completely unvisitable by the
+// traveller reading the plan, and it shipped as the post-dinner stop twice. The
+// prompt has always forbidden it; nothing checked (Akber, 8 Sep 2026).
+const MEMBERS_ONLY = /\b(members[- ]only|private members|members'? club|invitation only|private club)\b/i;
+
+// After dinner, a stop has to be somewhere people actually go in the evening.
+//
+// The opening-hours check cannot catch this on its own: a shrine's grounds are
+// often listed as open 24 hours, so Kanda Myoujin at 23:25 passes it honestly
+// while being a plainly absurd thing to put in a plan. What makes a stop wrong
+// there is not that it is shut, it is that it is not a night out.
+const NIGHT_VENUE = /\b(bar|pub|club|nightclub|nightlife|izakaya|yokocho|lounge|live music|jazz|karaoke|rooftop|observation deck|night view|市場|横丁)\b/i;
+const NIGHT_VENUE_TYPES = new Set(['bar', 'night_club', 'casino', 'movie_theater', 'performing_arts_theater']);
+
+function isNightVenue(item) {
+  const types = Array.isArray(item.placeTypes) ? item.placeTypes : [];
+  if (types.some((type) => NIGHT_VENUE_TYPES.has(type))) return true;
+  return NIGHT_VENUE.test(`${item.name || ''} ${item.categoryTag || ''}`);
+}
+
 export function unsuitableStops(day, weekdayIndex, budget) {
   const found: any[] = [];
   const dinnerIndex = indexOfMeal(day, 'dinner');
@@ -292,6 +314,18 @@ export function unsuitableStops(day, weekdayIndex, budget) {
     // userRatingCount, so hours present and reviews absent means Google has none,
     // while hours absent means we cannot tell and the stop is left alone. Same
     // principle as the hours check above: silence is not evidence.
+    if (MEMBERS_ONLY.test(`${item.name || ''} ${item.description || ''}`)) {
+      found.push({ index, name: item.name, reason: 'members only, the traveller cannot go' });
+      return;
+    }
+
+    // Anything after dinner has to be a night out. dinnerIndex is already to
+    // hand for the meal rules above.
+    if (dinnerIndex >= 0 && index > dinnerIndex && !isNightVenue(item)) {
+      found.push({ index, name: item.name, reason: 'not somewhere to go after dinner' });
+      return;
+    }
+
     const shortfall = reviewShortfall(item);
     if (shortfall !== null) {
       found.push({ index, name: item.name, reason: shortfall });

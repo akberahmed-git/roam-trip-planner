@@ -22,17 +22,33 @@ const INTEREST_SIGNALS = {
     types: ['place_of_worship', 'church', 'hindu_temple', 'mosque', 'synagogue', 'shinto_shrine', 'buddhist_temple'],
     keywords: ['temple', 'shrine', 'jinja', 'jingu', 'basilica', 'cathedral', 'monastery', 'pagoda'],
   },
+  // harajuku and takeshita are gone: they are neighbourhoods, and a ramen shop
+  // called AFURI Harajuku was satisfying a traveller's anime interest.
   'anime & pop culture': {
     types: [],
-    keywords: ['anime', 'manga', 'pokemon', 'pokémon', 'akihabara', 'otaku', 'cosplay', 'arcade', 'comic', 'game centre', 'game center', 'nintendo', 'ghibli', 'takeshita', 'harajuku'],
+    keywords: ['anime', 'manga', 'pokemon', 'pokémon', 'akihabara', 'otaku', 'cosplay', 'arcade', 'comic', 'game centre', 'game center', 'nintendo', 'ghibli', 'maid cafe', 'figure'],
   },
   // No types, deliberately. Google has no "modern architecture" category, and
   // the nearest thing, observation_deck, is narrower than the interest: the
   // Metropolitan Government Building is typed a plain tourist_attraction and is
   // the most obvious piece of modern architecture in Tokyo.
+  // ignoreDescription, because the description is the one field that lies about
+  // this interest. Prose mentions buildings constantly: Zojo-ji, a temple from
+  // 1393, satisfied Modern Architecture because its description said "offering
+  // traditional architecture", and a shopping mall satisfied it with
+  // "architectural detail". The pipeline therefore believed the interest was
+  // covered and never went looking, while the demo audit - which had its own
+  // stricter copy of this list - correctly said nothing delivered it. Five
+  // re-seeds in a row failed on that disagreement (Akber, 8 Sep 2026).
+  //
+  // 'tower' is out for the same reason it left the audit's list: it was matching
+  // an anime figure shop that happens to occupy one, and Tokyo Tower, which is a
+  // 1958 broadcast mast rather than contemporary design.
   'modern architecture': {
     types: [],
-    keywords: ['tower', 'skyscraper', 'observation', 'observatory', 'architecture', 'architectural', 'design', 'midtown', 'skytree', 'modern', 'modernist', 'contemporary'],
+    ignoreDescription: true,
+    not: ['tokyo tower'],
+    keywords: ['skyscraper', 'observation deck', 'observatory', 'architecture', 'architectural', 'design sight', 'design museum', 'midtown', 'skytree', 'modernist', 'contemporary', 'teamlab', 'hills', 'forum', 'building', 'cocoon', 'city view'],
   },
   'art galleries': { types: ['art_gallery'], keywords: ['gallery', 'art centre', 'art center'] },
   'museums': { types: ['museum'], keywords: ['museum'] },
@@ -87,7 +103,15 @@ export function satisfiesInterest(item, interest) {
 
   // Whole words, so "Akihabara" is not read as a bar and "Barcelona" is not
   // read as one either.
-  const text = `${item.name || ''} ${item.categoryTag || ''} ${item.description || ''}`.toLowerCase();
+  const name = `${item.name || ''}`.toLowerCase();
+  if ((signals.not || []).some((phrase) => name.includes(phrase))) return false;
+
+  // Some interests may not be read off the description. See the note on modern
+  // architecture: prose about a place is not evidence of what it is.
+  const text = signals.ignoreDescription
+    ? `${item.name || ''} ${item.categoryTag || ''}`.toLowerCase()
+    : `${item.name || ''} ${item.categoryTag || ''} ${item.description || ''}`.toLowerCase();
+
   return signals.keywords.some((word) =>
     word.includes(' ') ? text.includes(word) : new Set(text.split(/[^a-z]+/)).has(word)
   );

@@ -68,6 +68,12 @@ if (!process.execArgv.includes(STRIP)) {
 }
 
 const { isOpenAt, weekdayForDay } = await import('../api/_lib/openingHours.ts');
+// The pipeline's own interest matcher, imported rather than reimplemented.
+// This script used to carry its own keyword lists and they drifted: the
+// pipeline counted a 1393 temple as modern architecture off its description
+// while this file, matching names only, said nothing delivered it. Neither
+// side was going to give way, and five re-seeds failed on the disagreement.
+const { satisfiesInterest } = await import('../api/_lib/interestCoverage.ts');
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const PHOTO_DIR = path.join(ROOT, 'public', 'demo', 'tokyo');
@@ -469,8 +475,10 @@ function auditDemo(itinerary) {
         // Merged, a single incidental word anywhere cleared an interest for
         // both plans at once.
         seenInterestText[variant].push({
-          name: (item.name || '').toLowerCase(),
-          text: `${item.name} ${item.categoryTag || ''} ${item.description || ''}`.toLowerCase(),
+          name: item.name || '',
+          categoryTag: item.categoryTag || '',
+          description: item.description || '',
+          placeTypes: item.placeTypes || null,
           day: day.day,
           isActivity: !item.mealType && item.type !== 'accommodation',
         });
@@ -622,64 +630,14 @@ function auditDemo(itinerary) {
   // game and character are too generic to mean anything, golden only meant Golden
   // Gai, and a museum or a gallery is not modern architecture however good the
   // building is (Akber, 8 Sep 2026).
-  const INTEREST_EVIDENCE = {
-    'temples & shrines': ['temple', 'shrine', 'jinja', 'jingu', 'taisha', 'sensō', 'senso-ji', 'zōjō', 'zojo', 'buddhist', 'shinto', 'pagoda'],
-    'anime & pop culture': ['anime', 'manga', 'ghibli', 'akihabara', 'nakano broadway', 'pokemon', 'nintendo', 'gundam', 'otaku', 'cosplay', 'arcade', 'figure', 'pop culture', 'kawaii', 'game centre', 'game center', 'character cafe'],
-    nightlife: ['bar', 'club', 'nightlife', 'izakaya', 'golden gai', 'yokocho', 'live music', 'jazz', 'lounge', 'rooftop', 'kabukich', 'night'],
-    'modern architecture': ['skytree', 'hills', 'midtown', 'forum', 'teamlab', 'skyscraper', 'building', 'city view', 'observation deck', 'design sight', 'cocoon'],
-  };
-
-  // Places that carry an evidence word but are not the thing the chip means.
-  //
-  // The alternative was dropping 'tower' from the architecture list, which
-  // throws out Mode Gakuen Cocoon Tower and Tokyo Skytree along with it. The
-  // problem was never the word, it was one specific 1958 broadcast tower that
-  // is a landmark rather than a piece of contemporary design, so name that
-  // instead. Matched against the stop's NAME only: a rooftop bar whose
-  // description mentions the view of Tokyo Tower is still a perfectly good
-  // stop, it just is not Tokyo Tower (Akber, 8 Sep 2026).
-  const INTEREST_NOT_EVIDENCE = {
-    'modern architecture': ['tokyo tower'],
-  };
-
-  // Interests that may only be matched on a stop's NAME, never its description.
-  //
-  // Modern architecture is the one category a description will lie about,
-  // because prose mentions buildings constantly. Against name and description
-  // together, Zojo-ji - a temple from 1393 - counted as modern architecture,
-  // because its description says the word. So did Odaiba Marine Park, and so
-  // did amiami Akihabara Figure Tower, which is an anime shop that happens to
-  // occupy a tower.
-  //
-  // Names are far more honest here: Roppongi Hills, Tokyo Midtown and the MORI
-  // Building say what they are, and a temple does not accidentally call itself
-  // a skyscraper. 'tower' came out of the list entirely for the same reason -
-  // it was matching a figure shop and a temple standing near one - which is why
-  // the exclusion above is not enough on its own (Akber, 8 Sep 2026).
-  const INTEREST_NAME_ONLY = new Set(['modern architecture']);
-
-  // Whole words. Substring matching is what put "bar" inside Barbecue.
-  const mentions = (text, word) =>
-    new RegExp(`(^|[^a-z0-9])${word.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}([^a-z0-9]|$)`, 'i').test(text);
-
-  // Balance, enforced rather than merely asked for.
-  //
-  // The prompt has told the model since 8 Sep that no single interest may take
-  // more than about a third of a plan's activities. It ignored it and shipped a
-  // day of five activities, four of which were shrines, with the other three
-  // chips getting nothing. An instruction nothing checks is a suggestion.
-  //
-  // Half rather than a third, because the audit should catch a day that is
-  // plainly lopsided rather than adjudicate a close call, and because every
-  // false rejection here costs a real generation. A day of two activities is
-  // left alone: one of each is not a pattern (Akber, 8 Sep 2026).
-  const matchesInterest = (entry, interest) => {
-    const evidence = INTEREST_EVIDENCE[interest] || [];
-    const excluded = INTEREST_NOT_EVIDENCE[interest] || [];
-    if (excluded.some((name) => mentions(entry.name, name))) return false;
-    const haystack = INTEREST_NAME_ONLY.has(interest) ? entry.name : entry.text;
-    return evidence.some((word) => mentions(haystack, word));
-  };
+  // Interest coverage and balance, both answered by the pipeline's own
+  // satisfiesInterest so the audit and the generator cannot disagree about what
+  // a chip means.
+  const matchesInterest = (entry, interest) =>
+    satisfiesInterest(
+      { type: 'activity', name: entry.name, categoryTag: entry.categoryTag, description: entry.description, placeTypes: entry.placeTypes },
+      interest
+    );
 
   for (const variant of ['packed', 'slow']) {
     const days = [...new Set(seenInterestText[variant].map((entry) => entry.day))];
@@ -707,15 +665,7 @@ function auditDemo(itinerary) {
 
   for (const variant of ['packed', 'slow']) {
     for (const interest of wantedInterests) {
-      const evidence = INTEREST_EVIDENCE[interest];
-      if (!evidence) continue;
-      const excluded = INTEREST_NOT_EVIDENCE[interest] || [];
-      const nameOnly = INTEREST_NAME_ONLY.has(interest);
-      const delivered = seenInterestText[variant].some(
-        (entry) =>
-          !excluded.some((name) => mentions(entry.name, name)) &&
-          evidence.some((word) => mentions(nameOnly ? entry.name : entry.text, word))
-      );
+      const delivered = seenInterestText[variant].some((entry) => matchesInterest(entry, interest));
       if (!delivered) {
         problems.push(`${variant}: nothing in this plan delivers "${interest}"`);
       }
