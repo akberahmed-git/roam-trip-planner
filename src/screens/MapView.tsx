@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useLayoutEffect, useRef, useState } from 'react'
 import { useLocation, useNavigate } from 'react-router-dom'
 import { useTrip } from '../context/TripContext'
 import Header from '../components/Header'
@@ -6,6 +6,7 @@ import Footer from '../components/Footer'
 import FlowBreadcrumb from '../components/FlowBreadcrumb'
 import SegmentedControl from '../components/SegmentedControl'
 import PlacePhoto from '../components/PlacePhoto'
+import { frame, project, spread, MAP_WIDTH, MAP_HEIGHT } from '../utils/mapFraming'
 
 // The accommodation is where the day starts and ends, not something the
 // traveller chose to go and see. Numbering it made a Packed day ten markers,
@@ -21,6 +22,10 @@ function HomeMarker() {
     </svg>
   )
 }
+
+// Centre-to-centre distance two badges are kept to, in CSS pixels: the 28px
+// badge plus a 4px gap, so numbers never sit on top of each other.
+const BADGE_CLEARANCE_PX = 32
 
 // Accommodation is marked as home and takes no number, so the stops run 1..n
 // over the things there are to do rather than over every row in the array.
@@ -106,10 +111,53 @@ export default function MapView() {
   // position for one that doesn't have one, same "don't fabricate" rule as
   // everywhere else. The list below still shows every item, pinned or not.
   const numbered = numberStops(items)
-  const pointsParam = numbered
-    .filter(({ item }) => item.location)
-    .map(({ item, number }) => `${number ?? 'h'}:${item.location!.lat},${item.location!.lng}`)
-    .join('|')
+  const located = numbered.filter(({ item }) => item.location)
+
+  // One badge per place. The hotel bookends a day at both ends, and two home
+  // badges on the same pixel would only be pushed apart by the overlap rule
+  // into two hotels.
+  const seen = new Set<string>()
+  const badges = located.filter(({ item }) => {
+    const key = `${item.location!.lat},${item.location!.lng}`
+    if (seen.has(key)) return false
+    seen.add(key)
+    return true
+  })
+
+  const framing = frame(located.map(({ item }) => item.location!))
+  const pathParam = located.map(({ item }) => `${item.location!.lat},${item.location!.lng}`).join('|')
+  const mapSrc = framing
+    ? `/api/static-map?center=${framing.center.lat.toFixed(6)},${framing.center.lng.toFixed(6)}` +
+      `&zoom=${framing.zoom}&path=${encodeURIComponent(pathParam)}`
+    : null
+
+  // Badge positions in CSS pixels, so the overlap rule works in the unit the
+  // badge is drawn in. The box is measured because the map is fluid; the image
+  // itself is a fixed 640x427, so a projected pixel scales by width alone.
+  const boxRef = useRef<HTMLDivElement>(null)
+  const [boxWidth, setBoxWidth] = useState(0)
+  useLayoutEffect(() => {
+    const el = boxRef.current
+    if (!el) return
+    const update = () => setBoxWidth(el.clientWidth)
+    update()
+    const observer = new ResizeObserver(update)
+    observer.observe(el)
+    return () => observer.disconnect()
+  }, [])
+
+  const scale = boxWidth > 0 ? boxWidth / MAP_WIDTH : 0
+  type Badge = (typeof badges)[number]
+  const placedBadges: Array<{ x: number; y: number; data: Badge }> = framing && scale > 0
+    ? spread<Badge>(
+        badges.map((b) => {
+          const { x, y } = project(b.item.location!, framing)
+          return { x: x * scale, y: y * scale, data: b }
+        }),
+        BADGE_CLEARANCE_PX,
+        { width: MAP_WIDTH * scale, height: MAP_HEIGHT * scale }
+      )
+    : []
 
   return (
     <div className="app-page">
@@ -125,13 +173,27 @@ export default function MapView() {
 
           <SegmentedControl options={dayLabels} value={`Day ${day?.day}`} onChange={selectDay} />
 
-          <div className="map-image">
-            {pointsParam ? (
-              <img
-                className="map-image__img"
-                src={`/api/static-map?points=${encodeURIComponent(pointsParam)}`}
-                alt={`Map of Day ${day?.day} stops`}
-              />
+          <div className="map-image" ref={boxRef}>
+            {mapSrc ? (
+              <>
+                <img
+                  className="map-image__img"
+                  src={mapSrc}
+                  alt={`Map of Day ${day?.day} stops`}
+                />
+                {placedBadges.map(({ x, y, data }) => (
+                  <div
+                    key={data.number ?? 'home'}
+                    className="map-image__badge"
+                    style={{ left: `${x}px`, top: `${y}px` }}
+                    aria-hidden="true"
+                  >
+                    <div className="map-row__number">
+                      {data.number == null ? <HomeMarker /> : data.number}
+                    </div>
+                  </div>
+                ))}
+              </>
             ) : (
               <div className="map-image__empty">No verified locations to show for this day yet.</div>
             )}

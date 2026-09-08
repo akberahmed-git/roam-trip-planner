@@ -2067,6 +2067,7 @@ h1 {
 /* Map view (Figma node 273:16450) */
 
 .map-image {
+  position: relative;
   width: 100%;
   aspect-ratio: 361 / 241;
   border: 1px solid var(--border-strong);
@@ -2083,6 +2084,19 @@ h1 {
   height: 100%;
   object-fit: cover;
   display: block;
+}
+
+/* The badges over the map are the same .map-row__number as the list below it,
+   placed at the projected pixel by MapView. A soft halo lifts them off the
+   tiles; the circle itself is identical. */
+.map-image__badge {
+  position: absolute;
+  transform: translate(-50%, -50%);
+  pointer-events: none;
+}
+
+.map-image__badge .map-row__number {
+  box-shadow: 0 0 0 2px #fff, 0 1px 3px rgba(0, 0, 0, 0.25);
 }
 
 .map-image__empty {
