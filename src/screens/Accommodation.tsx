@@ -410,12 +410,22 @@ export default function Accommodation() {
                             </div>
                             {option.address && <p className="hotel-card__description">{option.address}</p>}
                           </div>
-                          <div className="hotel-card__tags">
-                            <span className="hotel-card__tag">{budget}</span>
-                            {option.priceLevelLabel && (
+                          {/* This row used to open with
+                              <span className="hotel-card__tag">{budget}</span>, which
+                              printed the budget picked back on Trip Input onto every card
+                              in the list. Sitting where a per-hotel attribute belongs, it
+                              read as the hotel's own tier, so Aman Tokyo went out under a
+                              STANDARD badge. The only honest tier signal is Google's
+                              priceLevel, which fetchTier in hotelSearch.js does not
+                              currently ask for, so priceLevelLabel is null and this row
+                              renders nothing at all. Showing no badge beats showing one
+                              that is wrong on most cards; restore the field to the mask
+                              and the real label appears here on its own. (8 Sep 2026) */}
+                          {option.priceLevelLabel && (
+                            <div className="hotel-card__tags">
                               <span className="hotel-card__price-tag">{option.priceLevelLabel}</span>
-                            )}
-                          </div>
+                            </div>
+                          )}
                           {isSelected && (
                             <span className="hotel-card__selected-note">
                               <CheckCircleIcon />

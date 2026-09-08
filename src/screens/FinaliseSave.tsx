@@ -422,9 +422,12 @@ export default function FinaliseSave() {
                     </div>
                     {acc.address && <p className="hotel-card__description">{acc.address}</p>}
                   </div>
-                  <div className="hotel-card__tags">
-                    {acc.budget && <span className="hotel-card__tag">{acc.budget}</span>}
-                  </div>
+                  {/* The budget badge that used to sit here is gone for the same
+                      reason it left the Accommodation list: acc.budget is the tier
+                      picked on Trip Input, not anything Google says about this
+                      hotel, so the demo shipped Mandarin Oriental under a STANDARD
+                      badge. The price range immediately below is the honest version
+                      of the same signal. (8 Sep 2026) */}
                   {priceRangeLabel && (
                     <span className="finalise-price-note">
                       <span>
