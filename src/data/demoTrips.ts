@@ -27,8 +27,10 @@ export const DEMO_TRIPS: DemoTrip[] = [
     // the fixture, its hotel and its price range are all generated together.
     // The hotel is no longer named there, it is whatever this tier ranks
     // first, so this line is the only thing deciding which tier the demo
-    // represents. (8 Sep 2026)
-    budget: 'Luxury',
+    // represents. It briefly said Luxury while the demo was hand-patched back
+    // to Mandarin Oriental; the re-seed put a Standard hotel in the fixture and
+    // this has to follow it. (8 Sep 2026)
+    budget: 'Standard',
     accommodation: TOKYO_ACCOMMODATION.name,
     accommodationDetails: TOKYO_ACCOMMODATION,
     savedItinerary: TOKYO_2_DAYS,

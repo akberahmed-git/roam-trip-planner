@@ -81,9 +81,23 @@ export const MIN_REVIEWS_FOR_A_STOP = 50;
 // it again on the next round, three times over, and the block it was meant to
 // fill still ships with one stop holding four hours (Akber, 7 Sep 2026).
 export function hasEnoughReviews(candidate) {
-  if (!candidate || candidate.hasHours !== true) return true; // silence is not evidence
+  if (!candidate) return true;
   const reviews = typeof candidate.ratingCount === 'number' ? candidate.ratingCount : null;
-  return reviews !== null && reviews >= MIN_REVIEWS_FOR_A_STOP;
+
+  // If Google gave us a number, judge on the number. This used to bail out
+  // first on hasHours !== true, which meant a place with a review count sitting
+  // right there was waved through purely because Google listed no opening
+  // hours for it. Sakura Well shipped that way: 43 reviews, 3.7 stars, no
+  // hours, 135 minutes against it, and a description that managed only "a site
+  // of historical significance". Same class as Kamadera East Heritage, which
+  // this check was written for in the first place (Akber, 8 Sep 2026).
+  if (reviews !== null) return reviews >= MIN_REVIEWS_FOR_A_STOP;
+
+  // No number at all. hasHours is the tell for whether the Enterprise fields
+  // came back for this place: hours present and reviews absent means Google
+  // genuinely has none, while hours absent means we cannot tell and the stop is
+  // left alone. Silence is not evidence.
+  return candidate.hasHours !== true;
 }
 
 // A safety net behind validateMeals, which rejects a duplicated meal and retries
