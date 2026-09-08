@@ -8,6 +8,7 @@ import SegmentedControl from '../components/SegmentedControl'
 import PlacePhoto from '../components/PlacePhoto'
 import ConfirmDialog from '../components/ConfirmDialog'
 import { formatDuration, formatTravelLabel } from '../utils/duration'
+import RatingStarIcon from '../components/RatingStarIcon'
 
 function WalkIcon() {
   return (
@@ -84,6 +85,23 @@ function ComparisonCard({ item }) {
           )}
           <MealTag mealType={item.mealType} />
         </div>
+        {/* Category, neighbourhood and rating: the same row the swap cards
+            show. The rating was always on every stop - the pipeline needs the
+            review count to decide what is worth keeping - but this card never
+            drew it, so the trust signal only appeared once you went to change
+            something. Costs nothing extra: it arrives with the lookup that
+            verifies the place (Akber, 8 Sep 2026). */}
+        {(item.categoryTag || item.rating != null) && (
+          <div className="comparison-card__meta comparison-card__meta--place">
+            {item.categoryTag && <span>{item.categoryTag}</span>}
+            {item.rating != null && (
+              <span className="rating-inline">
+                <RatingStarIcon />
+                {item.rating.toFixed(1)}
+              </span>
+            )}
+          </div>
+        )}
         <p className="comparison-card__description">{item.description}</p>
       </div>
     </div>
