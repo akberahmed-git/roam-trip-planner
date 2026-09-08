@@ -229,22 +229,6 @@ export default function ComparisonView() {
             <h1>
               {tripParams?.days} day{tripParams?.days === 1 ? '' : 's'} in {tripParams?.destination} for {adults} guest{adults === 1 ? '' : 's'}
             </h1>
-            <div className="itinerary-actions">
-              <button
-                type="button"
-                className="pill-button pill-button--outline"
-                onClick={() => navigate('/trip-input')}
-              >
-                Refine request
-              </button>
-              <button
-                type="button"
-                className="pill-button pill-button--outline"
-                onClick={() => navigate('/generating')}
-              >
-                Regenerate
-              </button>
-            </div>
           </div>
 
           <div className="pace-tabs">

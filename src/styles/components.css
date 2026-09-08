@@ -1544,11 +1544,6 @@ h1 {
   gap: var(--spacing-3);
 }
 
-.itinerary-actions {
-  display: flex;
-  gap: var(--spacing-2);
-}
-
 .pill-button {
   display: inline-flex;
   align-items: center;
