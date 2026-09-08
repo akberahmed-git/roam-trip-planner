@@ -47,6 +47,7 @@
 // Routes call per leg) and counts against the daily rate limit, so run it when
 // the pipeline has changed, not casually.
 import { writeFile, mkdir } from 'node:fs/promises';
+import { readFileSync } from 'node:fs';
 import path from 'node:path';
 import { spawnSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
@@ -113,11 +114,20 @@ function requestHeaders(extra = {}) {
 
 // Must match DEMO_TRIPS[0] in src/data/demoTrips.js, otherwise the card's
 // subtitle would advertise a trip the fixture doesn't contain.
+// The bar every stop in the demo has to clear, sent to the pipeline as
+// minReviews so it accepts on exactly this number too. Declared here rather than
+// beside the other audit constants because TRIP below needs it.
+const MIN_REVIEWS_FOR_ANY_DEMO_STOP = 1000;
+
 const TRIP = {
   destination: 'Tokyo',
   days: 2,
   budget: 'Standard',
   interests: ['Temples & Shrines', 'Anime & Pop Culture', 'Nightlife', 'Modern Architecture'],
+  // Sent to the pipeline so it accepts on exactly the bar this script rejects
+  // on. Without it every adopting pass accepted at 200 and this audit blocked at
+  // 1,000, and the generations in that band could never converge.
+  minReviews: MIN_REVIEWS_FOR_ANY_DEMO_STOP,
   adults: 2,
   transport: 'Car or taxi',
   // Dates only matter for the hotel lookup below; the itinerary itself is
@@ -317,7 +327,19 @@ export const TOKYO_ACCOMMODATION = ${JSON.stringify(accommodation, null, 2)}
 // block with too few stops handing its leftover minutes to whatever could hold
 // most of them. 200 is above anything worth three hours and below anything that
 // only got there by default (Akber, 8 Sep 2026).
-const MAX_PLAUSIBLE_STAY_MINUTES = 200;
+// Read out of the pipeline source rather than copied. fixedSchedule.ts cannot be
+// imported here - unlike openingHours.ts it has imports of its own, with .js
+// specifiers plain Node will not resolve - but a number the audit and the
+// pipeline each keep their own copy of is the most expensive bug shape in this
+// project, and this at least fails loudly the moment they diverge.
+const MAX_PLAUSIBLE_STAY_MINUTES = (() => {
+  const source = readFileSync(new URL('../api/_lib/fixedSchedule.ts', import.meta.url), 'utf8');
+  const found = source.match(/MAX_PLAUSIBLE_STAY_MINUTES = (\d+)/);
+  if (!found) {
+    throw new Error('MAX_PLAUSIBLE_STAY_MINUTES is gone from api/_lib/fixedSchedule.ts - the audit and the pipeline can no longer agree on it');
+  }
+  return Number(found[1]);
+})();
 
 const MIN_ACTIVITIES_PER_DAY = 3;
 const MIN_ACTIVITIES_FINAL_DAY = 2;
@@ -345,7 +367,6 @@ const MIN_WELL_KNOWN_PER_DAY = 2;
 // about the rest, so a day could clear it and still send someone to a marker
 // stone for an afternoon. In a city the size of Tokyo anywhere worth an hour has
 // four figures of reviews; this is a demo-only number for exactly that reason.
-const MIN_REVIEWS_FOR_ANY_DEMO_STOP = 1000;
 // Matches MAX_STOPS_PER_INTEREST_PER_DAY in generate-resolved-itinerary.ts,
 // which is where the pipeline now repairs a day that breaks it. The audit is
 // the backstop, not the enforcement: refusing a draft fifteen times taught it

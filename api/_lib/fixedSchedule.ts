@@ -12,6 +12,14 @@ import { dayShape } from './routeShape.js';
 import { isOpenAt, closesAt } from './openingHours.js';
 import { isOffBandDining } from './budgetFit.js';
 
+// Fifteen minutes of grace, so a stop finishing exactly as the doors close is
+// not a rejection. Used by the closing-overrun check below.
+const CLOSING_GRACE_MINUTES = 15;
+function minutesToTime(minutes) {
+  const total = ((Math.round(minutes) % 1440) + 1440) % 1440;
+  return `${String(Math.floor(total / 60)).padStart(2, '0')}:${String(total % 60).padStart(2, '0')}`;
+}
+
 // Meals happen at the same time every day, and the rest of the day is fitted
 // around them. This replaces the arrangement where meal times were whatever the
 // day's arithmetic left over and half a dozen passes then negotiated over the
@@ -83,6 +91,43 @@ export const EVENING_STARTS_MINUTES = 21 * 60;
 // to spend an afternoon.
 export const MIN_REVIEWS_FOR_A_STOP = 200;
 
+// The longest a single stop may run. The demo audit has rejected drafts on this
+// number for weeks while nothing in the pipeline enforced it: activityCeiling
+// tops out at 180 and fitBlock's overflow dump then adds unbounded minutes on
+// top, so Meiji Jingu shipped at 3h 45m against a ceiling of 150. Detection was
+// never the problem - starvedBlocks reports the block correctly - but the repair
+// is allowed to fail, and when Google has nothing to fill the gap with, nothing
+// clamped the stop. Exported so the audit imports it instead of keeping its own
+// copy, which is the two-copies problem that has cost this codebase five drafts
+// (Akber, 8 Sep 2026).
+export const MAX_PLAUSIBLE_STAY_MINUTES = 200;
+
+// The floor in force for the current request. 200 is right for a real trip to a
+// real town, where the neighbourhood shrine worth an hour runs to hundreds of
+// reviews and a 1,000 bar would throw it out. The Tokyo demo needs 1,000,
+// because its audit blocks there, and for weeks the two numbers did not overlap:
+// every adopting pass accepted at 200, preferWellKnown only PREFERRED 1,000 and
+// fell through to any candidate, and the audit then threw the whole generation
+// away. Six stops in the 200-999 band failed three attempts in a row.
+//
+// Module-level rather than a parameter on eight signatures, deliberately. The
+// recurring bug in this file is a rule that exists in two places and gets fixed
+// in one; threading a floor through every adoption path is the same shape, and
+// one missed call site puts the failure straight back. One value, read
+// everywhere, set once from the request body.
+//
+// The honest cost: two requests sharing a warm serverless instance share this.
+// Only the reseed script ever sends a value, so the only bleed possible is a
+// production request briefly holding a HIGHER bar, which is a better trip rather
+// than a broken one (Akber, 8 Sep 2026).
+let reviewFloor = MIN_REVIEWS_FOR_A_STOP;
+export function setReviewFloor(value) {
+  reviewFloor = typeof value === 'number' && value > 0 ? Math.floor(value) : MIN_REVIEWS_FOR_A_STOP;
+}
+export function currentReviewFloor() {
+  return reviewFloor;
+}
+
 // The same bar unsuitableStops enforces, for the passes that go looking for a
 // stop to add. Without it the loop adds a place nobody has reviewed and deletes
 // it again on the next round, three times over, and the block it was meant to
@@ -91,11 +136,12 @@ export const MIN_REVIEWS_FOR_A_STOP = 200;
 // because unsuitableStops used to carry its own inline copy of this and only
 // one of the two ever got fixed - the same two-copies problem that cost five
 // drafts elsewhere in this codebase.
-export function reviewShortfall(candidate) {
+export function reviewShortfall(candidate, minReviews = undefined) {
   if (!candidate) return null;
+  const floor = typeof minReviews === 'number' && minReviews > 0 ? minReviews : reviewFloor;
   const reviews = typeof candidate.ratingCount === 'number' ? candidate.ratingCount : null;
   if (reviews !== null) {
-    return reviews >= MIN_REVIEWS_FOR_A_STOP ? null : `only ${reviews} reviews`;
+    return reviews >= floor ? null : `only ${reviews} reviews`;
   }
 
   // No review count AND no rating means Google returned the record and has
@@ -119,8 +165,8 @@ export function reviewShortfall(candidate) {
   return candidate.hasHours === true ? 'nobody has reviewed it' : null;
 }
 
-export function hasEnoughReviews(candidate) {
-  return reviewShortfall(candidate) === null;
+export function hasEnoughReviews(candidate, minReviews = undefined) {
+  return reviewShortfall(candidate, minReviews) === null;
 }
 
 // A safety net behind validateMeals, which rejects a duplicated meal and retries
@@ -277,7 +323,7 @@ function isNightVenue(item) {
   return NIGHT_VENUE.test(`${item.name || ''} ${item.categoryTag || ''}`);
 }
 
-export function unsuitableStops(day, weekdayIndex, budget) {
+export function unsuitableStops(day, weekdayIndex, budget, minReviews = undefined) {
   const found: any[] = [];
   const dinnerIndex = indexOfMeal(day, 'dinner');
 
@@ -296,6 +342,29 @@ export function unsuitableStops(day, weekdayIndex, budget) {
     if (knownOpen === false) {
       found.push({ index, name: item.name, reason: `closed at ${item.startTime}` });
       return;
+    }
+
+    // Open when the traveller arrives is not the same as open when they leave.
+    // Nothing in the pipeline had ever asked about the end: isOpenAt takes a
+    // single minute, and fitBlock lengthens a stop to fill its block with no
+    // knowledge of closing times at all, so the scheduler actively manufactures
+    // this. Tokyo Anime Center shipped running to 19:50 against a 19:00 close.
+    //
+    // Meals are excluded here for the same reason they are excluded below: a
+    // dropped dinner leaves a hole, so they are re-placed rather than deleted,
+    // which resolveMealPlaceholders does with the placeholder machinery
+    // (Akber, 8 Sep 2026).
+    if (!item.mealType && weekdayIndex != null && item.weekdayDescriptions) {
+      const closing = closesAt(item.weekdayDescriptions, weekdayIndex);
+      const ends = at + (item.durationMinutes || 0);
+      if (closing != null && ends > closing + CLOSING_GRACE_MINUTES) {
+        found.push({
+          index,
+          name: item.name,
+          reason: `runs to ${minutesToTime(ends)} but closes at ${minutesToTime(closing)}`,
+        });
+        return;
+      }
     }
 
     if (item.mealType) {
@@ -761,8 +830,19 @@ function fitBlock(day, block) {
   if (remaining >= STAY_DURATION_INCREMENT_MINUTES) {
     const longest = [...stops].sort((a, b) => activityCeiling(b) - activityCeiling(a))[0];
     const whole = Math.floor(remaining / STAY_DURATION_INCREMENT_MINUTES) * STAY_DURATION_INCREMENT_MINUTES;
-    longest.durationMinutes += whole;
-    remaining -= whole;
+    // Bounded. This was `+=` with no ceiling, which is how a stop ships at 3h
+    // 45m: the dump is the ONE unbounded write to durationMinutes in the whole
+    // pipeline, and the audit's 200-minute cap was the only place that number
+    // was ever enforced rather than merely detected.
+    //
+    // Safe to leave time unspent: `remaining` is returned, applyFixedSchedule
+    // collects it into residuals, and assignTimes spreads it across the block's
+    // travel legs with the last one closing exactly on the next anchor. So a
+    // capped stop pads the walk rather than moving dinner (Akber, 8 Sep 2026).
+    const room = Math.max(0, MAX_PLAUSIBLE_STAY_MINUTES - (longest.durationMinutes || 0));
+    const spend = Math.min(whole, Math.floor(room / STAY_DURATION_INCREMENT_MINUTES) * STAY_DURATION_INCREMENT_MINUTES);
+    longest.durationMinutes += spend;
+    remaining -= spend;
   }
 
   return remaining;
@@ -874,6 +954,18 @@ export function applyFixedSchedule(day, { cutoffMinutes, transport, minStayMinut
   const residuals = new Map<string, number>();
   for (const block of blocksOf(day, anchors)) {
     residuals.set(block.name, fitBlock(day, block));
+  }
+
+  // The evening sits in no block: blocksOf walks breakfast-lunch and
+  // lunch-dinner, so anything after dinner keeps whatever length the model wrote
+  // and fitBlock's cap above never sees it. A 210-minute post-dinner bar would
+  // fail the audit with no pass anywhere able to notice, so the cap is applied
+  // once more here, over every activity, before the clock is written.
+  for (const item of day.items) {
+    if (item.type === 'accommodation' || item.mealType) continue;
+    if ((item.durationMinutes || 0) > MAX_PLAUSIBLE_STAY_MINUTES) {
+      item.durationMinutes = MAX_PLAUSIBLE_STAY_MINUTES;
+    }
   }
 
   assignTimes(day, anchors, residuals, mode);

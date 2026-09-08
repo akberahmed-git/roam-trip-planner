@@ -19,9 +19,9 @@ import {
   clampStayDurations,
   dayCutoffMinutes
 } from './_lib/scheduleRealign.js';
-import { applyFixedSchedule, orderBlocksByOpeningHours, dedupeMeals, starvedBlocks, unsuitableStops, roomForAnotherStop, eveningInsertPoint, hasEnoughReviews, numberedStopCount, MAX_NUMBERED_STOPS_PER_DAY } from './_lib/fixedSchedule.js';
+import { applyFixedSchedule, orderBlocksByOpeningHours, dedupeMeals, starvedBlocks, unsuitableStops, roomForAnotherStop, eveningInsertPoint, hasEnoughReviews, numberedStopCount, setReviewFloor, currentReviewFloor, MAX_NUMBERED_STOPS_PER_DAY } from './_lib/fixedSchedule.js';
 import { sortByBudgetFit, isOffBandDining } from './_lib/budgetFit.js';
-import { uncoveredInterests, satisfiesInterest, isEveningInterest } from './_lib/interestCoverage.js';
+import { uncoveredInterests, satisfiesInterest, isEveningInterest, interestKey } from './_lib/interestCoverage.js';
 import { weekdayForDay, isOpenAt, closesAt } from './_lib/openingHours.js';
 import { shapeOf, REORDER_REVERSAL_DEGREES } from './_lib/routeShape.js';
 import { describeAdoptedStops, stripAdoptionMarkers } from './_lib/describeAdoptedStops.js';
@@ -549,6 +549,11 @@ function isUsableCandidate(candidate) {
   if (!candidate.availablePhotoUrl) return false;
   if (!hasReadableName(candidate.name)) return false;
   if (MARKER_NAME_PATTERNS.some((pattern) => pattern.test(candidate.name))) return false;
+  // pickSubstitute and enforceDriveCap are the two adoption paths that ran with
+  // no review check whatsoever - they filter on this function alone and then
+  // take preferWithPhoto, which has no threshold either. Every other pass had a
+  // floor and these two quietly did not.
+  if (!hasEnoughReviews(candidate)) return false;
   return true;
 }
 
@@ -1201,6 +1206,11 @@ async function backfillOrDropActivities(day, anchor, usedPlaceIds, interests, st
           if (usedPlaceIds.has(candidate.placeId)) return false;
           if (isFoodOnly(candidate)) return false;
           if (!isSubstantialActivity(candidate)) return false;
+          // This pass replaces every stop the model drafted that failed
+          // verification, and it had no review floor of any kind - it took the
+          // first match in qualityScore order. The highest-volume unfiltered
+          // route into a shipped itinerary.
+          if (!hasEnoughReviews(candidate)) return false;
           if (anchor && haversineMeters(anchor, candidate.location) > MAX_BROAD_DISTANCE_METERS) return false;
           if (!withinReachOfStay(candidate.location, stay)) return false;
           return true;
@@ -1576,13 +1586,12 @@ async function fillStarvedBlocks(day, cutoff, anchor, usedPlaceIds, stay, intere
       const usable = candidates.filter(
           (c) =>
             c.location &&
-            c.availablePhotoUrl &&
+            // Photo, readable name, not a marker stone, and enough reviews. The
+            // marker check was the one this pass never had, which is how a
+            // commemorative stone tablet with 381 reviews became an afternoon.
+            isUsableCandidate(c) &&
             !usedPlaceIds.has(c.placeId) &&
-            hasReadableName(c.name) &&
             !isFoodOnly(c) &&
-            // Or this pass spends the whole loop adding a stop the hours-and-reviews
-            // check deletes again on the next round.
-            hasEnoughReviews(c) &&
             (!anchor || haversineMeters(anchor, c.location) <= MAX_BROAD_DISTANCE_METERS) &&
             withinReachOfStay(c.location, stay)
       );
@@ -1673,10 +1682,8 @@ async function coverMissingInterests(itinerary, { interests, anchor, usedPlaceId
 
   const usable = (candidate, interest) =>
     candidate.location &&
-    candidate.availablePhotoUrl &&
+    isUsableCandidate(candidate) &&
     !usedPlaceIds.has(candidate.placeId) &&
-    hasReadableName(candidate.name) &&
-    hasEnoughReviews(candidate) &&
     !isFoodOnly(candidate) &&
     (!anchor || haversineMeters(anchor, candidate.location) <= MAX_BROAD_DISTANCE_METERS) &&
     withinReachOfStay(candidate.location, stay);
@@ -1906,6 +1913,13 @@ const MAX_STOPS_PER_INTEREST_PER_DAY = 1;
 // the survivors are chosen globally by review count. Counting only the days
 // settled so far would make the outcome depend on which day was being settled
 // when the pass ran, and the same pass runs again after interest coverage.
+// Keyed lowercase and ALWAYS read through interestKey. The chips arrive from
+// the client as 'Temples & Shrines', and indexing this table with the raw string
+// returned undefined for all four interests, so both halves of the plan cap were
+// dead code from the moment they were written. Every other interest lookup in
+// the codebase - satisfiesInterest, interestQuery, MEAL_DELIVERED_INTERESTS -
+// normalises first; these two were the outliers, and the demo shipped three
+// shrines in one plan because of it (Akber, 8 Sep 2026).
 const MAX_STOPS_PER_INTEREST_PER_PLAN = {
   'temples & shrines': 1,
 };
@@ -1921,7 +1935,7 @@ function planActivities(itinerary) {
 // best `cap` of them by review count, which is the only measure of which shrine
 // a traveller would actually be told to visit.
 function planKeepersFor(itinerary, interest) {
-  const cap = MAX_STOPS_PER_INTEREST_PER_PLAN[interest];
+  const cap = MAX_STOPS_PER_INTEREST_PER_PLAN[interestKey(interest)];
   // No cap, or no plan-level view to enforce it against. Returning an empty set
   // for a missing itinerary would mark every stop surplus and empty the day.
   if (cap == null || !itinerary?.days) return null;
@@ -1963,10 +1977,8 @@ async function rebalanceInterests(day, { interests, anchor, usedPlaceIds, stay, 
       candidates.filter(
         (c) =>
           c.location &&
-          c.availablePhotoUrl &&
+          isUsableCandidate(c) &&
           !usedPlaceIds.has(c.placeId) &&
-          hasReadableName(c.name) &&
-          hasEnoughReviews(c) &&
           !isFoodOnly(c) &&
           (!anchor || haversineMeters(anchor, c.location) <= MAX_BROAD_DISTANCE_METERS) &&
           withinReachOfStay(c.location, stay) &&
@@ -1993,7 +2005,7 @@ async function rebalanceInterests(day, { interests, anchor, usedPlaceIds, stay, 
   // short of, however few of it this particular day holds. Without this the
   // second pass below would go and buy the shrine the first pass just removed.
   const atPlanCap = (interest) => {
-    const cap = MAX_STOPS_PER_INTEREST_PER_PLAN[interest];
+    const cap = MAX_STOPS_PER_INTEREST_PER_PLAN[interestKey(interest)];
     if (cap == null) return false;
     const across = itinerary
       ? planActivities(itinerary).filter((item) => servedBy(item, interest)).length
@@ -2038,7 +2050,26 @@ async function rebalanceInterests(day, { interests, anchor, usedPlaceIds, stay, 
     for (const item of surplus) {
       const wanted = wantedFor(interest, item);
       const pick = await swapIn(item, wanted, interest);
-      if (pick) swapped.push(`${item.name} -> ${pick.name} (${wanted})`);
+      if (pick) {
+        swapped.push(`${item.name} -> ${pick.name} (${wanted})`);
+        continue;
+      }
+
+      // Nothing to swap it for. A plan-wide cap is a flat rule rather than a
+      // target, so the stop goes and the day comes back a stop lighter; the fill
+      // at the top of the next round is what puts something in its place, and
+      // that is the machinery built for exactly this. Leaving it in was how a
+      // blocking check ended up enforced against a best-effort repair, which is
+      // the shape that threw fifteen generations away.
+      //
+      // Only for the plan cap. The per-day balance target keeps its old
+      // behaviour: no replacement means no change.
+      if (!keepers) continue;
+      const index = day.items.indexOf(item);
+      if (index < 0) continue;
+      if (index > 0) day.items[index - 1].travelToNext = null;
+      day.items.splice(index, 1);
+      swapped.push(`${item.name} dropped (over the plan cap for ${interest}, nothing to swap in)`);
     }
   }
 
@@ -2150,6 +2181,7 @@ async function repositionStrandedStops(day, anchor, usedPlaceIds, stay) {
       if (!candidate.availablePhotoUrl) { reasons.noPhoto++; return false; }
       if (usedPlaceIds.has(candidate.placeId)) { reasons.used++; return false; }
       if (!hasReadableName(candidate.name)) { reasons.unreadable++; return false; }
+      if (MARKER_NAME_PATTERNS.some((pattern) => pattern.test(candidate.name))) { reasons.unreadable++; return false; }
       if (!hasEnoughReviews(candidate)) { reasons.tooFewReviews++; return false; }
       // A meal has to land on somewhere that serves food. An activity only has
       // to be the same kind of thing it is replacing, which the query already
@@ -3034,6 +3066,14 @@ export default async function handler(req, res) {
   // just skips bookending in that case (see applyAccommodationBookends).
   const accommodationDetails = req.body.accommodationDetails;
   const interests = req.body.interests;
+  // The quality bar for this request. Absent on every real trip, which keeps the
+  // 200 default; the demo reseed sends 1,000 so the pipeline accepts exactly what
+  // its audit will accept. Those two numbers not overlapping is what threw three
+  // generations away tonight (Akber, 8 Sep 2026).
+  setReviewFloor(req.body.minReviews);
+  if (currentReviewFloor() !== 200) {
+    console.info(`[generate-resolved-itinerary] review floor for this request: ${currentReviewFloor()}`);
+  }
   const adults = req.body.adults;
   const transport = req.body.transport;
   // Which weekday each day of the trip falls on, which is what makes opening
