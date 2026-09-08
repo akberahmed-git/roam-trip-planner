@@ -2431,32 +2431,47 @@ async function resolveItinerary(itinerary, destination, anchor, transport, accom
       if (round === 2) applyFixedSchedule(day, options);
     }
 
-    // The geometry repair above ran before this loop, and the loop is what
-    // breaks geometry: it drops stops the hours and review checks reject, and
-    // fillStarvedBlocks goes to Google for replacements chosen for what they are
-    // rather than where they are. So the day the reorder inspected is not the day
-    // that ships, and three reseeds in a row were rejected for doubling back on
-    // legs that only existed after the loop ran.
+    // Everything below runs after the per-day loop has finished, and each pass
+    // undoes the last one's guarantee: the loop drops stops the checks reject,
+    // fillStarvedBlocks fetches replacements, coverMissingInterests inserts one
+    // more, and any of those bends a route or thins a block that was fine a
+    // moment ago.
     //
-    // Same mistake as the hours check made: a correct rule running before the
-    // passes that invalidate it. Run it again on the settled day (Akber, 7 Sep 2026).
-    const settledReorder = reorderDayGeographically(day);
-    if (settledReorder) {
-      console.info(
-        `[generate-resolved-itinerary] day ${day.day}: reordered the settled day, worst turn ${settledReorder.fromTurn}° -> ${settledReorder.toTurn}°`
-      );
-    }
-    const settledMeals = await repositionStrandedStops(day, anchor, usedPlaceIds, stay);
-    if (settledMeals.length > 0) {
-      console.info(
-        `[generate-resolved-itinerary] day ${day.day}: moved ${settledMeals.length} stranded stop(s) back to the settled day: ${settledMeals.join('; ')}`
-      );
-      reorderDayGeographically(day);
-    }
-    if (settledReorder || settledMeals.length > 0) {
-      // Reordering and re-placing both leave legs pointing at somewhere the stop
-      // is no longer next to, so the day is measured again and refitted before it
-      // goes anywhere near a screen.
+    // This is the fourth time the same shape has cost a demo draft. A correct
+    // rule, running before a pass that invalidates it: the hours check before
+    // the passes that moved stops, the reorder before the loop that drops and
+    // adds them, the route check before interest coverage, and then the thin
+    // block check before the fill I added to fix the last one. So these are no
+    // longer a sequence. They run together until the day stops changing
+    // (Akber, 8 Sep 2026).
+    for (let round = 0; round < 3; round++) {
+      const filled = await fillStarvedBlocks(day, cutoff, anchor, usedPlaceIds, stay, interests);
+      if (filled.length > 0) {
+        console.info(
+          `[generate-resolved-itinerary] day ${day.day}: filled ${filled.length} stretch(es) left thin by the late passes: ${filled.join(', ')}`
+        );
+      }
+
+      const reordered = reorderDayGeographically(day);
+      if (reordered) {
+        console.info(
+          `[generate-resolved-itinerary] day ${day.day}: reordered the settled day, worst turn ${reordered.fromTurn}° -> ${reordered.toTurn}°`
+        );
+      }
+
+      const moved = await repositionStrandedStops(day, anchor, usedPlaceIds, stay);
+      if (moved.length > 0) {
+        console.info(
+          `[generate-resolved-itinerary] day ${day.day}: moved ${moved.length} stranded stop(s) on the settled day: ${moved.join('; ')}`
+        );
+        reorderDayGeographically(day);
+      }
+
+      if (filled.length === 0 && !reordered && moved.length === 0) break;
+
+      // Anything filled, reordered or replaced leaves legs pointing at somewhere
+      // the stop is no longer beside, so the day is measured and refitted before
+      // the next round looks at it.
       await computeTravelTimes(day.items, transport);
       applyFixedSchedule(day, options);
     }
