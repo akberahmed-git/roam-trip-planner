@@ -331,6 +331,9 @@ const LATEST_WRAPPED_END_HOUR = 3;
 const EARLIEST_ACCEPTABLE_END_HOUR = 19;
 
 const MAX_KM_FROM_HOTEL = 15;
+// See the prominence check for why these live here and not in the pipeline.
+const MIN_WELL_KNOWN_REVIEWS = 5000;
+const MIN_WELL_KNOWN_PER_DAY = 2;
 const LONG_LEG_KM = 4;
 const REVERSAL_DEGREES = 140;
 
@@ -389,7 +392,7 @@ function auditDemo(itinerary) {
   const notes = [];
   const dayHoods = [];
   const wantedInterests = TRIP.interests.map((i) => i.toLowerCase());
-  const seenInterestText = [];
+  const seenInterestText = { packed: [], slow: [] };
 
   for (const variant of ['packed', 'slow']) {
     const days = itinerary[variant]?.days || [];
@@ -462,7 +465,33 @@ function auditDemo(itinerary) {
       }
 
       for (const item of items) {
-        seenInterestText.push(`${item.name} ${item.categoryTag || ''} ${item.description || ''}`.toLowerCase());
+        // Per stop and per variant, not one merged blob for the whole trip.
+        // Merged, a single incidental word anywhere cleared an interest for
+        // both plans at once.
+        seenInterestText[variant].push(
+          `${item.name} ${item.categoryTag || ''} ${item.description || ''}`.toLowerCase()
+        );
+      }
+
+      // Prominence, which the prompt has asked for all along and nothing has
+      // ever checked: "A day should contain at least two places the city is
+      // genuinely known for."
+      //
+      // Review count is the only measure available that separates a landmark
+      // from a plaque, and 5,000 is calibrated for Tokyo, where the real sights
+      // run from ten thousand to a hundred thousand. It lives in this script
+      // rather than in the pipeline for exactly that reason: an absolute number
+      // is honest for a demo that is always Tokyo and would be nonsense for a
+      // town where nothing clears a thousand. Generalising it needs a measure
+      // relative to what the destination actually offers (Akber, 8 Sep 2026).
+      const known = activities.filter(
+        (i) => typeof i.ratingCount === 'number' && i.ratingCount >= MIN_WELL_KNOWN_REVIEWS
+      );
+      if (activities.length > 0 && known.length < MIN_WELL_KNOWN_PER_DAY) {
+        problems.push(
+          `${label}: only ${known.length} of ${activities.length} activities are places Tokyo is known for ` +
+            `(${MIN_WELL_KNOWN_REVIEWS.toLocaleString()}+ reviews), needs ${MIN_WELL_KNOWN_PER_DAY}`
+        );
       }
       // Does the day actually move? Two measures, because either can be
       // missing: the neighbourhood half of categoryTag ("Museum · Roppongi"),
@@ -571,18 +600,46 @@ function auditDemo(itinerary) {
   // because "Ghibli" was not on the list (Akber, 4 Sep 2026). Err towards
   // accepting - a false rejection costs a whole real generation, while a false
   // acceptance costs a look at the output, which happens anyway.
+  //
+  // Three things were wrong with how this used to run.
+  //
+  // It matched against ONE string holding every stop of both plans, so a single
+  // incidental word cleared an interest for the whole trip. "AFURI Harajuku", a
+  // ramen shop, satisfied Anime & Pop Culture because harajuku was on the list.
+  //
+  // It matched substrings, so "bar" was inside Barbecue and Barista.
+  //
+  // And it asked the question once for the trip rather than once per plan, so a
+  // traveller could pick the option that delivered none of what they asked for
+  // and the audit would have passed it. The chips are the promise; each plan has
+  // to keep it on its own.
+  //
+  // The evidence lists lost the words that were matching things they did not
+  // mean: harajuku and takeshita are neighbourhoods rather than anime venues,
+  // game and character are too generic to mean anything, golden only meant Golden
+  // Gai, and a museum or a gallery is not modern architecture however good the
+  // building is (Akber, 8 Sep 2026).
   const INTEREST_EVIDENCE = {
-    'temples & shrines': ['temple', 'shrine', 'jinja', 'taisha', 'sensō', 'senso-ji', 'zōjō', 'zojo', 'meiji', 'buddhist', 'shinto', 'pagoda'],
-    'anime & pop culture': ['anime', 'manga', 'ghibli', 'akihabara', 'nakano', 'pokemon', 'nintendo', 'gundam', 'otaku', 'cosplay', 'arcade', 'game', 'figure', 'character', 'pop culture', 'kawaii', 'harajuku', 'takeshita'],
-    nightlife: ['bar', 'club', 'nightlife', 'izakaya', 'golden', 'yokocho', 'live music', 'jazz', 'lounge', 'rooftop', 'kabukich'],
-    'modern architecture': ['architecture', 'tower', 'skytree', 'observation', 'observatory', 'museum', 'gallery', 'hills', 'midtown', 'forum', 'teamlab', 'skyscraper', 'building', 'deck'],
+    'temples & shrines': ['temple', 'shrine', 'jinja', 'jingu', 'taisha', 'sensō', 'senso-ji', 'zōjō', 'zojo', 'buddhist', 'shinto', 'pagoda'],
+    'anime & pop culture': ['anime', 'manga', 'ghibli', 'akihabara', 'nakano broadway', 'pokemon', 'nintendo', 'gundam', 'otaku', 'cosplay', 'arcade', 'figure', 'pop culture', 'kawaii', 'takeshita'],
+    nightlife: ['bar', 'club', 'nightlife', 'izakaya', 'golden gai', 'yokocho', 'live music', 'jazz', 'lounge', 'rooftop', 'kabukich', 'night'],
+    'modern architecture': ['architecture', 'tower', 'skytree', 'observation', 'observatory', 'hills', 'midtown', 'forum', 'teamlab', 'skyscraper', 'building', 'deck', 'city view'],
   };
-  const haystack = seenInterestText.join(' | ');
-  for (const interest of wantedInterests) {
-    const evidence = INTEREST_EVIDENCE[interest];
-    if (!evidence) continue;
-    if (!evidence.some((word) => haystack.includes(word))) {
-      problems.push(`interest "${interest}" appears nowhere in the trip`);
+
+  // Whole words. Substring matching is what put "bar" inside Barbecue.
+  const mentions = (text, word) =>
+    new RegExp(`(^|[^a-z0-9])${word.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}([^a-z0-9]|$)`, 'i').test(text);
+
+  for (const variant of ['packed', 'slow']) {
+    for (const interest of wantedInterests) {
+      const evidence = INTEREST_EVIDENCE[interest];
+      if (!evidence) continue;
+      const delivered = seenInterestText[variant].some((text) =>
+        evidence.some((word) => mentions(text, word))
+      );
+      if (!delivered) {
+        problems.push(`${variant}: nothing in this plan delivers "${interest}"`);
+      }
     }
   }
 
