@@ -1841,15 +1841,18 @@ const MAX_STOPS_PER_INTEREST_PER_DAY = 1;
 async function rebalanceInterests(day, { interests, anchor, usedPlaceIds, stay, transport }) {
   if (!interests || interests.length < 2) return [];
 
-  const activities = day.items.filter(
-    (item) => item.type !== 'accommodation' && !item.mealType && item.location
-  );
-  if (activities.length === 0) return [];
-
   const servedBy = (item, interest) =>
     satisfiesInterest({ ...item, placeTypes: item.placeTypes }, interest);
 
-  const countFor = (interest) => activities.filter((item) => servedBy(item, interest)).length;
+  // Recomputed on every call rather than snapshotted once. A swap replaces an
+  // object in day.items, so a list captured up front goes stale the moment the
+  // first swap lands and every count after it is wrong.
+  const activitiesNow = () =>
+    day.items.filter((item) => item.type !== 'accommodation' && !item.mealType && item.location);
+
+  const countFor = (interest) => activitiesNow().filter((item) => servedBy(item, interest)).length;
+
+  if (activitiesNow().length === 0) return [];
 
   const swapped: string[] = [];
 
@@ -1859,7 +1862,7 @@ async function rebalanceInterests(day, { interests, anchor, usedPlaceIds, stay, 
 
     // Keep the best of them and swap the rest. Review count is the only measure
     // of which shrine a traveller would actually be told to visit.
-    const surplus = activities
+    const surplus = activitiesNow()
       .filter((item) => servedBy(item, interest))
       .sort((a, b) => (b.ratingCount || 0) - (a.ratingCount || 0))
       .slice(MAX_STOPS_PER_INTEREST_PER_DAY);
