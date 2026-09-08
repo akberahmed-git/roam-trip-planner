@@ -24,9 +24,11 @@ export const DEMO_TRIPS: DemoTrip[] = [
     days: 2,
     interests: ['Temples & Shrines', 'Anime & Pop Culture', 'Nightlife', 'Modern Architecture'],
     // Must match TRIP.budget in scripts/reseed-tokyo-demo.js, which is where
-    // the fixture and its price range are generated. Luxury because the demo
-    // stays at a Mandarin Oriental. (8 Sep 2026)
-    budget: 'Luxury',
+    // the fixture, its hotel and its price range are all generated together.
+    // The hotel is no longer named there, it is whatever this tier ranks
+    // first, so this line is the only thing deciding which tier the demo
+    // represents. (8 Sep 2026)
+    budget: 'Standard',
     accommodation: TOKYO_ACCOMMODATION.name,
     accommodationDetails: TOKYO_ACCOMMODATION,
     savedItinerary: TOKYO_2_DAYS,

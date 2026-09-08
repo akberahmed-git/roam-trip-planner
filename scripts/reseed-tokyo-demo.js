@@ -67,24 +67,31 @@ function requestHeaders(extra = {}) {
     : extra;
 }
 
-const HOTEL_NAME = 'Mandarin Oriental, Tokyo';
+// There is deliberately no HOTEL_NAME here any more.
+//
+// It used to say 'Mandarin Oriental, Tokyo' while TRIP.budget said Standard,
+// and the lookup below reconciled the two by falling back to a scan of all
+// three tiers. That fallback is what let the mismatch ship: the accommodation
+// block bakes in priceRangeByTier[TRIP.budget], so the demo went out with the
+// Standard tier's 15k-80k JPY estimate printed under a hotel the app's own
+// Luxury tier prices at 120k-250k. A wrong price under a real hotel name is
+// the one thing this app is built not to do, and a hand-picked name is what
+// made it possible.
+//
+// The hotel is now whatever the chosen tier ranks first, which is the same
+// hotel the Accommodation screen pre-selects for a traveller planning this
+// exact trip. That is the property worth having: the demo cannot show a hotel
+// nobody can find. It also means the demo hotel can change between re-seeds if
+// Google's ratings move, which is correct - the alternative is a frozen name
+// slowly drifting out of the live results with nothing to catch it.
+// (Akber, 8 Sep 2026)
 
 // Must match DEMO_TRIPS[0] in src/data/demoTrips.js, otherwise the card's
 // subtitle would advertise a trip the fixture doesn't contain.
 const TRIP = {
   destination: 'Tokyo',
   days: 2,
-  // Luxury, not Standard, because the hotel above is. This used to say
-  // Standard while HOTEL_NAME was a Mandarin Oriental, and the mismatch was
-  // not just a label: the accommodation block below bakes in
-  // priceRangeByTier[TRIP.budget], so the demo shipped Mandarin Oriental
-  // carrying the Standard tier's 15k-80k JPY estimate against a hotel this
-  // app's own Luxury tier prices at 120k-250k. The lookup only found the
-  // hotel at all through the all-tiers fallback, which hid the mismatch
-  // instead of failing on it. Change one of these two and change the other.
-  // (8 Sep 2026)
-  budget: 'Luxury',
-  accommodation: HOTEL_NAME,
+  budget: 'Standard',
   interests: ['Temples & Shrines', 'Anime & Pop Culture', 'Nightlife', 'Modern Architecture'],
   adults: 2,
   transport: 'Car or taxi',
@@ -122,23 +129,21 @@ async function fetchAccommodation() {
 
   const { options, priceRangeByTier, destinationCurrency } = await response.json();
   const tiered = options?.[TRIP.budget] || [];
-  const match =
-    tiered.find((option) => option.name === HOTEL_NAME) ||
-    Object.values(options || {})
-      .flat()
-      .find((option) => option.name === HOTEL_NAME) ||
-    tiered[0];
+
+  // Top of the chosen tier, and nothing else. No cross-tier fallback on
+  // purpose: if the tier the demo claims is empty, that is a real problem with
+  // the hotel search worth stopping on, not something to paper over by
+  // borrowing a hotel from a tier the demo does not advertise.
+  const match = tiered[0];
 
   if (!match) {
-    throw new Error(`Could not find an accommodation option for ${TRIP.destination}`);
-  }
-
-  if (match.name !== HOTEL_NAME) {
-    console.warn(
-      `  ! ${HOTEL_NAME} was not in the results; using ${match.name} instead. ` +
-        'Update demoTrips.js accommodation/subtitle to match.'
+    throw new Error(
+      `No ${TRIP.budget} accommodation for ${TRIP.destination}. ` +
+        'Fix the hotel search rather than re-pointing the demo at another tier.'
     );
   }
+
+  console.log(`  hotel: ${match.name} (${TRIP.budget}, top of ${tiered.length} shown)`);
 
   return {
     ...match,
@@ -558,7 +563,17 @@ async function main() {
   const response = await fetch(`${BASE_URL}/api/generate-resolved-itinerary`, {
     method: 'POST',
     headers: requestHeaders({ 'Content-Type': 'application/json' }),
-    body: JSON.stringify({ ...TRIP, accommodationDetails }),
+    // accommodation is the plain name string, exactly as Accommodation.jsx
+    // sends it. generateRawItinerary needs it so Claude drafts a trip that
+    // knows where the traveller is staying. It used to come from TRIP as a
+    // hardcoded HOTEL_NAME, which is precisely how it could disagree with the
+    // hotel actually looked up above; taking it from the resolved hotel makes
+    // that disagreement impossible.
+    body: JSON.stringify({
+      ...TRIP,
+      accommodation: accommodationDetails.name,
+      accommodationDetails,
+    }),
   });
 
   if (!response.ok) {
