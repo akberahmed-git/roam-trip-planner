@@ -2332,6 +2332,12 @@ h1 {
 }
 
 .finalise-rating-input {
+  /* The stars and the note are two separate things to do, not a label and the
+     control it labels, so they get the space the page puts between sections
+     rather than the tighter gap .finalise-section uses to group a heading with
+     what sits under it. Written as the difference so it stays correct if either
+     token moves (Akber, 8 Sep 2026). */
+  margin-top: calc(var(--spacing-4) - var(--spacing-2));
   width: 100%;
   min-height: 100px;
   padding: var(--spacing-3);
