@@ -1,5 +1,6 @@
 import { neighbourhoodOf } from './placeAddress.js';
 import { haversineMeters } from './routeShape.js';
+import { cached } from './kvCache.js';
 const GENERIC_WORDS = new Set([
   'restaurant', 'restaurants', 'restorant', 'resto', 'bar', 'cafe',
   'taverna', 'tavern', 'bistro', 'grill', 'lounge', 'pub', 'hotel', 'house',
@@ -271,7 +272,14 @@ async function cachedSearch(textQuery, fetcher) {
 }
 
 async function runSearch(name, textQuery) {
-  return cachedSearch(textQuery, () => _runSearch(name, textQuery));
+  let fetched = false;
+  const result = await cachedSearch(textQuery, () => {
+    fetched = true;
+    return _runSearch(name, textQuery);
+  });
+  if (fetched) placesUsage.verifyGoogle += 1;
+  else placesUsage.verifyCached += 1;
+  return result;
 }
 
 async function _runSearch(name, textQuery) {
@@ -430,9 +438,89 @@ function notePlacesRefusal(status, data, where) {
   }
 }
 
-export async function findNearbyCandidates(name, type, near, radiusMeters = 20000) {
-  const textQuery = type ? name + ' ' + type : name;
+// How many Google searches a request's repair passes may spend. Verification
+// of the draft itself is never budgeted - a stop that is not checked is a stop
+// that might not exist - but everything after it (interest balancing, refilling
+// thin days, straightening routes, replacing closed places) is a search for a
+// better stop, not a necessary one. Left unbounded those passes ran to ~125
+// billed searches on a single demo generation, most of them repeats of a query
+// that had already come back empty. Past the budget a search returns nothing,
+// which every pass already treats as "no candidate", and the draft stands as it
+// is (Akber, 8 Sep 2026).
+export const NEARBY_SEARCH_BUDGET = 60;
 
+// Per-request tally of what this module asked Google for, so the handler can
+// log a single honest line per generation and the case study can quote it.
+// Module-level and reset by the handler, the same trade-off as placesOutage.
+const placesUsage = {
+  verifyGoogle: 0,
+  verifyCached: 0,
+  nearbyGoogle: 0,
+  nearbyCached: 0,
+  nearbyBlocked: 0,
+  geocodeGoogle: 0,
+  budgetLogged: false,
+};
+
+export function resetPlacesUsage() {
+  placesUsage.verifyGoogle = 0;
+  placesUsage.verifyCached = 0;
+  placesUsage.nearbyGoogle = 0;
+  placesUsage.nearbyCached = 0;
+  placesUsage.nearbyBlocked = 0;
+  placesUsage.geocodeGoogle = 0;
+  placesUsage.budgetLogged = false;
+}
+
+export function currentPlacesUsage() {
+  const billed = placesUsage.verifyGoogle + placesUsage.nearbyGoogle + placesUsage.geocodeGoogle;
+  const cachedHits = placesUsage.verifyCached + placesUsage.nearbyCached;
+  return { ...placesUsage, billed, cachedHits };
+}
+
+// Nearby searches are biased to a 20 km circle, so two searches a few hundred
+// metres apart return the same places in nearly the same order. Rounding the
+// centre to two decimals (about a kilometre) is what lets a repair pass on day
+// three hit the cache a repair pass on day one filled. Versioned like the
+// verify cache: bump it if the field mask or toSuggestion's shape changes.
+const NEARBY_CACHE_NAMESPACE = 'places:nearby:v1';
+
+export async function findNearbyCandidates(name, type, near, radiusMeters = 20000, opts: { essential?: boolean } = {}) {
+  const textQuery = type ? name + ' ' + type : name;
+  if (!near || typeof near.lat !== 'number' || typeof near.lng !== 'number') return [];
+
+  const key = `${textQuery}|${near.lat.toFixed(2)},${near.lng.toFixed(2)}|${radiusMeters}`;
+  let outcome: 'cached' | 'fetched' | 'blocked' = 'cached';
+  const results = await cached(
+    NEARBY_CACHE_NAMESPACE,
+    key,
+    async () => {
+      // A must-see being re-found by name is essential; everything else waits
+      // its turn behind the budget.
+      if (!opts.essential && placesUsage.nearbyGoogle >= NEARBY_SEARCH_BUDGET) {
+        outcome = 'blocked';
+        if (!placesUsage.budgetLogged) {
+          placesUsage.budgetLogged = true;
+          console.warn(`[verifyPlace] nearby search budget of ${NEARBY_SEARCH_BUDGET} spent; further searches this request return nothing`);
+        }
+        return [];
+      }
+      outcome = 'fetched';
+      placesUsage.nearbyGoogle += 1;
+      return fetchNearbyCandidates(textQuery, near, radiusMeters);
+    },
+    // Only a real answer is worth keeping. An empty list is either a refusal,
+    // a network error or the budget, and all three should retry next time.
+    { shouldCache: (r) => Array.isArray(r) && r.length > 0 }
+  );
+  if (outcome === 'cached') placesUsage.nearbyCached += 1;
+  else if (outcome === 'blocked') placesUsage.nearbyBlocked += 1;
+  // A fresh copy per caller: the L1 cache hands back the same array, and a pass
+  // that adopts a candidate must not be editing the copy the next pass reads.
+  return results.map((candidate) => ({ ...candidate }));
+}
+
+async function fetchNearbyCandidates(textQuery, near, radiusMeters) {
   let response;
   let data;
   try {
@@ -480,6 +568,7 @@ export async function findNearbyCandidates(name, type, near, radiusMeters = 2000
 
 export async function geocodeDestination(destination) {
   try {
+    placesUsage.geocodeGoogle += 1;
     const response = await fetch('https://places.googleapis.com/v1/places:searchText', {
       method: 'POST',
       headers: {

@@ -7,6 +7,9 @@ import {
   findNearbyCandidates,
   resetPlacesOutage,
   placesRefused,
+  resetPlacesUsage,
+  currentPlacesUsage,
+  NEARBY_SEARCH_BUDGET,
 } from './_lib/verifyPlace.js';
 import { computeTravelTimes, travelBetween } from './_lib/travelTime.js';
 import { refreshDescriptions } from './_lib/refreshDescriptions.js';
@@ -1183,7 +1186,7 @@ async function backfillOrDropActivities(day, anchor, usedPlaceIds, interests, st
     // more, before anything else. It is never replaced by a category search
     // and never dropped: unresolved, it ships as itself and the audit says so.
     if (isPinned(item)) {
-      const byName = await findNearbyCandidates(item.name, null, anchor || stay).catch(() => []);
+      const byName = await findNearbyCandidates(item.name, null, anchor || stay, 20000, { essential: true }).catch(() => []);
       const match = byName.find((c) => c.location && isPinnedTo(c, [item.name]) && c.availablePhotoUrl);
       if (match) {
         item.name = match.name;
@@ -2371,6 +2374,17 @@ function excursionToMustSee(located, shape, pinned) {
 
 const MEAL_LEASH_KM = 4;
 
+// Repairs this pass has already tried and failed on, per day object. The settle
+// loop calls the pass every round, and a pivot whose replacement search found
+// nothing usable in round one finds nothing usable in round two either: same
+// stop, same query, same midpoint. Each retry was another Google search and
+// another log line saying the same thing. Keyed by the day object so it needs
+// no reset between requests (Akber, 8 Sep 2026).
+const failedRepairs = new WeakMap<object, Set<string>>();
+function repairKey(item, query, searchFrom) {
+  return `${item.placeId || item.name}|${query}|${searchFrom.lat.toFixed(3)},${searchFrom.lng.toFixed(3)}`;
+}
+
 async function repositionStrandedStops(day, anchor, usedPlaceIds, stay, interests, itinerary, weekday: number | null = null, pinned: ((item: any) => boolean) | null = null) {
   const capped = interestsAtDayCap(day, itinerary, interests);
   const located = day.items.filter((i) => i.type !== 'accommodation' && i.location);
@@ -2451,6 +2465,19 @@ async function repositionStrandedStops(day, anchor, usedPlaceIds, stay, interest
     if (!query) continue;
 
     const searchFrom = item === pivot ? pivotTarget : centre;
+    if (!searchFrom) continue;
+    let tried = failedRepairs.get(day);
+    if (!tried) {
+      tried = new Set();
+      failedRepairs.set(day, tried);
+    }
+    const attempt = repairKey(item, query, searchFrom);
+    if (tried.has(attempt)) {
+      if (item === pivot) {
+        console.info(`[generate-resolved-itinerary] day ${day.day}: not retrying ${item.name}, the same repair already failed this request`);
+      }
+      continue;
+    }
     const candidates = await findNearbyCandidates(query, null, searchFrom).catch(() => []);
     // Four demo drafts were rejected for a reversal this pass was supposed to
     // repair, and each time working out why cost a whole generation. Say what
@@ -2498,7 +2525,10 @@ async function repositionStrandedStops(day, anchor, usedPlaceIds, stay, interest
       );
     }
     const pick = preferWellKnown(acceptable);
-    if (!pick) continue;
+    if (!pick) {
+      tried.add(attempt);
+      continue;
+    }
 
     // Only keep the swap if the day is actually straighter for it.
     const original = { ...item };
@@ -2514,6 +2544,7 @@ async function repositionStrandedStops(day, anchor, usedPlaceIds, stay, interest
         );
       }
       item.location = original.location;
+      tried.add(attempt);
       continue;
     }
     // Move the bar after every accepted swap. Comparing each swap against the
@@ -3396,6 +3427,20 @@ async function settleDay(day, context) {
   }
 }
 
+// One line per generation saying what Google was actually asked. "Billed" is
+// the number of Text Search requests that left this server; the cache hits are
+// the ones that did not. This is the figure the case study's cost cards quote,
+// so it is logged rather than estimated (Akber, 8 Sep 2026).
+function logPlacesUsage() {
+  const u = currentPlacesUsage();
+  console.info(
+    `[generate-resolved-itinerary] Google Places this request: ${u.billed} billed ` +
+      `(${u.verifyGoogle} verify, ${u.nearbyGoogle} nearby, ${u.geocodeGoogle} geocode), ` +
+      `${u.cachedHits} from cache (${u.verifyCached} verify, ${u.nearbyCached} nearby), ` +
+      `${u.nearbyBlocked} held back by the ${NEARBY_SEARCH_BUDGET}-search budget`
+  );
+}
+
 export default async function handler(req, res) {
   if (req.method !== 'POST') {
     return res.status(405).json({ error: 'Method not allowed' });
@@ -3454,6 +3499,7 @@ export default async function handler(req, res) {
   }
 
   resetPlacesOutage();
+  resetPlacesUsage();
 
   let raw;
   let anchor;
@@ -3500,6 +3546,7 @@ export default async function handler(req, res) {
     // refusal (429, or 403 when billing has stopped) is a capacity problem
     // and is reported as one. One or two failures on an otherwise working
     // API are noise and the draft stands.
+    logPlacesUsage();
     const refused = placesRefused();
     if (refused && (refused.status === 429 || refused.status === 403) && refused.count >= 3) {
       console.error(
