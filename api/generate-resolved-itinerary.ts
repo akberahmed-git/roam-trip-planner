@@ -2130,7 +2130,8 @@ function planKeepersFor(itinerary, interest) {
 // Swaps a day's surplus stops for places serving an interest the day is short
 // of. Never drops without replacing: a day one stop lighter is how a museum
 // ends up with four hours against it.
-async function rebalanceInterests(day, { interests, anchor, usedPlaceIds, stay, transport, itinerary, weekday }) {
+async function rebalanceInterests(day, { interests, anchor, usedPlaceIds, stay, transport, itinerary, weekday, pinned }) {
+  const isPinned = typeof pinned === 'function' ? pinned : () => false;
   if (!interests || interests.length < 2) return [];
 
   const servedBy = (item, interest) =>
@@ -2247,14 +2248,18 @@ async function rebalanceInterests(day, { interests, anchor, usedPlaceIds, stay, 
     // With a plan-wide cap the survivors are decided across the whole trip, so
     // this day's job is simply to drop whatever is not on that list. Without
     // one it is the old per-day rule: keep the best, swap the tail.
-    const surplus = keepers
+    // A must-see is never the surplus, whatever its review count: it sorts to
+    // the front so the per-day rule keeps it, and it is filtered out of the
+    // plan-cap list even when the review ranking chose something else.
+    const surplus = (keepers
       ? activitiesNow().filter(
           (item) => servedBy(item, interest) && !keepers.has(item.placeId || item.name)
         )
       : activitiesNow()
           .filter((item) => servedBy(item, interest))
-          .sort((a, b) => (b.ratingCount || 0) - (a.ratingCount || 0))
-          .slice(MAX_STOPS_PER_INTEREST_PER_DAY);
+          .sort((a, b) => Number(isPinned(b)) - Number(isPinned(a)) || (b.ratingCount || 0) - (a.ratingCount || 0))
+          .slice(MAX_STOPS_PER_INTEREST_PER_DAY)
+    ).filter((item) => !isPinned(item));
 
     for (const item of surplus) {
       const wanted = wantedFor(interest, item);
@@ -2293,7 +2298,7 @@ async function rebalanceInterests(day, { interests, anchor, usedPlaceIds, stay, 
   // (Akber, 8 Sep 2026).
   const servesNothing = (item) => !interests.some((interest) => servedBy(item, interest));
 
-  for (const item of activitiesNow().filter(servesNothing).sort((a, b) => (a.ratingCount || 0) - (b.ratingCount || 0))) {
+  for (const item of activitiesNow().filter((item) => servesNothing(item) && !isPinned(item)).sort((a, b) => (a.ratingCount || 0) - (b.ratingCount || 0))) {
     const wanted = interests.filter(
       (interest) => !atPlanCap(interest) && countFor(interest) === 0 && suitsSlot(interest, item)
     )[0];
@@ -2584,7 +2589,23 @@ async function enforceDriveCap(day, transport, usedPlaceIds, stay) {
   }
 }
 
-async function resolveItinerary(itinerary, destination, anchor, transport, accommodationDetails, interests, checkInDate, budget) {
+// Whether a stop is one the traveller asked for by name. Loose on both sides,
+// because Google's name for a place is rarely the traveller's: "Nintendo TOKYO"
+// comes back as "Nintendo TOKYO Shibuya PARCO", and "Ghibli Museum" as "Ghibli
+// Museum, Mitaka". Accents stripped for the same reason the interest matcher
+// strips them.
+function isPinnedTo(item, mustVisit) {
+  if (!item?.name || !Array.isArray(mustVisit) || mustVisit.length === 0) return false;
+  const plain = (value) => String(value || '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase().trim();
+  const name = plain(item.name);
+  return mustVisit.some((wanted) => {
+    const w = plain(wanted);
+    return w.length > 0 && (name.includes(w) || w.includes(name));
+  });
+}
+
+async function resolveItinerary(itinerary, destination, anchor, transport, accommodationDetails, interests, checkInDate, budget, mustVisit: string[] = []) {
+  const pinned = (item) => isPinnedTo(item, mustVisit);
   const stay = accommodationDetails?.location || null;
   const usedPlaceIds = new Set();
   // Beside usedPlaceIds and for the same reason: per request, never module-level,
@@ -3014,7 +3035,7 @@ async function resolveItinerary(itinerary, destination, anchor, transport, accom
     // See settleDay: these three passes each undo the last one's guarantee, so
     // they run as a loop until the day stops changing rather than as a sequence.
     await settleDay(day, {
-      options, anchor, usedPlaceIds, stay, interests, transport, weekday, budget, itinerary, usedBrands,
+      options, anchor, usedPlaceIds, stay, interests, transport, weekday, budget, itinerary, usedBrands, pinned,
       label: 'on the settled day',
     });
   }
@@ -3066,7 +3087,7 @@ async function resolveItinerary(itinerary, destination, anchor, transport, accom
         // function as the settled-day pass now, so there is one sequence to get
         // right instead of two.
         await settleDay(day, {
-          options, anchor, usedPlaceIds, stay, interests, transport, budget, itinerary, usedBrands,
+          options, anchor, usedPlaceIds, stay, interests, transport, budget, itinerary, usedBrands, pinned,
           weekday: weekdayForDay(checkInDate, day.day),
           label: 'after interest coverage',
         });
@@ -3135,7 +3156,7 @@ async function resolveItinerary(itinerary, destination, anchor, transport, accom
 // the stop is no longer beside, so the day is measured and refitted before the
 // next round looks at it (Akber, 8 Sep 2026).
 async function settleDay(day, context) {
-  const { options, anchor, usedPlaceIds, stay, interests, transport, label, weekday, budget, itinerary, usedBrands } = context;
+  const { options, anchor, usedPlaceIds, stay, interests, transport, label, weekday, budget, itinerary, usedBrands, pinned } = context;
 
   // Order matters inside this loop and it has been wrong twice.
   //
@@ -3157,7 +3178,7 @@ async function settleDay(day, context) {
   // where the hours check ran against the times the day will actually ship with
   // and found none (Akber, 8 Sep 2026).
   for (let round = 0; round < 5; round++) {
-    const rebalanced = await rebalanceInterests(day, { interests, anchor, usedPlaceIds, stay, transport, itinerary, weekday });
+    const rebalanced = await rebalanceInterests(day, { interests, anchor, usedPlaceIds, stay, transport, itinerary, weekday, pinned });
     if (rebalanced.length > 0) {
       console.info(
         `[generate-resolved-itinerary] day ${day.day}: rebalanced ${rebalanced.length} stop(s) ${label}: ${rebalanced.join('; ')}`
@@ -3310,6 +3331,12 @@ export default async function handler(req, res) {
   // its audit will accept. Those two numbers not overlapping is what threw three
   // generations away tonight (Akber, 8 Sep 2026).
   setReviewFloor(req.body.minReviews);
+  // Places the traveller named as must-sees. Fed to the model, and protected
+  // from the balance passes afterwards: a must-see is never the stop a repair
+  // swaps out.
+  const mustVisit = Array.isArray(req.body.mustVisit)
+    ? req.body.mustVisit.map((name) => String(name || '').trim()).filter(Boolean).slice(0, 6)
+    : [];
   if (currentReviewFloor() !== 200) {
     console.info(`[generate-resolved-itinerary] review floor for this request: ${currentReviewFloor()}`);
   }
@@ -3335,7 +3362,7 @@ export default async function handler(req, res) {
   let anchor;
   try {
     const [rawResult, anchorResult] = await Promise.all([
-      generateRawItinerary({ destination, days, budget, accommodation, interests, adults }),
+      generateRawItinerary({ destination, days, budget, accommodation, interests, adults, mustVisit }),
       geocodeDestination(destination).catch(() => null)
     ]);
     raw = rawResult;
@@ -3365,8 +3392,8 @@ export default async function handler(req, res) {
     // Resolve both variants in parallel - each is independent of the other,
     // so there's no reason to wait for packed before starting slow.
     await Promise.all([
-      raw.packed ? resolveItinerary(raw.packed, destination, anchor, transport, accommodationDetails, interests, checkInDate, budget) : Promise.resolve(),
-      raw.slow ? resolveItinerary(raw.slow, destination, anchor, transport, accommodationDetails, interests, checkInDate, budget) : Promise.resolve(),
+      raw.packed ? resolveItinerary(raw.packed, destination, anchor, transport, accommodationDetails, interests, checkInDate, budget, mustVisit) : Promise.resolve(),
+      raw.slow ? resolveItinerary(raw.slow, destination, anchor, transport, accommodationDetails, interests, checkInDate, budget, mustVisit) : Promise.resolve(),
     ]);
 
     // A draft built while Google Places was refusing is not a draft. Every

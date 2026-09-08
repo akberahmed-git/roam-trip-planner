@@ -69,7 +69,19 @@ function buildTripPreamble(params) {
 - THEME HONESTY (strictly enforced): a day's "theme" may only name an interest that day actually delivers. Do not theme a day "Sacred Temples" unless that day contains a temple, or "Anime Culture" unless that day contains an anime venue. If a day has no stop for an interest, do not mention that interest in its theme.${nightlifeLine}`
     : '- Traveller interests: none specified — use a well-rounded, broadly appealing mix.';
 
-  return { destination, days, budget, accommodation, endTimeLine, groupLine, interestsLine };
+  // Places the traveller has named as must-sees. A real traveller arrives with
+  // two or three of these, and a plan that leaves one out is a plan they fix by
+  // hand. Both variants get them, because a must-see is a must-see whichever
+  // pace they pick, and the second-option rule below exempts them for the same
+  // reason (Akber, 8 Sep 2026).
+  const mustVisit = Array.isArray(params.mustVisit)
+    ? params.mustVisit.map((name) => String(name || '').trim()).filter(Boolean).slice(0, 6)
+    : [];
+  const mustVisitLine = mustVisit.length === 0
+    ? ''
+    : `- MUST INCLUDE (strictly enforced): the traveller has asked for these places by name, and every one of them appears in this plan exactly once, as an activity, on the day and at the hour where it fits best: ${mustVisit.map((name) => `"${name}"`).join(', ')}. Use each place's real name exactly as given. If one of them is a museum or a day trip, give it the morning of a day that suits it. Nothing else in this prompt overrides this line.`;
+
+  return { destination, days, budget, accommodation, endTimeLine, groupLine, interestsLine, mustVisit, mustVisitLine };
 }
 
 // Shared item-shape instructions appended to both variant prompts.
@@ -91,7 +103,7 @@ Trip details:
 - Budget band: ${p.budget || 'Standard'}. This is a real constraint, not a label. Economy means everyday, well-loved places a local would actually eat at - markets, counters, canteens, neighbourhood institutions - and activities that are free or cheap. Standard means solid mid-range restaurants and paid attractions with an ordinary entry fee. Luxury means notable, destination dining and premium or private experiences. Apply it to every meal and every activity, not only the ones that sound expensive, and keep the whole trip in one band rather than dropping a tasting menu into a budget week. Unless the band is Luxury, do not choose Michelin-starred restaurants, omakase or kaiseki counters, tasting menus or anything else that would cost more than a normal meal out.
 - Accommodation (routing anchor): ${p.accommodation || 'a centrally located hotel'}
 ${p.interestsLine}${p.groupLine ? `\n${p.groupLine}` : ''}
-${p.endTimeLine}
+${p.endTimeLine}${p.mustVisitLine ? `\n${p.mustVisitLine}` : ''}
 
 Generate ONE itinerary: "Packed & Varied" — more activities per day, faster pace, wide variety of experiences. Each day has 4-5 activities (not counting meals). Favour more, shorter stops over fewer, longer ones: no single activity should run longer than 120 minutes, and the afternoon in particular should be built from several distinct stops rather than one long visit.
 
@@ -212,7 +224,7 @@ Trip details:
 - Budget band: ${p.budget || 'Standard'}. This is a real constraint, not a label. Economy means everyday, well-loved places a local would actually eat at - markets, counters, canteens, neighbourhood institutions - and activities that are free or cheap. Standard means solid mid-range restaurants and paid attractions with an ordinary entry fee. Luxury means notable, destination dining and premium or private experiences. Apply it to every meal and every activity, not only the ones that sound expensive, and keep the whole trip in one band rather than dropping a tasting menu into a budget week. Unless the band is Luxury, do not choose Michelin-starred restaurants, omakase or kaiseki counters, tasting menus or anything else that would cost more than a normal meal out.
 - Accommodation (routing anchor): ${p.accommodation || 'a centrally located hotel'}
 ${p.interestsLine}${p.groupLine ? `\n${p.groupLine}` : ''}
-${p.endTimeLine}
+${p.endTimeLine}${p.mustVisitLine ? `\n${p.mustVisitLine}` : ''}
 
 Generate ONE itinerary: "Slow & Immersive" — fewer activities per day, more time per place, a calmer pace. Each day has 3-4 activities (not counting meals). Fewer than Packed, and each one gets a longer, unhurried stay rather than a quick look, but a day still has to be a day: 1-2 activities alongside three meals is a day of eating with errands attached, not an immersive one.
 
@@ -400,7 +412,9 @@ export async function generateRawItinerary(params) {
   // a second option that duplicates the first is not a second option and the
   // time spent producing it was wasted anyway (Akber, 8 Sep 2026).
   const packedRaw = await callClaude(buildPackedPrompt(p));
-  const slowRaw = await callClaude(buildSlowPrompt(p, placeNamesOf(packedRaw)));
+  const pinned = new Set(p.mustVisit.map((name) => name.toLowerCase()));
+  const avoid = placeNamesOf(packedRaw).filter((name) => !pinned.has(String(name).toLowerCase()));
+  const slowRaw = await callClaude(buildSlowPrompt(p, avoid));
 
   const parsed = { packed: packedRaw, slow: slowRaw };
 

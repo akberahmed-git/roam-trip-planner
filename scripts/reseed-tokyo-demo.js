@@ -131,6 +131,11 @@ const TRIP = {
   // on. Without it every adopting pass accepted at 200 and this audit blocked at
   // 1,000, and the generations in that band could never converge.
   minReviews: MIN_REVIEWS_FOR_ANY_DEMO_STOP,
+  // Named must-sees. Both plans carry them; the pipeline pins them against
+  // the balance passes and the audit below blocks if either is missing. The
+  // check-in is a Saturday, so day 2 is a Sunday and the Ghibli Museum is open
+  // (it closes on Tuesdays) (Akber, 8 Sep 2026).
+  mustVisit: ['Nintendo TOKYO', 'Ghibli Museum'],
   adults: 2,
   transport: 'Car or taxi',
   // Dates only matter for the hotel lookup below; the itinerary itself is
@@ -807,6 +812,20 @@ function auditDemo(itinerary) {
   // in plain words: one shrine per itinerary when that chip is picked. It is a
   // cap of one across a whole plan rather than a balance target, so a draft that
   // breaks it is not a partial improvement worth keeping (Akber, 8 Sep 2026).
+  // The must-sees. The traveller asked for them by name, so a plan without one
+  // is not the plan they asked for. Loose match on both sides, as in the
+  // pipeline: Google's name is rarely the traveller's.
+  const plainName = (value) => String(value || '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase().trim();
+  for (const variant of ['packed', 'slow']) {
+    const names = seenInterestText[variant].map((entry) => plainName(entry.name));
+    for (const wanted of TRIP.mustVisit || []) {
+      const w = plainName(wanted);
+      if (!names.some((name) => name.includes(w) || w.includes(name))) {
+        problems.push(`${variant}: "${wanted}" was asked for by name and is not in this plan`);
+      }
+    }
+  }
+
   for (const variant of ['packed', 'slow']) {
     for (const [interest, cap] of Object.entries(MAX_STOPS_PER_INTEREST_PER_PLAN)) {
       if (!wantedInterests.includes(interest)) continue;
