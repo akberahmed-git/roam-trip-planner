@@ -2600,6 +2600,18 @@ async function resolveItinerary(itinerary, destination, anchor, transport, accom
     console.warn('[generate-resolved-itinerary] late description pass failed, keeping synthesised lines:', error);
   }
 
+  // stopCount and pacingLevel are set in generateRawItinerary from the model's
+  // draft, and everything in this file exists to change that draft: stops are
+  // dropped for being shut, added to fill a thin stretch, moved between blocks.
+  // So the number the pace bar renders was the number the day started with, and
+  // a day could say 8 stops while listing 9. Recomputed here, on the items that
+  // actually ship, counting what the traveller counts - the numbered stops, not
+  // the hotel bookends (Akber, 8 Sep 2026).
+  for (const day of itinerary.days) {
+    day.stopCount = numberedStopCount(day);
+    day.pacingLevel = Math.min(Math.round((day.stopCount / 8) * 100) / 100, 1);
+  }
+
   // Last thing before the itinerary leaves: no scratch field reaches the client.
   stripAdoptionMarkers(itinerary.days);
 

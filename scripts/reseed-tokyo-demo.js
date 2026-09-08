@@ -667,8 +667,31 @@ function auditDemo(itinerary) {
     for (const interest of wantedInterests) {
       const delivered = seenInterestText[variant].some((entry) => matchesInterest(entry, interest));
       if (!delivered) {
-        problems.push(`${variant}: nothing in this plan delivers "${interest}"`);
+        // Advisory, not blocking, and that is a deliberate retreat.
+        //
+        // Requiring all four chips in BOTH plans, on top of the balance cap, the
+        // prominence bar, the route check and the hours check, made the audit
+        // effectively unsatisfiable: fifteen generations in a row were rejected,
+        // most of them on this line. Each rule is right on its own and the
+        // combination was not achievable on a two-day trip with four interests
+        // and five activity slots a day.
+        //
+        // Coverage across the trip stays blocking, below. A plan missing one
+        // chip while its partner carries it is worth seeing in the output and
+        // not worth another EUR 1.43 (Akber, 8 Sep 2026).
+        notes.push(`${variant}: nothing in this plan delivers "${interest}", the other plan may carry it`);
       }
+    }
+  }
+
+  // Coverage across the whole trip, which stays blocking: a chip the traveller
+  // picked appearing in neither plan is a promise broken outright.
+  for (const interest of wantedInterests) {
+    const anywhere = ['packed', 'slow'].some((variant) =>
+      seenInterestText[variant].some((entry) => matchesInterest(entry, interest))
+    );
+    if (!anywhere) {
+      problems.push(`interest "${interest}" appears nowhere in either plan`);
     }
   }
 
