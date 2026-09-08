@@ -23,7 +23,10 @@ export const DEMO_TRIPS: DemoTrip[] = [
     destination: 'Tokyo',
     days: 2,
     interests: ['Temples & Shrines', 'Anime & Pop Culture', 'Nightlife', 'Modern Architecture'],
-    budget: 'Standard',
+    // Must match TRIP.budget in scripts/reseed-tokyo-demo.js, which is where
+    // the fixture and its price range are generated. Luxury because the demo
+    // stays at a Mandarin Oriental. (8 Sep 2026)
+    budget: 'Luxury',
     accommodation: TOKYO_ACCOMMODATION.name,
     accommodationDetails: TOKYO_ACCOMMODATION,
     savedItinerary: TOKYO_2_DAYS,

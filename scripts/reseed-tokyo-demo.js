@@ -74,7 +74,16 @@ const HOTEL_NAME = 'Mandarin Oriental, Tokyo';
 const TRIP = {
   destination: 'Tokyo',
   days: 2,
-  budget: 'Standard',
+  // Luxury, not Standard, because the hotel above is. This used to say
+  // Standard while HOTEL_NAME was a Mandarin Oriental, and the mismatch was
+  // not just a label: the accommodation block below bakes in
+  // priceRangeByTier[TRIP.budget], so the demo shipped Mandarin Oriental
+  // carrying the Standard tier's 15k-80k JPY estimate against a hotel this
+  // app's own Luxury tier prices at 120k-250k. The lookup only found the
+  // hotel at all through the all-tiers fallback, which hid the mismatch
+  // instead of failing on it. Change one of these two and change the other.
+  // (8 Sep 2026)
+  budget: 'Luxury',
   accommodation: HOTEL_NAME,
   interests: ['Temples & Shrines', 'Anime & Pop Culture', 'Nightlife', 'Modern Architecture'],
   adults: 2,
