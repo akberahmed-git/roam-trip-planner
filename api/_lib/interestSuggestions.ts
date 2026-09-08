@@ -93,6 +93,13 @@ function saveCache(cache) {
 // city: its interest row appears in the case study and on the shipped demo, so
 // it has to read the same today as it does in a screenshot taken last month.
 // Everything else is generated once and then cached (Akber, 8 Sep 2026).
+// A year, not the 30-day default the place cache uses. A place's opening hours
+// and review count genuinely go stale; what a city is worth visiting for does
+// not. At 30 days a returning traveller would find Kyoto offering a different
+// set of chips a month later, which is the exact inconsistency this cache is
+// here to remove (Akber, 8 Sep 2026).
+const INTEREST_CACHE_TTL_SECONDS = 60 * 60 * 24 * 365;
+
 const PINNED_INTERESTS = {
   'tokyo, japan': ['Temples & Shrines', 'Anime & Pop Culture', 'Nightlife', 'Modern Architecture'],
   tokyo: ['Temples & Shrines', 'Anime & Pop Culture', 'Nightlife', 'Modern Architecture'],
@@ -113,6 +120,7 @@ export async function getInterestSuggestions(destination) {
   // is generated once and then reads the same for everyone.
   const fromKv = await cached('interests', cacheKey, async () => null, {
     shouldCache: () => false,
+    ttl: INTEREST_CACHE_TTL_SECONDS,
   }).catch(() => null);
   if (fromKv) return fromKv;
 
@@ -220,7 +228,9 @@ Respond with ONLY valid JSON, no markdown formatting, no code fences, no comment
   };
 
   // Written to KV first, since that is the copy that actually survives.
-  await cached('interests', cacheKey, async () => result).catch(() => {});
+  await cached('interests', cacheKey, async () => result, {
+    ttl: INTEREST_CACHE_TTL_SECONDS,
+  }).catch(() => {});
 
   cache[cacheKey] = result;
   // Plain object keys preserve insertion order for string keys in JS, same
