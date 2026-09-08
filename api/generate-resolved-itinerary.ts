@@ -19,7 +19,7 @@ import {
   clampStayDurations,
   dayCutoffMinutes
 } from './_lib/scheduleRealign.js';
-import { applyFixedSchedule, dedupeMeals, starvedBlocks, unsuitableStops, roomForAnotherStop, eveningInsertPoint, hasEnoughReviews, numberedStopCount, MAX_NUMBERED_STOPS_PER_DAY } from './_lib/fixedSchedule.js';
+import { applyFixedSchedule, orderBlocksByOpeningHours, dedupeMeals, starvedBlocks, unsuitableStops, roomForAnotherStop, eveningInsertPoint, hasEnoughReviews, numberedStopCount, MAX_NUMBERED_STOPS_PER_DAY } from './_lib/fixedSchedule.js';
 import { sortByBudgetFit, isOffBandDining } from './_lib/budgetFit.js';
 import { uncoveredInterests, satisfiesInterest, isEveningInterest } from './_lib/interestCoverage.js';
 import { weekdayForDay, isOpenAt } from './_lib/openingHours.js';
@@ -2611,6 +2611,18 @@ async function settleDay(day, context) {
     // and do not drift into closed hours the way a moved activity does. The
     // fill pass below then replaces whatever this removed, in the same round
     // (Akber, 8 Sep 2026).
+    // Try moving the day around before deleting anything from it. A shrine that
+    // shuts at five is not a bad stop, it is a stop in the wrong half of an
+    // afternoon, and dropping it loses a real place for no reason. Only touches
+    // a day that already has something scheduled shut, and only keeps an order
+    // that leaves strictly fewer of them.
+    const resorted = orderBlocksByOpeningHours(day, options, weekday);
+    if (resorted) {
+      console.info(
+        `[generate-resolved-itinerary] day ${day.day}: reordered a stretch by closing time ${label}`
+      );
+    }
+
     const wrongHour =
       weekday == null
         ? []
@@ -2652,7 +2664,7 @@ async function settleDay(day, context) {
       reorderDayGeographically(day);
     }
 
-    if (filled.length === 0 && !reordered && moved.length === 0 && wrongHour.length === 0) break;
+    if (filled.length === 0 && !reordered && moved.length === 0 && wrongHour.length === 0 && !resorted) break;
 
     await computeTravelTimes(day.items, transport);
     applyFixedSchedule(day, options);

@@ -9,7 +9,7 @@ import {
   TRAVEL_GRID_MINUTES,
 } from './scheduleRealign.js';
 import { dayShape } from './routeShape.js';
-import { isOpenAt } from './openingHours.js';
+import { isOpenAt, closesAt } from './openingHours.js';
 import { isOffBandDining } from './budgetFit.js';
 
 // Meals happen at the same time every day, and the rest of the day is fitted
@@ -142,6 +142,82 @@ function indexOfMeal(day, mealType) {
 // Returns the stops the day cannot justify, with a reason each, so the caller
 // can log what it dropped and go looking for a replacement. Meals are exempt
 // from the nightlife half: an izakaya is a perfectly good dinner.
+// How many stops on this day are scheduled at an hour they are shut.
+function closedStopCount(day, weekdayIndex) {
+  if (weekdayIndex == null) return 0;
+  let count = 0;
+  for (const item of day.items) {
+    if (item.type === 'accommodation' || !item.startTime || !item.weekdayDescriptions) continue;
+    const at = timeToMinutes(item.startTime);
+    if (at == null) continue;
+    if (isOpenAt(item.weekdayDescriptions, weekdayIndex, at) === false) count++;
+  }
+  return count;
+}
+
+// Visit the thing that shuts first, first.
+//
+// Nothing in this file ever consulted opening hours while deciding WHEN a stop
+// happens. fitBlock hands out durations and the times cascade, and only
+// afterwards does unsuitableStops look and delete whatever landed shut. Deleting
+// does not help: the replacement is scheduled just as blindly. So an afternoon
+// holding a shrine that shuts at five and a tower open until eleven had a
+// one-in-two chance of putting the shrine second, and the demo has been shipping
+// stops at hours they are closed for weeks - a nightclub at 15:40 among them.
+//
+// This reorders a stretch by closing time instead, and is deliberately timid
+// about it: it does nothing unless the day already has a stop scheduled shut, it
+// re-fits and counts again, and it keeps the new order only if strictly fewer
+// stops are shut than before. It cannot make a day worse, and because it acts
+// only on a day that is already wrong it will not sit trading places with the
+// geographic reorder on a day that is fine (Akber, 8 Sep 2026).
+export function orderBlocksByOpeningHours(day, options, weekdayIndex) {
+  if (weekdayIndex == null) return false;
+  const before = closedStopCount(day, weekdayIndex);
+  if (before === 0) return false;
+
+  const snapshot = {
+    items: [...day.items],
+    times: day.items.map((item) => ({ startTime: item.startTime, durationMinutes: item.durationMinutes })),
+  };
+
+  const anchors = resolveAnchors(day, options.cutoffMinutes);
+  let reordered = false;
+  for (const block of blocksOf(day, anchors)) {
+    const slots = block.stopIndexes;
+    if (slots.length < 2) continue;
+    const keyed = slots.map((slot, position) => ({
+      item: day.items[slot],
+      position,
+      closes: closesAt(day.items[slot].weekdayDescriptions, weekdayIndex),
+    }));
+    if (keyed.every((entry) => entry.closes == null)) continue;
+    const sorted = [...keyed].sort((a, b) => {
+      // Unknown hours keep their place rather than being shoved to either end:
+      // silence is not evidence here any more than it is anywhere else.
+      const left = a.closes == null ? Infinity : a.closes;
+      const right = b.closes == null ? Infinity : b.closes;
+      return left === right ? a.position - b.position : left - right;
+    });
+    if (sorted.every((entry, position) => entry.position === position)) continue;
+    sorted.forEach((entry, position) => { day.items[slots[position]] = entry.item; });
+    reordered = true;
+  }
+  if (!reordered) return false;
+
+  applyFixedSchedule(day, options);
+  if (closedStopCount(day, weekdayIndex) < before) return true;
+
+  // No better. Put the day back exactly as it was, times included, so a failed
+  // attempt costs nothing downstream.
+  day.items = snapshot.items;
+  day.items.forEach((item, index) => {
+    item.startTime = snapshot.times[index].startTime;
+    item.durationMinutes = snapshot.times[index].durationMinutes;
+  });
+  return false;
+}
+
 export function unsuitableStops(day, weekdayIndex, budget) {
   const found: any[] = [];
   const dinnerIndex = indexOfMeal(day, 'dinner');

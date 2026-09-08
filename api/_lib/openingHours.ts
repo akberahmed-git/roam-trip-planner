@@ -85,6 +85,18 @@ export function isOpenAt(weekdayDescriptions, weekdayIndex, minutes) {
 
 // Which weekday a given day of the trip falls on. Returns null rather than
 // guessing when there is no check-in date to count from.
+// The latest minute a place is still open on this weekday, or null when that
+// cannot be answered usefully: hours unknown, or a place that runs past
+// midnight and so constrains nothing inside the day. Used to decide which stop
+// in a stretch has to be visited first - a shrine that shuts at five cannot
+// wait behind a tower that is open until eleven (Akber, 8 Sep 2026).
+export function closesAt(weekdayDescriptions, weekdayIndex) {
+  const ranges = parseDayRanges(descriptionFor(weekdayDescriptions, weekdayIndex));
+  if (ranges == null || ranges.length === 0) return null;
+  const latest = Math.max(...ranges.map((range) => range[1]));
+  return latest >= 24 * 60 ? null : latest;
+}
+
 export function weekdayForDay(checkInDate, dayNumber) {
   if (!checkInDate) return null;
   const start = new Date(`${checkInDate}T00:00:00Z`);
