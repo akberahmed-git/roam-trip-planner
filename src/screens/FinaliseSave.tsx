@@ -31,21 +31,25 @@ function formatPriceRange(range) {
   return formatCompactRange(range, { currencyCode: range?.currencyCode })
 }
 
-// Exact SVGs supplied for the Trip Details card's row icons (Figma node
-// 273:16626) - pasted verbatim rather than approximated, per the "ask for
-// the real SVG" rule for flattened icons. MapPinIcon replaced again with a
-// second, more accurate literal SVG supplied later (16x19, not 20x20).
-// Same pin-with-circle asset as Home.jsx's PinIcon (used for saved trips),
-// swapped in for the previous outline-only pin, which had no inner circle.
+// The Trip Details row icons. Three of the five (calendar, travellers, heart)
+// are stroked paths: a 2px line on a 20px box, about 18px drawn. The pin and
+// the clock were pasted in as flattened Figma exports, and measured against the
+// other three the pin drew at 14 x 17px with a 1.9px line and the clock at
+// 20 x 20px with a 2.4px line on a 17-unit grid. Smallest and thinnest next to
+// biggest and heaviest, in one column. Both are the same Feather shapes as the
+// rest now, scaled onto the 20px box with the same 2px stroke (Akber, 8 Sep
+// 2026).
 function MapPinIcon() {
   return (
     <svg width="20" height="20" viewBox="0 0 20 20" fill="none">
       <path
-        d="M10.3877 1.7998C13.4787 1.79996 16.0865 3.90507 16.8145 6.75879C17.0597 7.7199 17.028 9.07454 16.7002 10.0293C16.2465 11.35 15.3835 12.807 14.4668 14.1348C13.5484 15.4649 12.5674 16.6771 11.8691 17.5107C11.0998 18.4292 9.67858 18.4301 8.90918 17.5107C8.21087 16.6767 7.22874 15.4631 6.30957 14.1318C5.39229 12.8033 4.52851 11.346 4.0752 10.0254C3.74804 9.07256 3.71534 7.71978 3.95996 6.75879L4.03418 6.49316C4.85196 3.77527 7.39322 1.7998 10.3877 1.7998ZM10.3877 3.2002C7.93473 3.2002 5.88985 4.86741 5.31836 7.10645C5.24473 7.39574 5.2141 7.8681 5.22949 8.35156C5.24493 8.83587 5.30613 9.29856 5.39941 9.57129C5.77855 10.6761 6.57783 12.0258 7.46191 13.3115C8.3436 14.5938 9.30007 15.7987 9.98047 16.6113V16.6123C10.1189 16.7774 10.2634 16.8389 10.3877 16.8389C10.5122 16.8388 10.6565 16.7764 10.7949 16.6113C11.4753 15.799 12.4319 14.5952 13.3135 13.3135C14.1974 12.0284 14.9964 10.6794 15.376 9.57422C15.4697 9.30099 15.5316 8.83663 15.5479 8.35156C15.5641 7.86726 15.5336 7.39443 15.46 7.10547C14.889 4.86685 12.8404 3.20035 10.3877 3.2002ZM10.3877 5.01074C12.2493 5.01093 13.7803 6.52137 13.7803 8.37793C13.78 10.2346 12.2488 11.74 10.3877 11.7402C8.52598 11.7402 6.99928 10.2343 6.99902 8.37793C6.99902 6.5217 8.5255 5.01074 10.3877 5.01074ZM10.3877 6.41016C9.27919 6.41016 8.39941 7.29105 8.39941 8.37793C8.39967 9.46481 9.27889 10.3408 10.3877 10.3408C11.4974 10.3406 12.3796 9.46356 12.3799 8.37793C12.3799 7.2911 11.4966 6.41034 10.3877 6.41016Z"
-        fill="var(--text-disabled)"
+        d="M17.5 8.333C17.5 14.167 10 19.167 10 19.167S2.5 14.167 2.5 8.333a7.5 7.5 0 0 1 15 0Z"
         stroke="var(--text-disabled)"
-        strokeWidth="0.4"
+        strokeWidth="2"
+        strokeLinecap="round"
+        strokeLinejoin="round"
       />
+      <circle cx="10" cy="8.333" r="2.5" stroke="var(--text-disabled)" strokeWidth="2" />
     </svg>
   )
 }
@@ -65,12 +69,14 @@ function CalendarIcon() {
 
 function ClockIcon() {
   return (
-    <svg width="20" height="20" viewBox="0 0 17 17" fill="none">
+    <svg width="20" height="20" viewBox="0 0 20 20" fill="none">
+      <circle cx="10" cy="10" r="8.333" stroke="var(--text-disabled)" strokeWidth="2" />
       <path
-        d="M8.5 0.25C13.0534 0.25 16.75 3.94661 16.75 8.5C16.75 13.0534 13.0534 16.75 8.5 16.75C3.94661 16.75 0.25 13.0534 0.25 8.5C0.25 3.94661 3.94661 0.25 8.5 0.25ZM8.5 1.81641C4.81138 1.81641 1.81641 4.81138 1.81641 8.5C1.81641 12.1886 4.81138 15.1836 8.5 15.1836C12.1886 15.1836 15.1836 12.1886 15.1836 8.5C15.1836 4.81138 12.1886 1.81641 8.5 1.81641ZM8.5 3.18359C8.93274 3.18359 9.2832 3.53405 9.2832 3.9668V8.03027C9.2832 8.10956 9.31581 8.18508 9.37402 8.23926L12.2295 10.8555H12.2305C12.5484 11.148 12.57 11.6439 12.2783 11.9629H12.2773C11.9848 12.2809 11.49 12.3024 11.1709 12.0107L8.31641 9.39453C7.93438 9.04332 7.7168 8.54908 7.7168 8.03027V3.9668C7.7168 3.53405 8.06726 3.18359 8.5 3.18359Z"
-        fill="var(--text-disabled)"
+        d="M10 5v5l3.333 1.667"
         stroke="var(--text-disabled)"
-        strokeWidth="0.5"
+        strokeWidth="2"
+        strokeLinecap="round"
+        strokeLinejoin="round"
       />
     </svg>
   )
