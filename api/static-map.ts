@@ -40,7 +40,11 @@ export default async function handler(req, res) {
     .map((entry) => {
       const [label, coords] = entry.split(':');
       if (!coords || !/^-?\d+(\.\d+)?,-?\d+(\.\d+)?$/.test(coords)) return null;
-      if (label === 'h') return `icon:${origin}/map-pin-home.png|${coords}`;
+      // Versioned filename on purpose. Google caches a custom icon against its
+      // URL, so re-uploading the same path leaves the old artwork rendering for
+      // hours - the first resize looked like it had not deployed at all. Bump
+      // the number whenever the pin changes (Akber, 8 Sep 2026).
+      if (label === 'h') return `icon:${origin}/map-pin-home-v2.png|${coords}`;
       const labelPart = /^[1-9]$/.test(label) ? `label:${label}|` : '';
       return `color:0x0A6E83|${labelPart}${coords}`;
     })
