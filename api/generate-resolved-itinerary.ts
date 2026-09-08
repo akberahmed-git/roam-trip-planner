@@ -19,7 +19,7 @@ import {
   clampStayDurations,
   dayCutoffMinutes
 } from './_lib/scheduleRealign.js';
-import { applyFixedSchedule, dedupeMeals, starvedBlocks, unsuitableStops, roomForAnotherStop, eveningInsertPoint, hasEnoughReviews } from './_lib/fixedSchedule.js';
+import { applyFixedSchedule, dedupeMeals, starvedBlocks, unsuitableStops, roomForAnotherStop, eveningInsertPoint, hasEnoughReviews, numberedStopCount, MAX_NUMBERED_STOPS_PER_DAY } from './_lib/fixedSchedule.js';
 import { sortByBudgetFit, isOffBandDining } from './_lib/budgetFit.js';
 import { uncoveredInterests, satisfiesInterest, isEveningInterest } from './_lib/interestCoverage.js';
 import { weekdayForDay, isOpenAt } from './_lib/openingHours.js';
@@ -1478,6 +1478,8 @@ async function fillStarvedBlocks(day, cutoff, anchor, usedPlaceIds, stay, intere
   const added: string[] = [];
 
   for (const block of starvedBlocks(day, cutoff)) {
+    // The other way a day grows. Same ceiling as roomForAnotherStop.
+    if (numberedStopCount(day) >= MAX_NUMBERED_STOPS_PER_DAY) break;
     // Whichever interest the traveller picked that a restaurant cannot satisfy;
     // failing that, just somewhere worth going.
     const query =

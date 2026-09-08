@@ -346,7 +346,21 @@ export function starvedBlocks(day, cutoffMinutes) {
 // that is already full, because the next fit would drop it straight back out.
 //
 // Returns the roomiest block's insertion point, or null when the day is full.
+// Google Static Maps allows one character per marker label, so a day that grows
+// past nine numbered stops loses the label on the rest and ships an anonymous
+// pin. The accommodation is drawn as a house and takes no number, so this counts
+// only the stops that do. Nine is also simply a lot for one day - a Packed day
+// asks for four or five activities and three meals, which is eight - so this is
+// a ceiling the pipeline should never reach rather than a limit it works against
+// (Akber, 8 Sep 2026).
+export const MAX_NUMBERED_STOPS_PER_DAY = 9;
+
+export function numberedStopCount(day) {
+  return (day.items || []).filter((item) => item.type !== 'accommodation').length;
+}
+
 export function roomForAnotherStop(day, cutoffMinutes) {
+  if (numberedStopCount(day) >= MAX_NUMBERED_STOPS_PER_DAY) return null;
   const anchors = resolveAnchors(day, cutoffMinutes);
 
   const candidates = blocksOf(day, anchors)
@@ -368,6 +382,7 @@ export function roomForAnotherStop(day, cutoffMinutes) {
 // before whatever else the evening already holds, so it is the first thing the
 // traveller does once they have eaten.
 export function eveningInsertPoint(day) {
+  if (numberedStopCount(day) >= MAX_NUMBERED_STOPS_PER_DAY) return null;
   const dinnerIndex = indexOfMeal(day, 'dinner');
   if (dinnerIndex < 0) return null;
 
