@@ -329,6 +329,7 @@ export function starvedBlocks(day, cutoffMinutes) {
   return blocksOf(day, anchors)
     .map((block) => ({
       shortfall: block.available - block.maxHold,
+      available: block.available,
       // A new stop goes at the end of the block, next to the meal that closes
       // it, so it lands beside the stop it will be routed against.
       insertAt: block.endIndex,
@@ -337,7 +338,33 @@ export function starvedBlocks(day, cutoffMinutes) {
         || null,
       stops: block.stopIndexes.length,
     }))
-    .filter((block) => block.shortfall >= floorMinutes && block.near);
+    // Two separate questions, and the old test answered only one of them badly.
+    //
+    // It was `shortfall >= floorMinutes`: report a block only when its surplus
+    // is at least one whole minimum stay. That reads as "is there room for
+    // another stop", but it is not, because fitBlock does not squeeze a new stop
+    // into the surplus. It resets EVERY stop in the block to the floor and
+    // regrows them all, so what a new stop needs is room in the block's total,
+    // not room in the leftovers.
+    //
+    // The gap that let through was exactly the size that breaks things. A stop
+    // Google gives no keyword to sits at the 150-minute neutral ceiling and the
+    // demo audit rejects anything over 200, so a 51-to-74 minute overflow was
+    // too big to ship and too small to report. A museum ceilings at 180, making
+    // its blind spot 21 to 74. teamLab Borderless shipped at 3h30m out of a
+    // 210-minute block that could comfortably have held two stops: shortfall 30,
+    // threshold 75, so nothing was ever asked for (Akber, 8 Sep 2026).
+    //
+    // So: report a block whose stops cannot legally hold its time, whenever one
+    // more stop would fit. That second clause is the same arithmetic
+    // roomForAnotherStop uses, which is the point - the pass that finds the stop
+    // and the pass that asks for one now agree on what "room" means.
+    .filter(
+      (block) =>
+        block.shortfall > 0 &&
+        block.available >= (block.stops + 1) * floorMinutes &&
+        block.near
+    );
 }
 
 // Where a day could take one more stop without anything being dropped again.

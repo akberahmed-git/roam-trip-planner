@@ -1032,6 +1032,28 @@ const FOOD_PLACE_TYPES = new Set([
   'fast_food_restaurant',
 ]);
 
+// Reject a candidate for an activity slot only when food is ALL it is.
+//
+// This test was written on 7 Sep for repositionStrandedStops, because Google
+// types a Tokyo nightclub as night_club AND bar AND restaurant and the blanket
+// version rejected every replacement for the Shinjuku club that turned three
+// demo drafts 174 degrees. It fixed that one pass and was never carried to the
+// other three, which all kept rejecting anything carrying a food type at all.
+//
+// That is how a starved block goes quiet: fillStarvedBlocks searched near
+// Takeshita Street, and the shrines, complexes and attractions around Harajuku
+// that list a tea house or a cafe among their types were all thrown away before
+// anything could be chosen. The block stayed starved, fitBlock handed its
+// leftover minutes to the one stop it had, and Takeshita Street shipped with
+// 3h45m against it (Akber, 8 Sep 2026).
+function isFoodOnly(candidate) {
+  const types = candidate.types || [];
+  return (
+    types.some((type) => FOOD_PLACE_TYPES.has(type)) &&
+    !types.some((type) => ACTIVITY_PLACE_TYPES.has(type))
+  );
+}
+
 function interestQuery(interest) {
   if (typeof interest !== 'string') return null;
   const key = interest.trim().toLowerCase();
@@ -1128,7 +1150,7 @@ async function backfillOrDropActivities(day, anchor, usedPlaceIds, interests, st
           if (!candidate.location || !candidate.placeId) return false;
           if (!candidate.availablePhotoUrl) return false;
           if (usedPlaceIds.has(candidate.placeId)) return false;
-          if ((candidate.types || []).some((t) => FOOD_PLACE_TYPES.has(t))) return false;
+          if (isFoodOnly(candidate)) return false;
           if (!isSubstantialActivity(candidate)) return false;
           if (anchor && haversineMeters(anchor, candidate.location) > MAX_BROAD_DISTANCE_METERS) return false;
           if (!withinReachOfStay(candidate.location, stay)) return false;
@@ -1485,26 +1507,41 @@ async function fillStarvedBlocks(day, cutoff, anchor, usedPlaceIds, stay, intere
   for (const block of starvedBlocks(day, cutoff)) {
     // The other way a day grows. Same ceiling as roomForAnotherStop.
     if (numberedStopCount(day) >= MAX_NUMBERED_STOPS_PER_DAY) break;
-    // Whichever interest the traveller picked that a restaurant cannot satisfy;
-    // failing that, just somewhere worth going.
-    const query =
-      (interests || []).map(interestQuery).find(Boolean) || 'popular tourist attraction';
-    const candidates = await findNearbyCandidates(query, null, block.near).catch(() => []);
+    // Every interest the traveller picked that a restaurant cannot satisfy, tried
+    // in turn, then somewhere worth going as a last resort.
+    //
+    // This used to be `.find(Boolean)`: the FIRST interest, and only that one.
+    // For a Tokyo trip that meant every starved block on every day searched for
+    // temples and shrines, so a day that already had a shrine got offered more
+    // shrines, usedPlaceIds knocked out the good ones, and the block stayed
+    // starved with three other interests never asked about. The extra Places
+    // calls only happen when the first query comes up empty, which is precisely
+    // when they are worth making (Akber, 8 Sep 2026).
+    const queries = [...new Set((interests || []).map(interestQuery).filter(Boolean))];
+    queries.push('popular tourist attraction');
 
-    const usable = candidates.filter(
-        (c) =>
-          c.location &&
-          c.availablePhotoUrl &&
-          !usedPlaceIds.has(c.placeId) &&
-          hasReadableName(c.name) &&
-          !(c.types || []).some((type) => FOOD_PLACE_TYPES.has(type)) &&
-          // Or this pass spends the whole loop adding a stop the hours-and-reviews
-          // check deletes again on the next round.
-          hasEnoughReviews(c) &&
-          (!anchor || haversineMeters(anchor, c.location) <= MAX_BROAD_DISTANCE_METERS) &&
-          withinReachOfStay(c.location, stay)
-    );
-    const pick = preferWellKnown(usable);
+    let pick: any = null;
+    const tried: string[] = [];
+    for (const query of queries) {
+      const candidates = await findNearbyCandidates(query, null, block.near).catch(() => []);
+      const usable = candidates.filter(
+          (c) =>
+            c.location &&
+            c.availablePhotoUrl &&
+            !usedPlaceIds.has(c.placeId) &&
+            hasReadableName(c.name) &&
+            !isFoodOnly(c) &&
+            // Or this pass spends the whole loop adding a stop the hours-and-reviews
+            // check deletes again on the next round.
+            hasEnoughReviews(c) &&
+            (!anchor || haversineMeters(anchor, c.location) <= MAX_BROAD_DISTANCE_METERS) &&
+            withinReachOfStay(c.location, stay)
+      );
+      tried.push(`"${query}" ${candidates.length}/${usable.length}`);
+      pick = preferWellKnown(usable);
+      if (pick) break;
+    }
+
     // A block that stays starved is how a shrine ends up with three and three
     // quarter hours against it: every stop reaches its ceiling and the leftover
     // goes to whichever can hold most of it. Working out why cost a generation
@@ -1512,7 +1549,7 @@ async function fillStarvedBlocks(day, cutoff, anchor, usedPlaceIds, stay, intere
     if (!pick) {
       console.info(
         `[generate-resolved-itinerary] day ${day.day}: nothing to fill a ${Math.round(block.shortfall)}-minute gap with, ` +
-          `searched "${query}", ${candidates.length} candidate(s), 0 usable`
+          `searched ${tried.join(', ')} (candidates/usable)`
       );
       continue;
     }
@@ -1597,7 +1634,7 @@ async function coverMissingInterests(itinerary, { interests, anchor, usedPlaceId
             !usedPlaceIds.has(c.placeId) &&
             hasReadableName(c.name) &&
             hasEnoughReviews(c) &&
-            !(c.types || []).some((type) => FOOD_PLACE_TYPES.has(type)) &&
+            !isFoodOnly(c) &&
             (!anchor || haversineMeters(anchor, c.location) <= MAX_BROAD_DISTANCE_METERS) &&
             withinReachOfStay(c.location, stay) &&
             satisfiesInterest({ ...c, placeTypes: c.types, mealType: null }, interest)
@@ -1828,17 +1865,10 @@ async function repositionStrandedStops(day, anchor, usedPlaceIds, stay) {
       // to be the same kind of thing it is replacing, which the query already
       // asks for, so holding it to the food list would reject every candidate.
       if (item.mealType && !(candidate.types || []).some((t) => FOOD_PLACE_TYPES.has(t))) return false;
-      // Only reject a food-typed candidate when food is all it is. Google types
-      // a Tokyo nightclub as night_club AND bar AND restaurant, so the blanket
-      // version of this rejected every replacement for the Shinjuku club that
-      // turned three separate demo drafts 174 degrees, and the repair silently
-      // had nothing to offer (Akber, 7 Sep 2026).
-      if (!item.mealType) {
-        const types = candidate.types || [];
-        const food = types.some((t) => FOOD_PLACE_TYPES.has(t));
-        const alsoSomethingToDo = types.some((t) => ACTIVITY_PLACE_TYPES.has(t));
-        if (food && !alsoSomethingToDo) { reasons.wrongKind++; return false; }
-      }
+      // See isFoodOnly. This was the original site of that test; it is shared
+      // now so the other three passes stop rejecting a shrine for having a
+      // tea house.
+      if (!item.mealType && isFoodOnly(candidate)) { reasons.wrongKind++; return false; }
       if (!withinReachOfStay(candidate.location, stay)) { reasons.tooFar++; return false; }
       if (anchor && haversineMeters(anchor, candidate.location) > MAX_BROAD_DISTANCE_METERS) { reasons.tooFar++; return false; }
       // The pivot is judged against the point between its neighbours, not the

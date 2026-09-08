@@ -32,7 +32,11 @@ if (!process.execArgv.includes(STRIP)) {
   process.exit(result.status ?? 1);
 }
 
-const SOURCES = ['api/_lib/scheduleRealign.ts', 'api/_lib/routeShape.ts', 'api/_lib/openingHours.ts', 'api/_lib/fixedSchedule.ts'];
+// budgetFit.ts joined the list on 8 Sep: fixedSchedule started importing it when
+// budget began affecting the daily itinerary, and this harness stopped loading
+// at all until it was copied across too. Anything fixedSchedule or
+// scheduleRealign imports has to be here.
+const SOURCES = ['api/_lib/scheduleRealign.ts', 'api/_lib/routeShape.ts', 'api/_lib/openingHours.ts', 'api/_lib/budgetFit.ts', 'api/_lib/fixedSchedule.ts'];
 
 // Copied into one temp directory so the modules' imports of each other still
 // resolve, with the source's .js specifiers pointed at the .ts files Node is
