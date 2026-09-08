@@ -2669,6 +2669,36 @@ async function settleDay(day, context) {
     await computeTravelTimes(day.items, transport);
     applyFixedSchedule(day, options);
   }
+
+  // The last word on the day, and a guarantee rather than a best effort.
+  //
+  // Every round above ends on a refit, and a refit moves stops. The hours check
+  // sits at the top of the next round, so it reads the previous round's refit -
+  // except on the round that hits the bound, whose refit nobody reads at all.
+  // That is how Tokyo Daijingu shipped at 22:15: not unchecked code, just a
+  // check that had already run for the last time.
+  //
+  // This cannot be fixed by reordering the loop, because any pass that ends in a
+  // refit has the same hole one level down. So the invariant is enforced
+  // separately: drop, refit, look again, until looking finds nothing. It
+  // terminates because every pass removes at least one stop, and a day with
+  // nothing left in it has nothing shut (Akber, 8 Sep 2026).
+  for (let guard = 0; weekday != null && guard < 4; guard++) {
+    const shut = unsuitableStops(day, weekday, budget).filter(
+      (entry) => !day.items[entry.index]?.mealType
+    );
+    if (shut.length === 0) break;
+    for (const entry of [...shut].sort((a, b) => b.index - a.index)) {
+      if (entry.index > 0) day.items[entry.index - 1].travelToNext = null;
+      day.items.splice(entry.index, 1);
+    }
+    console.info(
+      `[generate-resolved-itinerary] day ${day.day}: dropped ${shut.length} stop(s) still shut after ${label}: ` +
+        shut.map((e) => `${e.name} (${e.reason})`).join('; ')
+    );
+    await computeTravelTimes(day.items, transport);
+    applyFixedSchedule(day, options);
+  }
 }
 
 export default async function handler(req, res) {
