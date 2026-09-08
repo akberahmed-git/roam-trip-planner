@@ -48,7 +48,26 @@
 // the pipeline has changed, not casually.
 import { writeFile, mkdir } from 'node:fs/promises';
 import path from 'node:path';
+import { spawnSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
+
+// Re-exec under type stripping so the audit can import the REAL opening-hours
+// module instead of reimplementing it. Same trick scripts/replay-schedule.js
+// uses, and for the same reason: an audit that re-implements the code it is
+// checking will agree with itself while production does something else.
+// openingHours.ts is self-contained - no imports of its own - so it loads
+// directly rather than needing the temp-directory dance replay-schedule does
+// for the modules that import each other (Akber, 8 Sep 2026).
+const STRIP = '--experimental-strip-types';
+if (!process.execArgv.includes(STRIP)) {
+  const result = spawnSync(process.execPath, [STRIP, ...process.argv.slice(1)], {
+    stdio: 'inherit',
+    env: { ...process.env, NODE_NO_WARNINGS: '1' },
+  });
+  process.exit(result.status ?? 1);
+}
+
+const { isOpenAt, weekdayForDay } = await import('../api/_lib/openingHours.ts');
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const PHOTO_DIR = path.join(ROOT, 'public', 'demo', 'tokyo');
@@ -503,6 +522,28 @@ function auditDemo(itinerary) {
       // sequenced so the traveller crosses it three times.
       for (const hop of findBacktracking(items.filter((i) => i.type !== 'accommodation'))) {
         problems.push(`${label}: route doubles back - ${hop}`);
+      }
+
+      // Opening hours, checked here as well as in the pipeline, because the
+      // pipeline's check kept ending up in the wrong place. It ran inside the
+      // scheduling loop under a comment saying every stop was now on the time it
+      // would ship with, and then two more passes were added after it that move
+      // stops. Yasukuni Shrine, which Google says shuts at 6pm, passed this
+      // audit at 23:20 with two and a half hours against it - in an app whose
+      // headline claim is that it checks opening hours.
+      //
+      // unsuitableStops would have caught it; nothing asked it. So the audit
+      // asks, using the same isOpenAt the pipeline uses rather than a second
+      // opinion that could drift from it. Unknown hours stay open, exactly as
+      // the pipeline treats them: silence is not evidence (Akber, 8 Sep 2026).
+      const weekdayIndex = weekdayForDay(TRIP.checkInDate, day.day);
+      for (const item of items) {
+        if (item.type === 'accommodation' || !item.startTime || !item.weekdayDescriptions) continue;
+        const [h, m] = String(item.startTime).split(':').map(Number);
+        if (!Number.isFinite(h) || !Number.isFinite(m)) continue;
+        if (isOpenAt(item.weekdayDescriptions, weekdayIndex, h * 60 + m) === false) {
+          problems.push(`${label}: ${item.name} is scheduled at ${item.startTime} and is closed then`);
+        }
       }
 
       dayHoods.push(hoods);

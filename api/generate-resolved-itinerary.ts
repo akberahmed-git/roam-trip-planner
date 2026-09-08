@@ -2484,7 +2484,7 @@ async function resolveItinerary(itinerary, destination, anchor, transport, accom
     // See settleDay: these three passes each undo the last one's guarantee, so
     // they run as a loop until the day stops changing rather than as a sequence.
     await settleDay(day, {
-      options, anchor, usedPlaceIds, stay, interests, transport,
+      options, anchor, usedPlaceIds, stay, interests, transport, weekday, budget,
       label: 'on the settled day',
     });
   }
@@ -2535,7 +2535,8 @@ async function resolveItinerary(itinerary, destination, anchor, transport, accom
         // function as the settled-day pass now, so there is one sequence to get
         // right instead of two.
         await settleDay(day, {
-          options, anchor, usedPlaceIds, stay, interests, transport,
+          options, anchor, usedPlaceIds, stay, interests, transport, budget,
+          weekday: weekdayForDay(checkInDate, day.day),
           label: 'after interest coverage',
         });
       }
@@ -2591,9 +2592,42 @@ async function resolveItinerary(itinerary, destination, anchor, transport, accom
 // the stop is no longer beside, so the day is measured and refitted before the
 // next round looks at it (Akber, 8 Sep 2026).
 async function settleDay(day, context) {
-  const { options, anchor, usedPlaceIds, stay, interests, transport, label } = context;
+  const { options, anchor, usedPlaceIds, stay, interests, transport, label, weekday, budget } = context;
 
   for (let round = 0; round < 3; round++) {
+    // Sixth instance of the shape, and it is the one that started the list.
+    //
+    // The hours check runs in the scheduling loop above, under a comment
+    // reading "now, and only now, is every stop sitting on the time it will
+    // ship with". That was true when it was written and has not been true
+    // since: settleDay moves stops, coverMissingInterests inserts them, and
+    // both run afterwards. So Yasukuni Shrine, which Google says shuts at
+    // 6pm, shipped at 23:20 with two and a half hours against it, in an app
+    // whose headline claim is that it checks opening hours.
+    //
+    // Only activities are dropped here. A rejected meal needs re-adopting
+    // rather than deleting, which the scheduling loop already does properly
+    // with the placeholder machinery; meals are also anchored to fixed times
+    // and do not drift into closed hours the way a moved activity does. The
+    // fill pass below then replaces whatever this removed, in the same round
+    // (Akber, 8 Sep 2026).
+    const wrongHour =
+      weekday == null
+        ? []
+        : unsuitableStops(day, weekday, budget).filter((entry) => !day.items[entry.index]?.mealType);
+    for (const entry of [...wrongHour].sort((a, b) => b.index - a.index)) {
+      if (entry.index > 0) day.items[entry.index - 1].travelToNext = null;
+      day.items.splice(entry.index, 1);
+    }
+    if (wrongHour.length > 0) {
+      console.info(
+        `[generate-resolved-itinerary] day ${day.day}: dropped ${wrongHour.length} stop(s) shut at their hour ${label}: ` +
+          wrongHour.map((e) => `${e.name} (${e.reason})`).join('; ')
+      );
+      await computeTravelTimes(day.items, transport);
+      applyFixedSchedule(day, options);
+    }
+
     const filled = await fillStarvedBlocks(
       day, options.cutoffMinutes, anchor, usedPlaceIds, stay, interests
     );
@@ -2618,7 +2652,7 @@ async function settleDay(day, context) {
       reorderDayGeographically(day);
     }
 
-    if (filled.length === 0 && !reordered && moved.length === 0) break;
+    if (filled.length === 0 && !reordered && moved.length === 0 && wrongHour.length === 0) break;
 
     await computeTravelTimes(day.items, transport);
     applyFixedSchedule(day, options);
