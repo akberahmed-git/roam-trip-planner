@@ -67,7 +67,7 @@ function requestHeaders(extra = {}) {
     : extra;
 }
 
-const HOTEL_NAME = 'Hotel Chinzanso Tokyo';
+const HOTEL_NAME = 'Mandarin Oriental, Tokyo';
 
 // Must match DEMO_TRIPS[0] in src/data/demoTrips.js, otherwise the card's
 // subtitle would advertise a trip the fixture doesn't contain.

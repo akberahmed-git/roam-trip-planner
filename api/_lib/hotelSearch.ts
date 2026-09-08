@@ -204,10 +204,35 @@ function categoryTagFor(place) {
   return area ? `${typeLabel} · ${area}` : typeLabel;
 }
 
+// Google returns a place's photos most-liked first, and for a hotel that is
+// usually the view OUT of it rather than the building. Every Tokyo option on the
+// accommodation screen showed the Skytree at dusk; not one showed a hotel.
+//
+// There is no category on a Places photo, but there is an author. A photo the
+// business uploaded is attributed to the business, a guest's is attributed to a
+// person, so the hotel's own pictures can be preferred without guessing at
+// content. Falls back to the first photo when the business has uploaded none,
+// which is no worse than before (Akber, 8 Sep 2026).
+function normalisedName(text) {
+  return String(text || '').toLowerCase().replace(/[^a-z0-9]+/g, '');
+}
+
+function ownersOwnPhoto(place) {
+  const owner = normalisedName(place.displayName?.text);
+  if (owner.length < 4) return null;
+  return (place.photos || []).find((photo) =>
+    (photo.authorAttributions || []).some((author) => {
+      const attributed = normalisedName(author.displayName);
+      return attributed.length >= 4 && (attributed.includes(owner) || owner.includes(attributed));
+    })
+  ) || null;
+}
+
 function photoUrlFor(place) {
   const photos = place.photos;
   if (!photos || photos.length === 0) return null;
-  return '/api/place-photo?ref=' + encodeURIComponent(photos[0].name);
+  const photo = ownersOwnPhoto(place) || photos[0];
+  return '/api/place-photo?ref=' + encodeURIComponent(photo.name);
 }
 
 // Money is { currencyCode, units (int64 as string), nanos } - see
