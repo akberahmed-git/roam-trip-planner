@@ -25,6 +25,8 @@ import { neighbourhoodOf } from './placeAddress.js';
 // that it's a guess.
 import { estimatePriceRanges } from './estimatePriceRange.js';
 import { cached } from './kvCache.js';
+import { geocodeDestination } from './verifyPlace.js';
+import { haversineMeters } from './routeShape.js';
 
 const TIER_QUERY_PREFIX = {
   Economy: 'budget hotel in',
@@ -159,19 +161,42 @@ function tierFor(place, queryTier) {
   return PRICE_LEVEL_TIER[place.priceLevel] || queryTier;
 }
 
-// Second copy of the same dead function that was in verifyPlace. It scored
-// rating * log(userRatingCount + 1), and both fields were removed from this
-// file's own field mask as Enterprise-tier (see the comment on the mask, which
-// records the removal), so every hotel has scored 0 since and the two sorts
-// below have been no-ops. Hotels came back in raw Google order, which is how
-// the Tokyo demo ended up in a hotel 10km from everything it then visited: it
-// was not chosen, it was simply first (Akber, 4 Sep 2026).
+// Restored 8 Sep 2026 to what it originally was: rating weighted by how many
+// people left one. The photo-count version that sat here in between was written
+// only because rating and userRatingCount had been cut from the mask as
+// Enterprise-tier fields, and it did not work. Every real hotel has ten or more
+// photos, so nearly all of them tied at the cap and both sorts below degenerated
+// into "whatever order Google returned". That is how the Tokyo demo ended up in
+// a hotel 10km from everything it then visited: it was not chosen, it was simply
+// first. Aman Tokyo surviving a cut of the Standard tier was the same no-op.
 //
-// Photo count is the popularity signal that survives at Pro tier and is already
-// in the mask. A hotel people actually stay in has a gallery; an obscure one has
-// two pictures. Capped so a 40-photo listing cannot swamp everything else.
+// The log is what stops a 40,000-review chain outranking a 4.8-rated boutique on
+// volume alone, while still separating somewhere people actually stay from
+// somewhere with nine reviews and a 5.0. Photo count survives as the tiebreak,
+// which is all it was ever good for.
 function qualityScore(place) {
-  return Math.min((place.photos || []).length, 12);
+  const rating = typeof place.rating === 'number' ? place.rating : 0;
+  const reviews = typeof place.userRatingCount === 'number' ? place.userRatingCount : 0;
+  const popularity = rating * Math.log(reviews + 1);
+  return popularity + Math.min((place.photos || []).length, 12) / 100;
+}
+
+// A hotel further out than this makes every day of the trip a commute, however
+// well rated it is, because the itinerary bookends each day at the
+// accommodation. Hotel Villa Fontaine Grand Haneda Airport is the case that
+// forced this: genuinely a real, well-reviewed Tokyo hotel, and about 15km from
+// everything a two-day Tokyo trip visits. Applied before the thin-tier widen
+// below, so dropping an outlier gives the neutral query a chance to replace it
+// rather than leaving a hole. Skipped entirely when the geocode failed - no
+// centre means no honest opinion about distance, and failing open is better
+// than emptying every tier.
+const MAX_HOTEL_DISTANCE_METERS = 12000;
+
+function withinCityRadius(place, centre) {
+  if (!centre) return true;
+  const location = locationOf(place);
+  if (!location) return true;
+  return haversineMeters(centre, location) <= MAX_HOTEL_DISTANCE_METERS;
 }
 
 function typeLabelFor(place) {
@@ -264,33 +289,85 @@ function priceRangeFromPlace(place) {
 // destination, or a transient miss) is left uncached so the widen-query
 // fallback and future loads still get a real chance. Falls back to L1-only when
 // KV is off. A non-OK response still throws from the fetcher and is not cached.
-async function searchTier(destination, tierQuery) {
+async function searchTier(destination, tierQuery, centre) {
+  // v2 on purpose. The key used to be unversioned, and the entries under it
+  // were written while the mask was cut back to Pro tier, so they carry no
+  // rating, no userRatingCount and no priceLevel. Left unversioned, every
+  // destination anyone had already looked up would keep serving those for the
+  // rest of the 30-day TTL and none of the fixes above would appear. Same trap
+  // as places:search:v2 in verifyPlace.js. Bump this whenever the field mask
+  // or the location bias changes.
   return cached(
     'hotels',
-    tierQuery + '|' + destination,
-    () => fetchTier(destination, tierQuery),
+    'v2|' + tierQuery + '|' + destination,
+    () => fetchTier(destination, tierQuery, centre),
     { shouldCache: (r) => Array.isArray(r) && r.length > 0 }
   );
 }
 
-async function fetchTier(destination, tierQuery) {
+// The destination's own centre, used to bias all three tier searches toward it.
+// A city centre does not move, so this is cached for a year; it is an
+// Essentials-tier lookup (places.location only) either way. Failure is not
+// fatal anywhere downstream - a null centre just means no bias and no distance
+// filter, which is exactly how this file behaved before.
+const CENTRE_CACHE_TTL_SECONDS = 60 * 60 * 24 * 365;
+
+async function centreOf(destination) {
+  try {
+    return await cached(
+      'destination-centre',
+      destination,
+      () => geocodeDestination(destination),
+      { ttl: CENTRE_CACHE_TTL_SECONDS }
+    );
+  } catch {
+    return null;
+  }
+}
+
+async function fetchTier(destination, tierQuery, centre) {
   const textQuery = tierQuery + ' ' + destination;
   const response = await fetch('https://places.googleapis.com/v1/places:searchText', {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',
       'X-Goog-Api-Key': process.env.GOOGLE_PLACES_API_KEY ?? '',
-      // priceRange removed — Enterprise-tier field confirmed to always return null
-      // for lodging (see module header, 2nd pass comment). Removing it drops these
-      // searches from Enterprise to Pro tier (~$0 for first 5k/month vs ~$0.025 each).
-      // priceRangeFromPlace() still exists but will always return null; the Claude
-      // estimate fallback (estimatePriceRange.js) already handles that case.
+      // priceRange stays out. It is the one Enterprise field confirmed to always
+      // return null for lodging (see module header, 2nd pass comment), so it costs
+      // the same as the three below and returns nothing. priceRangeFromPlace()
+      // still exists and still always returns null; the Claude estimate fallback
+      // in estimatePriceRange.js is what actually fills the range.
       'X-Goog-FieldMask':
-        // rating, userRatingCount and priceLevel all removed — each is Enterprise-tier.
-        // Pro-tier only now. tierFor() falls back to the query tier without priceLevel.
-        'places.id,places.displayName,places.formattedAddress,places.addressComponents,places.photos,places.types,places.location',
+        // rating, userRatingCount and priceLevel restored 8 Sep 2026. All three are
+        // Enterprise-tier, so asking for one costs the same as asking for all three
+        // (~$0.025 a call, three calls per destination, cached 30 days). Without
+        // priceLevel, tierFor() had nothing to read and fell back to whichever
+        // biased query found the hotel first, which put Aman Tokyo in the Standard
+        // tier. Without rating and userRatingCount, qualityScore could not rank.
+        'places.id,places.displayName,places.formattedAddress,places.addressComponents,' +
+        'places.photos,places.types,places.location,places.rating,places.userRatingCount,' +
+        'places.priceLevel',
     },
-    body: JSON.stringify({ textQuery, includedType: 'lodging', languageCode: 'en' }),
+    body: JSON.stringify({
+      textQuery,
+      includedType: 'lodging',
+      languageCode: 'en',
+      // Biases results toward the city centre rather than anywhere inside the
+      // administrative boundary. "hotel in Tokyo" is a perfectly true description
+      // of an airport hotel 15km out, and Google was returning one. Same circle
+      // shape verifyPlace.js already uses for stops. A bias, not a restriction:
+      // somewhere further out still surfaces when nothing closer matches.
+      ...(centre
+        ? {
+            locationBias: {
+              circle: {
+                center: { latitude: centre.lat, longitude: centre.lng },
+                radius: MAX_HOTEL_DISTANCE_METERS,
+              },
+            },
+          }
+        : {}),
+    }),
   });
 
   if (!response.ok) {
@@ -310,7 +387,9 @@ async function fetchTier(destination, tierQuery) {
 const WIDEN_QUERY = 'places to stay in';
 
 function isUsablePlace(place) {
-  // Ratings are no longer fetched (Enterprise-tier), so validity is name + location.
+  // Name and location only. Rating is fetched again as of 8 Sep 2026 but is
+  // deliberately not required here: a real hotel with no reviews yet is still a
+  // real hotel, and qualityScore already ranks it last on its own.
   return Boolean(place.displayName?.text && place.location);
 }
 
@@ -368,8 +447,9 @@ export async function searchAccommodations({ destination, checkInDate, checkOutD
   // Run all three tier-biased searches to get a diverse candidate pool (a
   // "luxury hotel in X" query surfaces genuinely upscale properties a
   // neutral search wouldn't rank highly).
+  const centre = await centreOf(destination);
   const resultsByTier = await Promise.all(
-    TIERS.map((tier) => searchTier(destination, TIER_QUERY_PREFIX[tier]))
+    TIERS.map((tier) => searchTier(destination, TIER_QUERY_PREFIX[tier], centre))
   );
 
   // Tier placement: Google's own priceLevel first, falling back to which
@@ -378,7 +458,7 @@ export async function searchAccommodations({ destination, checkInDate, checkOutD
   const byPlaceId = new Map();
   TIERS.forEach((tier, index) => {
     const usable = resultsByTier[index]
-      .filter(isUsablePlace)
+      .filter((place) => isUsablePlace(place) && withinCityRadius(place, centre))
       .sort((a, b) => qualityScore(b) - qualityScore(a));
     for (const place of usable) {
       if (byPlaceId.has(place.id)) continue;
@@ -398,8 +478,12 @@ export async function searchAccommodations({ destination, checkInDate, checkOutD
   // listings; a neutral query often surfaces what the biased one missed.
   const thinTiers = TIERS.filter((tier) => buckets[tier].length < SHOWN_PER_TIER);
   if (thinTiers.length > 0) {
-    const widenedPlaces = (await searchTier(destination, WIDEN_QUERY))
-      .filter((place) => isUsablePlace(place) && !byPlaceId.has(place.id));
+    const widenedPlaces = (await searchTier(destination, WIDEN_QUERY, centre))
+      .filter(
+        (place) =>
+          isUsablePlace(place) && withinCityRadius(place, centre) && !byPlaceId.has(place.id)
+      )
+      .sort((a, b) => qualityScore(b) - qualityScore(a));
     for (const place of widenedPlaces) {
       // Neutral query has no query-tier bias of its own, so default the
       // fallback (when Places has no priceLevel either) to Standard.
