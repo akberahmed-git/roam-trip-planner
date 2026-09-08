@@ -1813,12 +1813,21 @@ async function repositionStrandedStops(day, anchor, usedPlaceIds, stay) {
   // all, so that is where the search goes (Akber, 7 Sep 2026).
   const pivotTarget = (() => {
     if (!pivot) return null;
-    const before = located[shape.worstAt - 1];
-    const after = located[shape.worstAt + 1];
-    if (!before?.location || !after?.location) return pivot.location;
+    // The hotel stands in for a missing neighbour. located excludes the
+    // accommodation bookends, so the first and last stop of a day each have one
+    // neighbour here and one only in day.items - and the day really does begin
+    // and end at the hotel, so it is the honest answer rather than a fudge.
+    // Falling back to the pivot's own location, as this did, sent the search to
+    // the exact place the stop already was and guaranteed no improvement. That
+    // is what happened to a Harajuku breakfast sitting 9.5 km from the Asakusa
+    // morning it opened (Akber, 8 Sep 2026).
+    const hotel = day.items.find((i) => i.type === 'accommodation' && i.location)?.location || null;
+    const before = located[shape.worstAt - 1]?.location || hotel;
+    const after = located[shape.worstAt + 1]?.location || hotel;
+    if (!before || !after) return pivot.location;
     return {
-      lat: (before.location.lat + after.location.lat) / 2,
-      lng: (before.location.lng + after.location.lng) / 2,
+      lat: (before.lat + after.lat) / 2,
+      lng: (before.lng + after.lng) / 2,
     };
   })();
 

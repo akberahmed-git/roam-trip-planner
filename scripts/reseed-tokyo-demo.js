@@ -559,76 +559,111 @@ async function main() {
   const accommodationDetails = await fetchAccommodation();
   console.log(`  ${accommodationDetails.name} - ${accommodationDetails.categoryTag}`);
 
-  console.log(`Generating Tokyo demo via ${BASE_URL} ...`);
-  const response = await fetch(`${BASE_URL}/api/generate-resolved-itinerary`, {
-    method: 'POST',
-    headers: requestHeaders({ 'Content-Type': 'application/json' }),
-    // accommodation is the plain name string, exactly as Accommodation.jsx
-    // sends it. generateRawItinerary needs it so Claude drafts a trip that
-    // knows where the traveller is staying. It used to come from TRIP as a
-    // hardcoded HOTEL_NAME, which is precisely how it could disagree with the
-    // hotel actually looked up above; taking it from the resolved hotel makes
-    // that disagreement impossible.
-    body: JSON.stringify({
-      ...TRIP,
-      accommodation: accommodationDetails.name,
-      accommodationDetails,
-    }),
-  });
+  // The draft is not deterministic and the audit is strict, so a single attempt
+  // is a coin flip. Three separate re-seeds were spent discovering that by hand,
+  // each one a full generation, a message and a wait, and two of the three
+  // failed on a check the previous attempt had passed. Retrying in here costs
+  // exactly what re-running by hand costs and removes the babysitting.
+  //
+  // Every attempt is audited and the first clean one wins. Nothing is written
+  // unless one comes back clean, which is the rule this script existed for -
+  // the demo is the first thing a visitor sees and a weak draft must never
+  // silently replace a good one. Override with ATTEMPTS=1 to get the old
+  // behaviour back for debugging (Akber, 8 Sep 2026).
+  const MAX_ATTEMPTS = Number(process.env.ATTEMPTS || 3);
+  const dumpPath = path.join(process.cwd(), '.roam-last-generation.json');
 
-  if (!response.ok) {
-    const body = await response.text();
-    if (response.status === 401 && !BYPASS_SECRET) {
-      throw new Error(
-        'Generation failed (401): this deployment is behind Vercel Authentication.\n' +
-          'Get the secret from Vercel > Settings > Deployment Protection > Protection Bypass\n' +
-          'for Automation, then re-run as:\n' +
-          '  VERCEL_AUTOMATION_BYPASS_SECRET=... node scripts/reseed-tokyo-demo.js ' +
-          BASE_URL
-      );
-    }
-    throw new Error(`Generation failed (${response.status}): ${body.slice(0, 400)}`);
-  }
+  let itinerary = null;
+  let lastProblems = [];
 
-  const itinerary = await response.json();
+  for (let attempt = 1; attempt <= MAX_ATTEMPTS; attempt++) {
+    console.log(
+      `\nGenerating Tokyo demo via ${BASE_URL} (attempt ${attempt} of ${MAX_ATTEMPTS}) ...`
+    );
+    const response = await fetch(`${BASE_URL}/api/generate-resolved-itinerary`, {
+      method: 'POST',
+      headers: requestHeaders({ 'Content-Type': 'application/json' }),
+      // accommodation is the plain name string, exactly as Accommodation.jsx
+      // sends it. generateRawItinerary needs it so Claude drafts a trip that
+      // knows where the traveller is staying. It used to come from TRIP as a
+      // hardcoded HOTEL_NAME, which is precisely how it could disagree with the
+      // hotel actually looked up above; taking it from the resolved hotel makes
+      // that disagreement impossible.
+      body: JSON.stringify({
+        ...TRIP,
+        accommodation: accommodationDetails.name,
+        accommodationDetails,
+      }),
+    });
 
-  for (const variant of ['packed', 'slow']) {
-    for (const day of itinerary[variant]?.days || []) {
-      const unresolved = day.items.filter((item) => !item.location);
-      if (unresolved.length > 0) {
-        console.warn(
-          `  ! ${variant} day ${day.day}: ${unresolved.length} stop(s) with no location: ` +
-            unresolved.map((item) => item.name).join(', ')
+    if (!response.ok) {
+      const body = await response.text();
+      if (response.status === 401 && !BYPASS_SECRET) {
+        throw new Error(
+          'Generation failed (401): this deployment is behind Vercel Authentication.\n' +
+            'Get the secret from Vercel > Settings > Deployment Protection > Protection Bypass\n' +
+            'for Automation, then re-run as:\n' +
+            '  VERCEL_AUTOMATION_BYPASS_SECRET=... node scripts/reseed-tokyo-demo.js ' +
+            BASE_URL
         );
       }
+      throw new Error(`Generation failed (${response.status}): ${body.slice(0, 400)}`);
     }
+
+    const candidate = await response.json();
+
+    for (const variant of ['packed', 'slow']) {
+      for (const day of candidate[variant]?.days || []) {
+        const unresolved = day.items.filter((item) => !item.location);
+        if (unresolved.length > 0) {
+          console.warn(
+            `  ! ${variant} day ${day.day}: ${unresolved.length} stop(s) with no location: ` +
+              unresolved.map((item) => item.name).join(', ')
+          );
+        }
+      }
+    }
+
+    // Always keep the raw generation, pass or fail. Every fix this session was
+    // reverse-engineered from the four-line audit summary while the itinerary
+    // that produced it was discarded, which meant guessing at the stops the
+    // summary did not name - and guessing wrong repeatedly. A rejected draft
+    // costs EUR 1.43; keeping it costs nothing (Akber, 7 Sep 2026).
+    await writeFile(
+      dumpPath,
+      JSON.stringify({ trip: TRIP, accommodationDetails, itinerary: candidate }, null, 2)
+    );
+    console.log(`  full generation saved to ${dumpPath}`);
+
+    const { problems, notes } = auditDemo(candidate);
+    if (notes.length > 0) {
+      console.warn('\n  Worth a look, but not blocking:\n');
+      for (const note of notes) console.warn(`    ~ ${note}`);
+    }
+    if (problems.length === 0) {
+      itinerary = candidate;
+      console.log('\nAudit passed: every day has activities, a dinner, photos and its interests.');
+      break;
+    }
+
+    lastProblems = problems;
+    console.error(`\n  Attempt ${attempt} is not good enough to ship as the demo:\n`);
+    for (const problem of problems) console.error(`    x ${problem}`);
+    if (attempt < MAX_ATTEMPTS) console.error('\n  Trying again for a different draft ...');
   }
 
-  // Always keep the raw generation, pass or fail. Every fix this session was
-  // reverse-engineered from the four-line audit summary while the itinerary
-  // that produced it was discarded, which meant guessing at the stops the
-  // summary did not name - and guessing wrong repeatedly. A rejected draft
-  // costs EUR 1.43; keeping it costs nothing (Akber, 7 Sep 2026).
-  const dumpPath = path.join(process.cwd(), '.roam-last-generation.json');
-  await writeFile(dumpPath, JSON.stringify({ trip: TRIP, accommodationDetails, itinerary }, null, 2));
-  console.log(`\nFull generation saved to ${dumpPath}`);
-
-  const { problems, notes } = auditDemo(itinerary);
-  if (notes.length > 0) {
-    console.warn('\nWorth a look, but not blocking:\n');
-    for (const note of notes) console.warn(`  ~ ${note}`);
-  }
-  if (problems.length > 0) {
-    console.error('\nThis generation is not good enough to ship as the demo:\n');
-    for (const problem of problems) console.error(`  x ${problem}`);
+  if (!itinerary) {
     console.error(
-      '\nNothing was written. The demo is the first thing every visitor sees, so a\n' +
-        'weak generation must not silently replace a good one. Re-run to get a\n' +
-        'different draft, or fix the pipeline if it keeps failing the same check.'
+      `\nNothing was written. ${MAX_ATTEMPTS} attempts all failed the audit, the last one on:\n`
+    );
+    for (const problem of lastProblems) console.error(`  x ${problem}`);
+    console.error(
+      '\nThe last draft is in .roam-last-generation.json. Failing the same check\n' +
+        'every time is a pipeline problem, not bad luck; failing a different one\n' +
+        'each time means raising ATTEMPTS is the cheaper answer.'
     );
     process.exit(1);
   }
-  console.log('\nAudit passed: every day has activities, a dinner, photos and its interests.');
 
   console.log('Baking photos into public/demo/tokyo ...');
   const { downloaded, missing } = await bakePhotos(itinerary);

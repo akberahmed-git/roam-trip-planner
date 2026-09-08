@@ -61,12 +61,31 @@ export function shapeOf(locations) {
   let worstAt = -1;
   for (let k = 0; k < longLegs.length - 1; k++) {
     const turn = angleGap(longLegs[k].bearing, longLegs[k + 1].bearing);
-    if (turn > worstTurn) {
-      worstTurn = turn;
-      // Only meaningful when the two legs actually meet; otherwise the reversal
-      // is spread across the day and no single stop is at fault.
-      worstAt = longLegs[k + 1].from === longLegs[k].from + 1 ? longLegs[k + 1].from : -1;
+    if (turn <= worstTurn) continue;
+    worstTurn = turn;
+
+    if (longLegs[k + 1].from === longLegs[k].from + 1) {
+      // The two legs meet, so one stop is the corner the day turns on.
+      worstAt = longLegs[k + 1].from;
+      continue;
     }
+
+    // The legs do not meet, so the reversal spans an excursion: the day travels
+    // a long way out, does several things, and comes a long way back. This used
+    // to return -1 here, on the reasoning that no single stop is at fault, and
+    // repositionStrandedStops then had a day it knew was bent and nothing to
+    // aim at, so it did nothing at all.
+    //
+    // Worse, because only the WORST turn was kept, a day carrying an
+    // unattributable 160-degree reversal and a perfectly fixable 155-degree one
+    // discarded the fixable one and repaired neither. That is a real Tokyo
+    // draft: breakfast in Harajuku, three stops in Asakusa 9.5 km northeast,
+    // then back southwest to Toranomon.
+    //
+    // Something IS at fault there, and it is the stop the day set off from. The
+    // excursion is a cluster; the departure point is the one place standing
+    // apart from it. Aim at that (Akber, 8 Sep 2026).
+    worstAt = longLegs[k].from;
   }
   return { worstTurn, worstAt, path };
 }
