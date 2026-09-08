@@ -80,7 +80,7 @@ export const TOKYO_2_DAYS: ResolvedItinerary = {
             "name": "Roppongi Hills",
             "categoryTag": "Architecture · Modern",
             "description": "A mixed-use complex with contemporary galleries, shops and offices unified by bold architecture and a prominent sculpture garden; the observation deck offers night views of Tokyo.",
-            "startTime": "10:11",
+            "startTime": "10:15",
             "durationMinutes": 90,
             "mealType": null,
             "address": "6-chōme-10-1 Roppongi, Minato City, Tokyo 106-6108, Japan",
@@ -116,10 +116,10 @@ export const TOKYO_2_DAYS: ResolvedItinerary = {
               "establishment"
             ],
             "categoryTag": "Park · Yoyogikamizonochō",
-            "startTime": "11:51",
+            "startTime": "12:00",
             "durationMinutes": 75,
             "mealType": null,
-            "travelToNext": "24 minute drive",
+            "travelToNext": "15 minute drive",
             "photoUrl": "/demo/tokyo/04-yoyogi-park.jpg",
             "rating": 4.4,
             "ratingCount": 27509,
@@ -193,7 +193,7 @@ export const TOKYO_2_DAYS: ResolvedItinerary = {
               "establishment"
             ],
             "categoryTag": "Landmark · Shibuya",
-            "startTime": "14:39",
+            "startTime": "14:40",
             "durationMinutes": 90,
             "mealType": null,
             "travelToNext": "5 minute drive",
@@ -227,7 +227,7 @@ export const TOKYO_2_DAYS: ResolvedItinerary = {
               "establishment"
             ],
             "categoryTag": "Landmark · Udagawacho",
-            "startTime": "16:14",
+            "startTime": "16:15",
             "durationMinutes": 120,
             "mealType": null,
             "travelToNext": "10 minute drive",
@@ -244,7 +244,7 @@ export const TOKYO_2_DAYS: ResolvedItinerary = {
             "name": "Nintendo Tokyo Shibuya Japan",
             "categoryTag": "Shop · Udagawachō",
             "description": "Nintendo's Tokyo flagship showcasing gaming history, character design and interactive displays celebrating five decades of the company's impact on Japanese pop culture.",
-            "startTime": "18:22",
+            "startTime": "18:25",
             "durationMinutes": 90,
             "mealType": null,
             "address": "Japan, 〒150-0042 Tokyo, Shibuya, Udagawachō, 15−１ 渋谷PARCO 6F",
@@ -271,7 +271,7 @@ export const TOKYO_2_DAYS: ResolvedItinerary = {
               "point_of_interest",
               "establishment"
             ],
-            "travelToNext": "8 minute drive"
+            "travelToNext": "5 minute drive"
           },
           {
             "time": "dinner",
@@ -403,7 +403,7 @@ export const TOKYO_2_DAYS: ResolvedItinerary = {
             "name": "Ghibli Museum",
             "categoryTag": "Landmark · Shimorenjaku",
             "description": "Studio Ghibli's dedicated museum showcasing hand-drawn animation cells, concept art and the design process behind beloved films, celebrating Japanese animation as modern art.",
-            "startTime": "10:28",
+            "startTime": "10:30",
             "durationMinutes": 165,
             "mealType": null,
             "address": "1-chōme-1-83 Shimorenjaku, Mitaka, Tokyo 181-0013, Japan",
@@ -432,7 +432,7 @@ export const TOKYO_2_DAYS: ResolvedItinerary = {
               "point_of_interest",
               "establishment"
             ],
-            "travelToNext": "17 minute drive"
+            "travelToNext": "15 minute drive"
           },
           {
             "type": "meal",
@@ -477,7 +477,7 @@ export const TOKYO_2_DAYS: ResolvedItinerary = {
             "name": "Inokashira Park",
             "categoryTag": "Park · Gotenyama",
             "description": "A sprawling wooded park surrounding a central pond in the quieter west side of Tokyo, offering walking trails, a shrine and peaceful green space away from the city centre.",
-            "startTime": "15:02",
+            "startTime": "15:00",
             "durationMinutes": 90,
             "mealType": null,
             "address": "1-chōme-18-31 Gotenyama, Musashino, Tokyo 180-0005, Japan",
@@ -513,7 +513,7 @@ export const TOKYO_2_DAYS: ResolvedItinerary = {
             "name": "Meiji Jingu",
             "categoryTag": "Landmark · Yoyogikamizonochō",
             "description": "A serene Shinto shrine set within a forested sanctuary, dedicated to Emperor Meiji and Empress Shoken.",
-            "startTime": "16:44",
+            "startTime": "16:40",
             "durationMinutes": 75,
             "mealType": null,
             "address": "1-1 Yoyogikamizonochō, Shibuya, Tokyo 151-8557, Japan",
@@ -543,7 +543,7 @@ export const TOKYO_2_DAYS: ResolvedItinerary = {
             "name": "Omotesando Hills",
             "categoryTag": "Shopping · Jingūmae",
             "description": "Tokyo's upscale shopping avenue lined with flagship stores housed in contemporary architecture, bridging modern design with traditional Harajuku neighbourhood character.",
-            "startTime": "18:22",
+            "startTime": "18:20",
             "durationMinutes": 75,
             "mealType": null,
             "address": "4-chōme-12-10 Jingūmae, Shibuya, Tokyo 150-0001, Japan",
@@ -570,7 +570,7 @@ export const TOKYO_2_DAYS: ResolvedItinerary = {
               "point_of_interest",
               "establishment"
             ],
-            "travelToNext": "23 minute drive"
+            "travelToNext": "25 minute drive"
           },
           {
             "time": "dinner",
@@ -714,7 +714,7 @@ export const TOKYO_2_DAYS: ResolvedItinerary = {
             "name": "Nintendo Tokyo Shibuya Japan",
             "categoryTag": "Shop · Udagawachō",
             "description": "Nintendo's flagship experience center in Shibuya featuring games, merchandise and interactive displays celebrating the brand's history and culture.",
-            "startTime": "11:08",
+            "startTime": "11:10",
             "durationMinutes": 135,
             "mealType": null,
             "address": "Japan, 〒150-0042 Tokyo, Shibuya, Udagawachō, 15−１ 渋谷PARCO 6F",
@@ -741,7 +741,7 @@ export const TOKYO_2_DAYS: ResolvedItinerary = {
               "point_of_interest",
               "establishment"
             ],
-            "travelToNext": "7 minute drive"
+            "travelToNext": "5 minute drive"
           },
           {
             "time": "lunch",
@@ -803,7 +803,7 @@ export const TOKYO_2_DAYS: ResolvedItinerary = {
               "establishment"
             ],
             "categoryTag": "Park · Kōkyogaien",
-            "startTime": "15:48",
+            "startTime": "15:50",
             "durationMinutes": 135,
             "mealType": null,
             "travelToNext": "15 minute drive",
@@ -843,10 +843,10 @@ export const TOKYO_2_DAYS: ResolvedItinerary = {
               "establishment"
             ],
             "categoryTag": "Shopping · Roppongi",
-            "startTime": "18:15",
+            "startTime": "18:20",
             "durationMinutes": 90,
             "mealType": null,
-            "travelToNext": "15 minute drive",
+            "travelToNext": "10 minute drive",
             "photoUrl": "/demo/tokyo/20-roppongi-hills-mori-tower.jpg",
             "rating": 4.3,
             "ratingCount": 4427,
@@ -997,7 +997,7 @@ export const TOKYO_2_DAYS: ResolvedItinerary = {
             "name": "Ghibli Museum",
             "categoryTag": "Landmark · Shimorenjaku",
             "description": "Studio Ghibli's museum in Mitaka showcasing original artwork, film history and imaginative installations celebrating the studio's beloved animated worlds.",
-            "startTime": "11:28",
+            "startTime": "11:35",
             "durationMinutes": 90,
             "mealType": null,
             "address": "1-chōme-1-83 Shimorenjaku, Mitaka, Tokyo 181-0013, Japan",
@@ -1026,7 +1026,7 @@ export const TOKYO_2_DAYS: ResolvedItinerary = {
               "point_of_interest",
               "establishment"
             ],
-            "travelToNext": "32 minute drive"
+            "travelToNext": "25 minute drive"
           },
           {
             "time": "lunch",
@@ -1072,7 +1072,7 @@ export const TOKYO_2_DAYS: ResolvedItinerary = {
             "name": "Sensō-ji",
             "categoryTag": "Landmark · Asakusa",
             "description": "Tokyo's oldest and most iconic Buddhist temple in Asakusa, with its celebrated red lantern, vibrant shopping streets and deep spiritual atmosphere.",
-            "startTime": "16:19",
+            "startTime": "16:20",
             "durationMinutes": 105,
             "mealType": null,
             "address": "2-chōme-3-1 Asakusa, Taito City, Tokyo 111-0032, Japan",
@@ -1117,10 +1117,10 @@ export const TOKYO_2_DAYS: ResolvedItinerary = {
               "establishment"
             ],
             "categoryTag": "Landmark · Oshiage",
-            "startTime": "18:11",
+            "startTime": "18:15",
             "durationMinutes": 90,
             "mealType": null,
-            "travelToNext": "19 minute drive",
+            "travelToNext": "15 minute drive",
             "photoUrl": "/demo/tokyo/25-tokyo-skytree-town.jpg",
             "rating": 4.5,
             "ratingCount": 14938,

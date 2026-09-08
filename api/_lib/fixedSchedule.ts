@@ -1000,6 +1000,7 @@ function assignTimes(day, anchors, residuals, mode) {
     // 15-minute steps and the anchors are whole half hours, so once the legs are
     // too, so is every time on the page - including the closing leg below, which
     // is simply the difference between two of them.
+    const shown = new Map<number, number>();
     for (let i = block.startIndex; i < block.endIndex; i++) {
       const isLast = i === block.endIndex - 1;
       const base = legOf(items[i]) || TRAVEL_GRID_MINUTES;
@@ -1013,13 +1014,22 @@ function assignTimes(day, anchors, residuals, mode) {
         Math.round(raw / TRAVEL_GRID_MINUTES) * TRAVEL_GRID_MINUTES
       );
       items[i].travelToNext = `${value} minute ${mode}`;
+      shown.set(i, value);
     }
 
     // Cascade the block, then close the last leg on the next anchor exactly, so
     // rounding can never leave a gap or an overlap in front of a meal.
+    //
+    // The clock advances by the number ON THE LABEL, not by legOf. legOf reads
+    // the routed figure so that padding never compounds across refits, which is
+    // right for measuring a block and wrong here: the traveller reads "10m
+    // drive" under one card and a start time under the next, and those have to
+    // agree. When this read legOf the clock moved 17 minutes while the label
+    // said 15, and the demo shipped with Inokashira Park ending at 16:32, a ten
+    // minute drive, and Meiji Jingu starting at 16:44 (Akber, 8 Sep 2026).
     let clock = timeToMinutes(items[block.startIndex].startTime) + (items[block.startIndex].durationMinutes || 0);
     for (let i = block.startIndex; i < block.endIndex - 1; i++) {
-      clock += legOf(items[i]) || TRAVEL_GRID_MINUTES;
+      clock += shown.get(i) ?? (legOf(items[i]) || TRAVEL_GRID_MINUTES);
       items[i + 1].startTime = addMinutesToTime('00:00', clock);
       clock += items[i + 1].durationMinutes || 0;
     }

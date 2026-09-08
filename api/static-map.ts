@@ -6,12 +6,11 @@
 // math - Google auto-fits center/zoom to the given markers, and renders the
 // numbered pins itself at the exact real lat/lng.
 //
-// Google Static Maps marker labels only support a single uppercase alphanumeric
-// character, and a Packed day used to need ten of them because the hotel was
-// numbered at both ends. It is now sent as "h" and drawn with a house icon
-// instead, which leaves the numbers for the stops and keeps a day inside 1-9
-// with room to spare. Anything still past 9 falls back to an unlabelled pin
-// rather than an invalid two-digit label (Akber, 8 Sep 2026).
+// The hotel is sent as "h" and the stops as 1-9, and each maps to its own
+// icon under /public/map-markers/<version>/. A day past 9 stops falls back to
+// a plain teal pin rather than an invalid label. The version folder exists
+// because Google caches a custom icon against its URL for hours: change the
+// artwork, bump the folder (Akber, 8 Sep 2026).
 //
 // Requires the "Maps Static API" to be enabled on the same Google Cloud
 // project as Places/Routes - not yet confirmed enabled as of this pass.
@@ -44,9 +43,17 @@ export default async function handler(req, res) {
       // URL, so re-uploading the same path leaves the old artwork rendering for
       // hours - the first resize looked like it had not deployed at all. Bump
       // the number whenever the pin changes (Akber, 8 Sep 2026).
-      if (label === 'h') return `icon:${origin}/map-pin-home-v2.png|${coords}`;
-      const labelPart = /^[1-9]$/.test(label) ? `label:${label}|` : '';
-      return `color:0x0A6E83|${labelPart}${coords}`;
+      //
+      // One icon per label, drawn to match the numbered circles in the list
+      // under the map exactly: the same teal, the same Poppins digit, the same
+      // house for the hotel. Google's own pins were too small to read and its
+      // oval home pin did not match anything else on the page. Custom icons
+      // cannot carry a label, so the digit is baked into each PNG and there is
+      // one file per stop number. anchor:center, because a circle sits ON the
+      // place, unlike a pin whose point does (Akber, 8 Sep 2026).
+      const name = label === 'h' ? 'h' : /^[1-9]$/.test(label) ? label : null;
+      if (name) return `anchor:center|icon:${origin}/map-markers/v1/${name}.png|${coords}`;
+      return `color:0x0C869D|${coords}`;
     })
     .filter(Boolean);
 
@@ -72,7 +79,7 @@ export default async function handler(req, res) {
     })
     .filter(Boolean);
   const pathQuery = coords.length >= 2
-    ? '&path=' + encodeURIComponent(`color:0x0A6E83|weight:3|${coords.join('|')}`)
+    ? '&path=' + encodeURIComponent(`color:0x0C869D|weight:3|${coords.join('|')}`)
     : '';
 
   const googleUrl = `https://maps.googleapis.com/maps/api/staticmap?${params.toString()}&${markerQuery}${pathQuery}`;
