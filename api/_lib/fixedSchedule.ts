@@ -80,24 +80,40 @@ export const MIN_REVIEWS_FOR_A_STOP = 50;
 // stop to add. Without it the loop adds a place nobody has reviewed and deletes
 // it again on the next round, three times over, and the block it was meant to
 // fill still ships with one stop holding four hours (Akber, 7 Sep 2026).
-export function hasEnoughReviews(candidate) {
-  if (!candidate) return true;
+// Why a place should not be a stop, or null when it is fine. One function,
+// because unsuitableStops used to carry its own inline copy of this and only
+// one of the two ever got fixed - the same two-copies problem that cost five
+// drafts elsewhere in this codebase.
+export function reviewShortfall(candidate) {
+  if (!candidate) return null;
   const reviews = typeof candidate.ratingCount === 'number' ? candidate.ratingCount : null;
+  if (reviews !== null) {
+    return reviews >= MIN_REVIEWS_FOR_A_STOP ? null : `only ${reviews} reviews`;
+  }
 
-  // If Google gave us a number, judge on the number. This used to bail out
-  // first on hasHours !== true, which meant a place with a review count sitting
-  // right there was waved through purely because Google listed no opening
-  // hours for it. Sakura Well shipped that way: 43 reviews, 3.7 stars, no
-  // hours, 135 minutes against it, and a description that managed only "a site
-  // of historical significance". Same class as Kamadera East Heritage, which
-  // this check was written for in the first place (Akber, 8 Sep 2026).
-  if (reviews !== null) return reviews >= MIN_REVIEWS_FOR_A_STOP;
+  // No review count AND no rating means Google returned the record and has
+  // nothing whatsoever on the place. Both fields are in verifyPlace's mask, so
+  // that silence is an answer rather than a gap: nobody is going there.
+  //
+  // Nakagin Capsule Tower is why this is here. It was demolished in 2022, the
+  // capsules are in museums, and Google still carries a place record with no
+  // rating, no reviews and no hours. It shipped in a demo draft with 75 minutes
+  // against it and a description in the present tense, because every gate read
+  // its emptiness as "the fields did not come back" rather than as "there is
+  // nothing here any more" (Akber, 8 Sep 2026).
+  if (typeof candidate.rating !== 'number' && candidate.hasHours !== true) {
+    return 'no rating, no reviews, no hours, nothing there';
+  }
 
-  // No number at all. hasHours is the tell for whether the Enterprise fields
-  // came back for this place: hours present and reviews absent means Google
-  // genuinely has none, while hours absent means we cannot tell and the stop is
-  // left alone. Silence is not evidence.
-  return candidate.hasHours !== true;
+  // Something came back, just not a count. Hours present means the fields did
+  // arrive and Google genuinely has no reviews, which is its own rejection.
+  // Hours absent with a rating present means we cannot tell, and silence is not
+  // evidence.
+  return candidate.hasHours === true ? 'nobody has reviewed it' : null;
+}
+
+export function hasEnoughReviews(candidate) {
+  return reviewShortfall(candidate) === null;
 }
 
 // A safety net behind validateMeals, which rejects a duplicated meal and retries
@@ -276,16 +292,10 @@ export function unsuitableStops(day, weekdayIndex, budget) {
     // userRatingCount, so hours present and reviews absent means Google has none,
     // while hours absent means we cannot tell and the stop is left alone. Same
     // principle as the hours check above: silence is not evidence.
-    if (item.hasHours === true) {
-      const reviews = typeof item.ratingCount === 'number' ? item.ratingCount : null;
-      if (reviews === null || reviews < MIN_REVIEWS_FOR_A_STOP) {
-        found.push({
-          index,
-          name: item.name,
-          reason: reviews === null ? 'nobody has reviewed it' : `only ${reviews} reviews`,
-        });
-        return;
-      }
+    const shortfall = reviewShortfall(item);
+    if (shortfall !== null) {
+      found.push({ index, name: item.name, reason: shortfall });
+      return;
     }
 
     const nightlife = isNightlifeStop(item);
