@@ -7,10 +7,37 @@ import FlowBreadcrumb from '../components/FlowBreadcrumb'
 import SegmentedControl from '../components/SegmentedControl'
 import PlacePhoto from '../components/PlacePhoto'
 
+// The accommodation is where the day starts and ends, not something the
+// traveller chose to go and see. Numbering it made a Packed day ten markers,
+// two of them the same place (three when breakfast is at the hotel), and pushed
+// the last real stop past the single character Google Static Maps allows for a
+// label - so it shipped as an unlabelled pin. Marking it as home instead frees
+// those slots and makes the numbers mean the things you are actually doing
+// (Akber, 8 Sep 2026).
+function HomeMarker() {
+  return (
+    <svg viewBox="0 0 24 24" width="15" height="15" aria-hidden="true" focusable="false">
+      <path d="M12 3.2 3.6 10.3h2.1v9.4h5V14h2.6v5.7h5v-9.4h2.1z" fill="currentColor" />
+    </svg>
+  )
+}
+
+// Accommodation is marked as home and takes no number, so the stops run 1..n
+// over the things there are to do rather than over every row in the array.
+function numberStops(items) {
+  let next = 0
+  return items.map((item) => ({
+    item,
+    number: item.type === 'accommodation' ? null : ++next,
+  }))
+}
+
 function MapRow({ item, number }) {
   return (
     <div className="map-row">
-      <div className="map-row__number">{number}</div>
+      <div className="map-row__number" aria-label={number == null ? 'Start and end of the day' : undefined}>
+        {number == null ? <HomeMarker /> : number}
+      </div>
       <div className="comparison-card" style={{ flex: 1 }}>
         <PlacePhoto src={item.photoUrl} alt={item.name} className="comparison-card__photo" />
         <div className="comparison-card__body">
@@ -78,10 +105,10 @@ export default function MapView() {
   // Only items with a real, verified location get a pin - never guess a
   // position for one that doesn't have one, same "don't fabricate" rule as
   // everywhere else. The list below still shows every item, pinned or not.
-  const pointsParam = items
-    .map((item, index) => ({ item, number: index + 1 }))
+  const numbered = numberStops(items)
+  const pointsParam = numbered
     .filter(({ item }) => item.location)
-    .map(({ item, number }) => `${number}:${item.location!.lat},${item.location!.lng}`)
+    .map(({ item, number }) => `${number ?? 'h'}:${item.location!.lat},${item.location!.lng}`)
     .join('|')
 
   return (
@@ -114,8 +141,8 @@ export default function MapView() {
             <div className="stack" style={{ gap: 'var(--spacing-3)' }}>
               <h2 className="day-heading">{day.theme}</h2>
               <div className="stack" style={{ gap: 'var(--spacing-3)' }}>
-                {items.map((item, index) => (
-                  <MapRow key={index} item={item} number={index + 1} />
+                {numbered.map(({ item, number }, index) => (
+                  <MapRow key={index} item={item} number={number} />
                 ))}
               </div>
             </div>

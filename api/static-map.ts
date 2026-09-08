@@ -6,10 +6,12 @@
 // math - Google auto-fits center/zoom to the given markers, and renders the
 // numbered pins itself at the exact real lat/lng.
 //
-// Known limitation: Google Static Maps marker labels only support a single
-// uppercase alphanumeric character. Stops 10+ in one day get an unlabeled
-// pin rather than an invalid two-digit label - itineraries in this app run
-// well under that in practice (~6-8 stops/day).
+// Google Static Maps marker labels only support a single uppercase alphanumeric
+// character, and a Packed day used to need ten of them because the hotel was
+// numbered at both ends. It is now sent as "h" and drawn with a house icon
+// instead, which leaves the numbers for the stops and keeps a day inside 1-9
+// with room to spare. Anything still past 9 falls back to an unlabelled pin
+// rather than an invalid two-digit label (Akber, 8 Sep 2026).
 //
 // Requires the "Maps Static API" to be enabled on the same Google Cloud
 // project as Places/Routes - not yet confirmed enabled as of this pass.
@@ -24,7 +26,11 @@ export default async function handler(req, res) {
     return res.status(400).json({ error: 'points is required' });
   }
 
-  // Format: "label:lat,lng|label:lat,lng|..." - label is "1".."9" or empty.
+  // Format: "label:lat,lng|..." - label is "1".."9", "h" for the accommodation,
+  // or empty. The icon has to be an absolute URL because Google's servers fetch
+  // it, so it is built from the host this request arrived on and works the same
+  // on production and on a preview deployment.
+  const origin = `https://${req.headers['x-forwarded-host'] || req.headers.host}`;
   const entries = points.split('|').filter(Boolean);
   if (entries.length === 0) {
     return res.status(400).json({ error: 'no valid points provided' });
@@ -34,6 +40,7 @@ export default async function handler(req, res) {
     .map((entry) => {
       const [label, coords] = entry.split(':');
       if (!coords || !/^-?\d+(\.\d+)?,-?\d+(\.\d+)?$/.test(coords)) return null;
+      if (label === 'h') return `icon:${origin}/map-pin-home.png|${coords}`;
       const labelPart = /^[1-9]$/.test(label) ? `label:${label}|` : '';
       return `color:0x0A6E83|${labelPart}${coords}`;
     })
