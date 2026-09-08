@@ -478,6 +478,21 @@ function auditDemo(itinerary) {
       // and a gallery shipped with four hours and forty-five minutes against it.
       // The cure is the generator handing that block another stop; this is here
       // so a draft where it failed to cannot reach anybody.
+      // A travel leg nobody could believe. Advisory, deliberately: the pipeline
+      // no longer fabricates these (an empty block used to have its whole dead
+      // span written into its leg, which is how a 11.8 km hop became a "330
+      // minute drive"), and I am not adding another blocking check tonight
+      // without a repair standing behind it. It is here so the next one is
+      // visible in the output rather than shipping to a traveller's timeline.
+      const crawls = items
+        .map((i) => ({ name: i.name, minutes: Number(String(i.travelToNext || '').match(/(\d+)\s*minute/)?.[1] || 0) }))
+        .filter((leg) => leg.minutes > 90);
+      if (crawls.length > 0) {
+        notes.push(
+          `${label}: ` + crawls.map((l) => `${l.minutes} minute leg after ${l.name}`).join(', ') + ' - check the routing'
+        );
+      }
+
       const marathon = activities.filter((i) => (i.durationMinutes || 0) > MAX_PLAUSIBLE_STAY_MINUTES);
       if (marathon.length > 0) {
         problems.push(

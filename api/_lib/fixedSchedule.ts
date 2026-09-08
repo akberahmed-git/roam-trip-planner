@@ -317,7 +317,7 @@ const MEMBERS_ONLY = /\b(members[- ]only|private members|members'? club|invitati
 const NIGHT_VENUE = /\b(bar|pub|club|nightclub|nightlife|izakaya|yokocho|lounge|live music|jazz|karaoke|rooftop|observation deck|night view|市場|横丁)\b/i;
 const NIGHT_VENUE_TYPES = new Set(['bar', 'night_club', 'casino', 'movie_theater', 'performing_arts_theater']);
 
-function isNightVenue(item) {
+export function isNightVenue(item) {
   const types = Array.isArray(item.placeTypes) ? item.placeTypes : [];
   if (types.some((type) => NIGHT_VENUE_TYPES.has(type))) return true;
   return NIGHT_VENUE.test(`${item.name || ''} ${item.categoryTag || ''}`);
@@ -779,7 +779,16 @@ function relieveEvening(day, cutoffMinutes) {
         const holds = dayShape(day).worstTurn <= turn;
         restore(day, trial);
         return holds;
-      }) ?? candidates[0];
+      }) ?? null;
+
+    // No `?? candidates[0]`. That fallback meant a pass whose whole job is to
+    // pick the least damaging move made the MOST damaging one whenever no safe
+    // move existed: the trial above proved that moving teamLab Planets in front
+    // of dinner took the day from 54 degrees to 159, and the fallback moved it
+    // anyway. reorderDayGeographically straightened the day, this bent it back,
+    // and applyFixedSchedule is the last thing to touch stop order in every
+    // round, so the ping-pong shipped mid-bend. Nothing found means nothing
+    // moved, and the drop branch below takes it from here (Akber, 8 Sep 2026).
     }
 
     if (movable != null) {
@@ -882,6 +891,22 @@ function assignTimes(day, anchors, residuals, mode) {
   const blocks = blocksOf(day, anchors);
   for (const block of blocks) {
     const residual = residuals.get(block.name) || 0;
+
+    // A block holding no stops has nowhere for slack to live except the leg, so
+    // the two writes below turn its whole dead span into travel time. Packed day
+    // 2 shipped a "330 minute drive" for 11.8 km - an implied 2.2 km/h - because
+    // lunch and dinner had nothing between them, and that fabricated leg is
+    // subtracted from `available` by blocksOf on the next pass. So the block
+    // measured 0 minutes free, starvedBlocks reported nothing, and
+    // fillStarvedBlocks never even searched: a six and a half hour hole that was
+    // structurally invisible to the pass built to fill it.
+    //
+    // Meal start times come from the anchors at the top of this function, so
+    // skipping here leaves dinner at 20:00 and moves nothing on the clock. The
+    // "leg closes exactly on the next anchor" invariant below was never
+    // satisfiable for an empty block anyway - it was being faked (Akber, 8 Sep
+    // 2026).
+    if (block.stopIndexes.length === 0) continue;
     const legCount = block.endIndex - block.startIndex;
     const share = Math.trunc(residual / legCount);
 

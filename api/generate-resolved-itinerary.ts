@@ -19,11 +19,11 @@ import {
   clampStayDurations,
   dayCutoffMinutes
 } from './_lib/scheduleRealign.js';
-import { applyFixedSchedule, orderBlocksByOpeningHours, dedupeMeals, starvedBlocks, unsuitableStops, roomForAnotherStop, eveningInsertPoint, hasEnoughReviews, numberedStopCount, setReviewFloor, currentReviewFloor, MAX_NUMBERED_STOPS_PER_DAY } from './_lib/fixedSchedule.js';
+import { applyFixedSchedule, orderBlocksByOpeningHours, dedupeMeals, starvedBlocks, unsuitableStops, roomForAnotherStop, eveningInsertPoint, hasEnoughReviews, numberedStopCount, setReviewFloor, currentReviewFloor, isNightVenue, MAX_NUMBERED_STOPS_PER_DAY } from './_lib/fixedSchedule.js';
 import { sortByBudgetFit, isOffBandDining } from './_lib/budgetFit.js';
 import { uncoveredInterests, satisfiesInterest, isEveningInterest, interestKey } from './_lib/interestCoverage.js';
 import { weekdayForDay, isOpenAt, closesAt } from './_lib/openingHours.js';
-import { shapeOf, REORDER_REVERSAL_DEGREES } from './_lib/routeShape.js';
+import { shapeOf, dayShape, REORDER_REVERSAL_DEGREES } from './_lib/routeShape.js';
 import { describeAdoptedStops, stripAdoptionMarkers } from './_lib/describeAdoptedStops.js';
 
 // Fixed meal windows and the "day can't start before 9am" rule, per Akber's
@@ -314,7 +314,7 @@ async function resolveMealPlaceholders(day, anchor, usedPlaceIds, stay, usedBran
   for (let i = 0; i < day.items.length; i++) {
     const item = day.items[i];
     if (!item.mealType) continue;
-    if (item.location && mealOutstaysClosing(item, weekdayIndex)) {
+    if (item.location && (mealOutstaysClosing(item, weekdayIndex) || !hasEnoughReviews(item))) {
       // A meal the model named itself and that geocoded cleanly was never
       // checked against its own opening hours, because this branch took it as
       // already resolved. The shipped demo sat a two-hour dinner at Sukiyabashi
@@ -325,7 +325,8 @@ async function resolveMealPlaceholders(day, anchor, usedPlaceIds, stay, usedBran
       // Emptied, not removed, so the re-placement below fills it and the caller
       // can put the original back if nothing better is open.
       console.info(
-        `[generate-resolved-itinerary] day ${day.day}: ${item.mealType} at ${item.name} runs past closing, re-placing`
+        `[generate-resolved-itinerary] day ${day.day}: re-placing ${item.mealType} at ${item.name} - ` +
+          (hasEnoughReviews(item) ? 'runs past closing' : `${item.ratingCount ?? 'no'} reviews, under the floor`)
       );
       item.location = null;
       item.placeId = null;
@@ -1142,7 +1143,8 @@ function describeAdoptedActivity(pick) {
 //   - food places are rejected, so a backfill can't become a second lunch
 //   - "Nightlife" is only used as a query after 19:00, since a bar at 10am is
 //     not what the chip meant
-async function backfillOrDropActivities(day, anchor, usedPlaceIds, interests, stay) {
+async function backfillOrDropActivities(day, anchor, usedPlaceIds, interests, stay, itinerary) {
+  const capped = interestsAtPlanCap(itinerary, interests);
   const dropped: string[] = [];
   const adopted: string[] = [];
   const kept: any[] = [];
@@ -1206,6 +1208,7 @@ async function backfillOrDropActivities(day, anchor, usedPlaceIds, interests, st
           if (usedPlaceIds.has(candidate.placeId)) return false;
           if (isFoodOnly(candidate)) return false;
           if (!isSubstantialActivity(candidate)) return false;
+          if (wouldBreakPlanCap(candidate, capped)) return false;
           // This pass replaces every stop the model drafted that failed
           // verification, and it had no review floor of any kind - it took the
           // first match in qualityScore order. The highest-volume unfiltered
@@ -1560,8 +1563,41 @@ function spanSurvives(dayItems, middleIndexes, candidate, fromMeal, toMeal) {
 // the leftover time to whichever stop can absorb most of it. That is how a
 // shopping street ended up with a four-hour visit on a plan whose whole promise
 // is an unhurried day.
-async function fillStarvedBlocks(day, cutoff, anchor, usedPlaceIds, stay, interests) {
+// The plan cap, as every pass that BUYS a stop needs to see it.
+//
+// rebalanceInterests removed the surplus shrine correctly and fillStarvedBlocks
+// bought another one back in the same round, because it queries every interest
+// the traveller picked - including the capped one - and knows nothing about the
+// cap. Five rounds of that and the day ships with the shrine. Same hole in
+// coverMissingInterests, repositionStrandedStops and backfillOrDropActivities.
+//
+// One rule, read everywhere it applies. Removing without also refusing to re-buy
+// is half a rule, and half a rule is what three reseeds died on (Akber, 8 Sep
+// 2026).
+function interestsAtPlanCap(itinerary, interests) {
+  const full = new Set<string>();
+  if (!itinerary?.days) return full;
+  for (const interest of interests || []) {
+    const cap = MAX_STOPS_PER_INTEREST_PER_PLAN[interestKey(interest)];
+    if (cap == null) continue;
+    const serving = planActivities(itinerary).filter((item) =>
+      satisfiesInterest({ ...item, placeTypes: item.placeTypes }, interest)
+    ).length;
+    if (serving >= cap) full.add(interestKey(interest));
+  }
+  return full;
+}
+
+// True when adopting this candidate would push a capped interest over its cap.
+function wouldBreakPlanCap(candidate, capped) {
+  if (!capped || capped.size === 0) return false;
+  const asStop = { ...candidate, placeTypes: candidate.types || candidate.placeTypes, mealType: null, type: 'activity' };
+  return [...capped].some((interest) => satisfiesInterest(asStop, interest));
+}
+
+async function fillStarvedBlocks(day, cutoff, anchor, usedPlaceIds, stay, interests, itinerary) {
   const added: string[] = [];
+  const capped = interestsAtPlanCap(itinerary, interests);
 
   for (const block of starvedBlocks(day, cutoff)) {
     // The other way a day grows. Same ceiling as roomForAnotherStop.
@@ -1576,7 +1612,16 @@ async function fillStarvedBlocks(day, cutoff, anchor, usedPlaceIds, stay, intere
     // starved with three other interests never asked about. The extra Places
     // calls only happen when the first query comes up empty, which is precisely
     // when they are worth making (Akber, 8 Sep 2026).
-    const queries = [...new Set((interests || []).map(interestQuery).filter(Boolean))];
+    // Not the capped ones. Asking Google for a shrine and then rejecting every
+    // shrine it returns just burns the lookup.
+    const queries = [
+      ...new Set(
+        (interests || [])
+          .filter((interest) => !capped.has(interestKey(interest)))
+          .map(interestQuery)
+          .filter(Boolean)
+      ),
+    ];
     queries.push('popular tourist attraction');
 
     let pick: any = null;
@@ -1592,6 +1637,9 @@ async function fillStarvedBlocks(day, cutoff, anchor, usedPlaceIds, stay, intere
             isUsableCandidate(c) &&
             !usedPlaceIds.has(c.placeId) &&
             !isFoodOnly(c) &&
+            // 'popular tourist attraction' in Tokyo returns shrines whatever the
+            // query asked for, so the cap has to be checked on the candidate too.
+            !wouldBreakPlanCap(c, capped) &&
             (!anchor || haversineMeters(anchor, c.location) <= MAX_BROAD_DISTANCE_METERS) &&
             withinReachOfStay(c.location, stay)
       );
@@ -1666,6 +1714,7 @@ function buildAdoptedStop(pick, durationMinutes) {
 // opposite, and adding that would close the gap on paper while leaving the trip
 // without a temple.
 async function coverMissingInterests(itinerary, { interests, anchor, usedPlaceIds, stay, cutoffFor }) {
+  const capped = interestsAtPlanCap(itinerary, interests);
   const added: string[] = [];
 
   // How many of the traveller's chosen interests one candidate satisfies.
@@ -1685,6 +1734,7 @@ async function coverMissingInterests(itinerary, { interests, anchor, usedPlaceId
     isUsableCandidate(candidate) &&
     !usedPlaceIds.has(candidate.placeId) &&
     !isFoodOnly(candidate) &&
+    !wouldBreakPlanCap(candidate, capped) &&
     (!anchor || haversineMeters(anchor, candidate.location) <= MAX_BROAD_DISTANCE_METERS) &&
     withinReachOfStay(candidate.location, stay);
 
@@ -1756,6 +1806,38 @@ async function coverMissingInterests(itinerary, { interests, anchor, usedPlaceId
   return added;
 }
 
+// The evening rule, which the reorder alone did not know.
+//
+// unsuitableStops already drops any non-night-venue sitting after dinner, and
+// relieveEvening already refuses to fit one. The reorder ranked purely on the
+// worst turn, so on slow day 2 it kept choosing an order that put teamLab
+// Planets after dinner: 54 degrees on paper, forbidden everywhere else in the
+// pipeline. relieveEvening then dragged it back in front of dinner and the day
+// shipped at 159. Straightening into a region the rest of the code rejects is
+// not a repair, it is a loop.
+//
+// With this predicate the same day picks a legal 124-degree order instead, with
+// teamLab in the morning, no Places call and no stop replaced. Four guards
+// already protect the morning, the afternoon, meal order and breakfast; the
+// evening had none (Akber, 8 Sep 2026).
+function eveningStaysLegal(dayItems, middleIndexes, candidate) {
+  const dinnerAt = candidate.findIndex((item) => item.mealType === 'dinner');
+  if (dinnerAt < 0) return true;
+
+  const original = middleIndexes.map((index) => dayItems[index]);
+  const wasDinner = original.findIndex((item) => item.mealType === 'dinner');
+
+  for (let i = dinnerAt + 1; i < candidate.length; i++) {
+    const item = candidate[i];
+    if (item.mealType || item.type === 'accommodation') continue;
+    // Already after dinner before the reorder touched it: this arrangement is
+    // not what put it there, and dropping it is unsuitableStops' call, not ours.
+    const wasAfter = wasDinner >= 0 && original.indexOf(item) > wasDinner;
+    if (!wasAfter && !isNightVenue(item)) return false;
+  }
+  return true;
+}
+
 function reorderDayGeographically(day) {
   const middleIndexes: number[] = [];
   day.items.forEach((item, index) => {
@@ -1825,6 +1907,7 @@ function reorderDayGeographically(day) {
       if (!afternoonSurvives(day.items, middleIndexes, candidate)) continue;
       if (!morningSurvives(day.items, middleIndexes, candidate)) continue;
       if (!breakfastLeadsDay(day.items, middleIndexes, candidate)) continue;
+      if (!eveningStaysLegal(day.items, middleIndexes, candidate)) continue;
       const shape = measure(candidate);
       if (better(shape)) {
         best = candidate;
@@ -1848,6 +1931,7 @@ function reorderDayGeographically(day) {
           if (!afternoonSurvives(day.items, middleIndexes, candidate)) continue;
           if (!morningSurvives(day.items, middleIndexes, candidate)) continue;
           if (!breakfastLeadsDay(day.items, middleIndexes, candidate)) continue;
+      if (!eveningStaysLegal(day.items, middleIndexes, candidate)) continue;
           const shape = measure(candidate);
           if (better(shape)) {
             arrangement = trial;
@@ -2101,7 +2185,8 @@ async function rebalanceInterests(day, { interests, anchor, usedPlaceIds, stay, 
 
 const MEAL_LEASH_KM = 4;
 
-async function repositionStrandedStops(day, anchor, usedPlaceIds, stay) {
+async function repositionStrandedStops(day, anchor, usedPlaceIds, stay, interests, itinerary) {
+  const capped = interestsAtPlanCap(itinerary, interests);
   const located = day.items.filter((i) => i.type !== 'accommodation' && i.location);
   const activities = located.filter((i) => !i.mealType);
   if (activities.length < 2) return [];
@@ -2183,6 +2268,7 @@ async function repositionStrandedStops(day, anchor, usedPlaceIds, stay) {
       if (!hasReadableName(candidate.name)) { reasons.unreadable++; return false; }
       if (MARKER_NAME_PATTERNS.some((pattern) => pattern.test(candidate.name))) { reasons.unreadable++; return false; }
       if (!hasEnoughReviews(candidate)) { reasons.tooFewReviews++; return false; }
+      if (!item.mealType && wouldBreakPlanCap(candidate, capped)) { reasons.wrongKind++; return false; }
       // A meal has to land on somewhere that serves food. An activity only has
       // to be the same kind of thing it is replacing, which the query already
       // asks for, so holding it to the food list would reject every candidate.
@@ -2528,7 +2614,7 @@ async function resolveItinerary(itinerary, destination, anchor, transport, accom
       );
     }
 
-    const { dropped, adopted } = await backfillOrDropActivities(day, anchor, usedPlaceIds, interests, stay);
+    const { dropped, adopted } = await backfillOrDropActivities(day, anchor, usedPlaceIds, interests, stay, itinerary);
 
     // backfillOrDropActivities deliberately skips meals, so a meal that
     // markUnusableStops just invalidated (too far from the hotel, or no photo)
@@ -2567,7 +2653,7 @@ async function resolveItinerary(itinerary, destination, anchor, transport, accom
       );
     }
 
-    const restranded = await repositionStrandedStops(day, anchor, usedPlaceIds, stay);
+    const restranded = await repositionStrandedStops(day, anchor, usedPlaceIds, stay, interests, itinerary);
     if (restranded.length > 0) {
       console.info(
         `[generate-resolved-itinerary] day ${day.day}: moved ${restranded.length} stranded stop(s) back to the day: ${restranded.join('; ')}`
@@ -2766,7 +2852,7 @@ async function resolveItinerary(itinerary, destination, anchor, transport, accom
       // Dropping leaves the day thinner, and a thin block is what produces a
       // four-hour visit to a shopping street, so it is worth going to find
       // whatever the day is now short of.
-      const added = await fillStarvedBlocks(day, cutoff, anchor, usedPlaceIds, stay, interests);
+      const added = await fillStarvedBlocks(day, cutoff, anchor, usedPlaceIds, stay, interests, itinerary);
       if (added.length > 0) {
         console.info(
           `[generate-resolved-itinerary] day ${day.day}: added ${added.length} stop(s) to fill a stretch nothing could plausibly cover: ${added.join(', ')}`
@@ -2955,7 +3041,7 @@ async function settleDay(day, context) {
     }
 
     const filled = await fillStarvedBlocks(
-      day, options.cutoffMinutes, anchor, usedPlaceIds, stay, interests
+      day, options.cutoffMinutes, anchor, usedPlaceIds, stay, interests, itinerary
     );
     if (filled.length > 0) {
       console.info(
@@ -2970,7 +3056,7 @@ async function settleDay(day, context) {
       );
     }
 
-    const moved = await repositionStrandedStops(day, anchor, usedPlaceIds, stay);
+    const moved = await repositionStrandedStops(day, anchor, usedPlaceIds, stay, interests, itinerary);
     if (moved.length > 0) {
       console.info(
         `[generate-resolved-itinerary] day ${day.day}: moved ${moved.length} stranded stop(s) ${label}: ${moved.join('; ')}`
@@ -3026,6 +3112,26 @@ async function settleDay(day, context) {
       applyFixedSchedule(day, options);
     }
 
+    // The guard for the shape that has now cost two drafts: a later pass
+    // silently undoing the geometry pass. applyFixedSchedule is the LAST thing
+    // to touch stop order in every round - relieveEvening moves a stop across
+    // dinner, rebalanceBlocks donates one across a meal boundary - and until now
+    // nothing measured the day again afterwards. reorderDayGeographically
+    // straightened slow day 2 to 54 degrees, relieveEvening bent it back to 159,
+    // and the round ended there because "nothing changed" was judged on the
+    // repairs rather than on the day.
+    //
+    // So the day is measured on the way out, and a bent one buys another round
+    // rather than shipping. Bounded by the loop, so a day that cannot be
+    // straightened ships as it is instead of spinning (Akber, 8 Sep 2026).
+    const turnOnExit = dayShape(day).worstTurn;
+    const stillBent = turnOnExit > REORDER_REVERSAL_DEGREES;
+    if (stillBent) {
+      console.info(
+        `[generate-resolved-itinerary] day ${day.day}: ${Math.round(turnOnExit)}° turn after refitting ${label}, another round`
+      );
+    }
+
     if (
       !resorted &&
       filled.length === 0 &&
@@ -3033,7 +3139,8 @@ async function settleDay(day, context) {
       moved.length === 0 &&
       shut.length === 0 &&
       rebalanced.length === 0 &&
-      overrunMeals.length === 0
+      overrunMeals.length === 0 &&
+      !stillBent
     )
       break;
   }
