@@ -74,7 +74,14 @@ export const EVENING_STARTS_MINUTES = 21 * 60;
 // anywhere near 1000 it would throw out the neighbourhood shrine and the small
 // museum that are the reason to travel. It only has to catch places with
 // effectively no visitors at all, and every rejection costs another lookup.
-export const MIN_REVIEWS_FOR_A_STOP = 50;
+// Raised from 50 on 8 Sep. Fifty caught a place with literally no visitors and
+// nothing else: "Tayama Katai's Deathplace", a literary marker stone, shipped in
+// a demo draft with 54 reviews and 150 minutes against it, clearing the bar by
+// four. Two hundred is still low enough for the neighbourhood shrine and the
+// small museum this deliberately protects - those run to hundreds even in a
+// small town - and high enough that a plaque no longer qualifies as somewhere
+// to spend an afternoon.
+export const MIN_REVIEWS_FOR_A_STOP = 200;
 
 // The same bar unsuitableStops enforces, for the passes that go looking for a
 // stop to add. Without it the loop adds a place nobody has reviewed and deletes

@@ -340,6 +340,12 @@ const MAX_KM_FROM_HOTEL = 15;
 // See the prominence check for why these live here and not in the pipeline.
 const MIN_WELL_KNOWN_REVIEWS = 5000;
 const MIN_WELL_KNOWN_PER_DAY = 2;
+// A floor under every activity, not just a count of the good ones. The
+// prominence rule above asks for two well-known places a day and says nothing
+// about the rest, so a day could clear it and still send someone to a marker
+// stone for an afternoon. In a city the size of Tokyo anywhere worth an hour has
+// four figures of reviews; this is a demo-only number for exactly that reason.
+const MIN_REVIEWS_FOR_ANY_DEMO_STOP = 1000;
 const LONG_LEG_KM = 4;
 const REVERSAL_DEGREES = 140;
 
@@ -498,6 +504,15 @@ function auditDemo(itinerary) {
       const known = activities.filter(
         (i) => typeof i.ratingCount === 'number' && i.ratingCount >= MIN_WELL_KNOWN_REVIEWS
       );
+      const obscure = activities.filter(
+        (i) => typeof i.ratingCount === 'number' && i.ratingCount < MIN_REVIEWS_FOR_ANY_DEMO_STOP
+      );
+      if (obscure.length > 0) {
+        problems.push(
+          `${label}: ${obscure.map((i) => `${i.name} (${i.ratingCount} reviews)`).join(', ')} ` +
+            `- too obscure for the demo, under ${MIN_REVIEWS_FOR_ANY_DEMO_STOP.toLocaleString()}`
+        );
+      }
       if (activities.length > 0 && known.length < MIN_WELL_KNOWN_PER_DAY) {
         problems.push(
           `${label}: only ${known.length} of ${activities.length} activities are places Tokyo is known for ` +
