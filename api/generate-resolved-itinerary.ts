@@ -22,7 +22,7 @@ import {
 import { applyFixedSchedule, orderBlocksByOpeningHours, dedupeMeals, starvedBlocks, unsuitableStops, roomForAnotherStop, eveningInsertPoint, hasEnoughReviews, numberedStopCount, MAX_NUMBERED_STOPS_PER_DAY } from './_lib/fixedSchedule.js';
 import { sortByBudgetFit, isOffBandDining } from './_lib/budgetFit.js';
 import { uncoveredInterests, satisfiesInterest, isEveningInterest } from './_lib/interestCoverage.js';
-import { weekdayForDay, isOpenAt } from './_lib/openingHours.js';
+import { weekdayForDay, isOpenAt, closesAt } from './_lib/openingHours.js';
 import { shapeOf, REORDER_REVERSAL_DEGREES } from './_lib/routeShape.js';
 import { describeAdoptedStops, stripAdoptionMarkers } from './_lib/describeAdoptedStops.js';
 
@@ -295,10 +295,48 @@ function describeAdoptedMeal(pick, mealType) {
   return pick.neighbourhood ? `${what} in ${pick.neighbourhood}.` : `${what}.`;
 }
 
+// True when a meal would still be sitting there after the place shuts. The
+// traveller is not told to leave halfway through dinner, so the whole stay has
+// to fit. Silence is not evidence: no hours, no weekday, or no clock on the
+// stop all return false and leave the meal alone.
+const MEAL_CLOSING_GRACE_MINUTES = 15;
+function mealOutstaysClosing(item, weekdayIndex) {
+  if (weekdayIndex == null || !item?.weekdayDescriptions) return false;
+  const start = timeToMinutes(item.startTime);
+  if (start == null) return false;
+  const closing = closesAt(item.weekdayDescriptions, weekdayIndex);
+  if (closing == null) return false;
+  const ends = start + (item.durationMinutes || 0);
+  return ends > closing + MEAL_CLOSING_GRACE_MINUTES;
+}
+
 async function resolveMealPlaceholders(day, anchor, usedPlaceIds, stay, usedBrands, budget, weekdayIndex) {
   for (let i = 0; i < day.items.length; i++) {
     const item = day.items[i];
     if (!item.mealType) continue;
+    if (item.location && mealOutstaysClosing(item, weekdayIndex)) {
+      // A meal the model named itself and that geocoded cleanly was never
+      // checked against its own opening hours, because this branch took it as
+      // already resolved. The shipped demo sat a two-hour dinner at Sukiyabashi
+      // Jiro from 20:00 against a 21:00 close: open at the hour it starts, shut
+      // an hour before the traveller is done. isOpenAt only ever asked about the
+      // start (Akber, 8 Sep 2026).
+      //
+      // Emptied, not removed, so the re-placement below fills it and the caller
+      // can put the original back if nothing better is open.
+      console.info(
+        `[generate-resolved-itinerary] day ${day.day}: ${item.mealType} at ${item.name} runs past closing, re-placing`
+      );
+      item.location = null;
+      item.placeId = null;
+      item.address = null;
+      item.photoUrl = null;
+      item.weekdayDescriptions = null;
+      item.hasHours = false;
+      item.rating = null;
+      item.ratingCount = null;
+      item.priceLevel = null;
+    }
     if (item.location) {
       // A meal the model chose and that verified normally still claims its
       // brand, or the guard would only stop substitutions repeating a chain
@@ -330,6 +368,10 @@ async function resolveMealPlaceholders(day, anchor, usedPlaceIds, stay, usedBran
           !usedPlaceIds.has(c.placeId) &&
           !sharesBrand(c.name, usedBrands, neighbourhoodOf(c)) &&
           hasReadableName(c.name) &&
+          // Meals were the one adopted stop this floor never applied to. The
+          // restore-the-original fallback below means a strict filter here costs
+          // nothing worse than keeping the model's own pick.
+          hasEnoughReviews(c) &&
           (!anchor || haversineMeters(anchor, c.location) <= MAX_BROAD_DISTANCE_METERS) &&
           withinReachOfStay(c.location, stay) &&
           // Open at the hour this meal actually sits at. Without this the
@@ -337,6 +379,9 @@ async function resolveMealPlaceholders(day, anchor, usedPlaceIds, stay, usedBran
           // 20:00, the check would drop it again next round, and the day would
           // spend its three rounds swapping one closed dinner for another.
           openAtMealTime(c) &&
+          // Open at the hour is not enough: the meal has to finish before the
+          // kitchen does. Same test the model's own choice is now held to.
+          !mealOutstaysClosing({ ...c, startTime: item.startTime, durationMinutes: item.durationMinutes }, weekdayIndex) &&
           // Or the re-placement puts back what the check just rejected.
           !isOffBandDining(c.name, budget)
       );
@@ -1851,10 +1896,45 @@ function reorderDayGeographically(day) {
 // serve the list.
 const MAX_STOPS_PER_INTEREST_PER_DAY = 1;
 
+// A few interests are worse than the rest when repeated, because the repeat
+// reads as the planner having run out of ideas rather than as a theme. Tokyo's
+// shrines are the case Akber raised twice: one is the interest, three is a
+// pilgrimage nobody asked for. So these are capped across the whole plan, not
+// per day (Akber, 8 Sep 2026).
+//
+// Enforced against the whole itinerary rather than the day in front of us, and
+// the survivors are chosen globally by review count. Counting only the days
+// settled so far would make the outcome depend on which day was being settled
+// when the pass ran, and the same pass runs again after interest coverage.
+const MAX_STOPS_PER_INTEREST_PER_PLAN = {
+  'temples & shrines': 1,
+};
+
+function planActivities(itinerary) {
+  if (!itinerary?.days) return [];
+  return itinerary.days
+    .flatMap((day) => day.items || [])
+    .filter((item) => item.type !== 'accommodation' && !item.mealType && item.location);
+}
+
+// The stops that get to stay when an interest is capped across the plan: the
+// best `cap` of them by review count, which is the only measure of which shrine
+// a traveller would actually be told to visit.
+function planKeepersFor(itinerary, interest) {
+  const cap = MAX_STOPS_PER_INTEREST_PER_PLAN[interest];
+  // No cap, or no plan-level view to enforce it against. Returning an empty set
+  // for a missing itinerary would mark every stop surplus and empty the day.
+  if (cap == null || !itinerary?.days) return null;
+  const serving = planActivities(itinerary)
+    .filter((item) => satisfiesInterest({ ...item, placeTypes: item.placeTypes }, interest))
+    .sort((a, b) => (b.ratingCount || 0) - (a.ratingCount || 0));
+  return new Set(serving.slice(0, cap).map((item) => item.placeId || item.name));
+}
+
 // Swaps a day's surplus stops for places serving an interest the day is short
 // of. Never drops without replacing: a day one stop lighter is how a museum
 // ends up with four hours against it.
-async function rebalanceInterests(day, { interests, anchor, usedPlaceIds, stay, transport }) {
+async function rebalanceInterests(day, { interests, anchor, usedPlaceIds, stay, transport, itinerary }) {
   if (!interests || interests.length < 2) return [];
 
   const servedBy = (item, interest) =>
@@ -1872,58 +1952,116 @@ async function rebalanceInterests(day, { interests, anchor, usedPlaceIds, stay, 
 
   const swapped: string[] = [];
 
-  for (const interest of interests) {
-    let over = countFor(interest) - MAX_STOPS_PER_INTEREST_PER_DAY;
-    if (over <= 0) continue;
+  // Buys `wanted` and puts it where `item` stands. Both directions below want
+  // exactly this, and writing it twice is how the two copies drift apart.
+  const swapIn = async (item, wanted, avoid) => {
+    const query = wanted ? interestQuery(wanted) : null;
+    if (!query) return null;
 
-    // Keep the best of them and swap the rest. Review count is the only measure
-    // of which shrine a traveller would actually be told to visit.
-    const surplus = activitiesNow()
-      .filter((item) => servedBy(item, interest))
-      .sort((a, b) => (b.ratingCount || 0) - (a.ratingCount || 0))
-      .slice(MAX_STOPS_PER_INTEREST_PER_DAY);
+    const candidates = await findNearbyCandidates(query, null, item.location).catch(() => []);
+    const pick = preferWellKnown(
+      candidates.filter(
+        (c) =>
+          c.location &&
+          c.availablePhotoUrl &&
+          !usedPlaceIds.has(c.placeId) &&
+          hasReadableName(c.name) &&
+          hasEnoughReviews(c) &&
+          !isFoodOnly(c) &&
+          (!anchor || haversineMeters(anchor, c.location) <= MAX_BROAD_DISTANCE_METERS) &&
+          withinReachOfStay(c.location, stay) &&
+          // Same reasoning as usable() above: the search was for `wanted`, so
+          // trust it. The one thing still worth checking is that the
+          // replacement is not another of the interest we are trying to thin
+          // out, and satisfiesInterest is reliable in that direction because a
+          // shrine really does say shrine.
+          (!avoid || !satisfiesInterest({ ...c, placeTypes: c.types, mealType: null }, avoid))
+      )
+    );
+    if (!pick) return null;
+
+    const replacement = buildAdoptedStop(pick, item.durationMinutes || MIN_STAY_MINUTES_FOR_NEW_STOP);
+    const index = day.items.indexOf(item);
+    if (index < 0) return null;
+    if (index > 0) day.items[index - 1].travelToNext = null;
+    day.items[index] = replacement;
+    usedPlaceIds.add(pick.placeId);
+    return pick;
+  };
+
+  // An interest already sitting at its plan-wide cap is not something a day is
+  // short of, however few of it this particular day holds. Without this the
+  // second pass below would go and buy the shrine the first pass just removed.
+  const atPlanCap = (interest) => {
+    const cap = MAX_STOPS_PER_INTEREST_PER_PLAN[interest];
+    if (cap == null) return false;
+    const across = itinerary
+      ? planActivities(itinerary).filter((item) => servedBy(item, interest)).length
+      : countFor(interest);
+    return across >= cap;
+  };
+
+  // Nightlife bought for an afternoon slot is a bar the hours check drops next
+  // round, and the round after that buys another one. The slot has to be able to
+  // hold the thing being bought.
+  const EVENING_FROM_MINUTES = 17 * 60;
+  const suitsSlot = (interest, item) => {
+    if (interest !== 'nightlife') return true;
+    const start = timeToMinutes(item?.startTime);
+    return start == null || start >= EVENING_FROM_MINUTES;
+  };
+
+  const wantedFor = (exclude, item) => {
+    const open = interests.filter(
+      (other) => other !== exclude && !atPlanCap(other) && suitsSlot(other, item)
+    );
+    if (open.length === 0) return null;
+    return open.sort((a, b) => countFor(a) - countFor(b))[0];
+  };
+
+  // Direction one: too many of the same interest.
+  for (const interest of interests) {
+    const keepers = planKeepersFor(itinerary, interest);
+
+    // With a plan-wide cap the survivors are decided across the whole trip, so
+    // this day's job is simply to drop whatever is not on that list. Without
+    // one it is the old per-day rule: keep the best, swap the tail.
+    const surplus = keepers
+      ? activitiesNow().filter(
+          (item) => servedBy(item, interest) && !keepers.has(item.placeId || item.name)
+        )
+      : activitiesNow()
+          .filter((item) => servedBy(item, interest))
+          .sort((a, b) => (b.ratingCount || 0) - (a.ratingCount || 0))
+          .slice(MAX_STOPS_PER_INTEREST_PER_DAY);
 
     for (const item of surplus) {
-      if (over <= 0) break;
-
-      // Which interest is this day shortest of? That is what the swap should buy.
-      const wanted = interests
-        .filter((other) => other !== interest)
-        .sort((a, b) => countFor(a) - countFor(b))[0];
-      const query = wanted ? interestQuery(wanted) : null;
-      if (!query) continue;
-
-      const candidates = await findNearbyCandidates(query, null, item.location).catch(() => []);
-      const pick = preferWellKnown(
-        candidates.filter(
-          (c) =>
-            c.location &&
-            c.availablePhotoUrl &&
-            !usedPlaceIds.has(c.placeId) &&
-            hasReadableName(c.name) &&
-            hasEnoughReviews(c) &&
-            !isFoodOnly(c) &&
-            (!anchor || haversineMeters(anchor, c.location) <= MAX_BROAD_DISTANCE_METERS) &&
-            withinReachOfStay(c.location, stay) &&
-            // Same reasoning as usable() above: the search was for `wanted`, so
-            // trust it. The one thing still worth checking is that the
-            // replacement is not another of the interest we are trying to thin
-            // out, and satisfiesInterest is reliable in that direction because a
-            // shrine really does say shrine.
-            !satisfiesInterest({ ...c, placeTypes: c.types, mealType: null }, interest)
-        )
-      );
-      if (!pick) continue;
-
-      const replacement = buildAdoptedStop(pick, item.durationMinutes || MIN_STAY_MINUTES_FOR_NEW_STOP);
-      const index = day.items.indexOf(item);
-      if (index < 0) continue;
-      if (index > 0) day.items[index - 1].travelToNext = null;
-      day.items[index] = replacement;
-      usedPlaceIds.add(pick.placeId);
-      swapped.push(`${item.name} -> ${pick.name} (${wanted})`);
-      over -= 1;
+      const wanted = wantedFor(interest, item);
+      const pick = await swapIn(item, wanted, interest);
+      if (pick) swapped.push(`${item.name} -> ${pick.name} (${wanted})`);
     }
+  }
+
+  // Direction two: a stop serving none of the chosen interests, while one of
+  // those interests has nothing in this day at all.
+  //
+  // This used to be left alone, on the reasoning that not everything has to
+  // serve the list. That reasoning is right when the list is already covered
+  // and wrong when it is not: the shipped demo put Tokyo Tower and GINZA SIX
+  // in a trip whose traveller had asked for nightlife and got none. A stop
+  // matching nothing is the cheapest slot in the day to spend on a gap
+  // (Akber, 8 Sep 2026).
+  const servesNothing = (item) => !interests.some((interest) => servedBy(item, interest));
+
+  for (const item of activitiesNow().filter(servesNothing).sort((a, b) => (a.ratingCount || 0) - (b.ratingCount || 0))) {
+    const wanted = interests.filter(
+      (interest) => !atPlanCap(interest) && countFor(interest) === 0 && suitsSlot(interest, item)
+    )[0];
+    if (!wanted) continue;
+    // Still in the day? Direction one may already have replaced it.
+    if (!day.items.includes(item)) continue;
+    const pick = await swapIn(item, wanted, null);
+    if (pick) swapped.push(`${item.name} -> ${pick.name} (${wanted}, served nothing)`);
   }
 
   if (swapped.length > 0) await computeTravelTimes(day.items, transport);
@@ -2627,7 +2765,7 @@ async function resolveItinerary(itinerary, destination, anchor, transport, accom
     // See settleDay: these three passes each undo the last one's guarantee, so
     // they run as a loop until the day stops changing rather than as a sequence.
     await settleDay(day, {
-      options, anchor, usedPlaceIds, stay, interests, transport, weekday, budget,
+      options, anchor, usedPlaceIds, stay, interests, transport, weekday, budget, itinerary, usedBrands,
       label: 'on the settled day',
     });
   }
@@ -2678,7 +2816,7 @@ async function resolveItinerary(itinerary, destination, anchor, transport, accom
         // function as the settled-day pass now, so there is one sequence to get
         // right instead of two.
         await settleDay(day, {
-          options, anchor, usedPlaceIds, stay, interests, transport, budget,
+          options, anchor, usedPlaceIds, stay, interests, transport, budget, itinerary, usedBrands,
           weekday: weekdayForDay(checkInDate, day.day),
           label: 'after interest coverage',
         });
@@ -2747,7 +2885,7 @@ async function resolveItinerary(itinerary, destination, anchor, transport, accom
 // the stop is no longer beside, so the day is measured and refitted before the
 // next round looks at it (Akber, 8 Sep 2026).
 async function settleDay(day, context) {
-  const { options, anchor, usedPlaceIds, stay, interests, transport, label, weekday, budget } = context;
+  const { options, anchor, usedPlaceIds, stay, interests, transport, label, weekday, budget, itinerary, usedBrands } = context;
 
   // Order matters inside this loop and it has been wrong twice.
   //
@@ -2769,7 +2907,7 @@ async function settleDay(day, context) {
   // where the hours check ran against the times the day will actually ship with
   // and found none (Akber, 8 Sep 2026).
   for (let round = 0; round < 5; round++) {
-    const rebalanced = await rebalanceInterests(day, { interests, anchor, usedPlaceIds, stay, transport });
+    const rebalanced = await rebalanceInterests(day, { interests, anchor, usedPlaceIds, stay, transport, itinerary });
     if (rebalanced.length > 0) {
       console.info(
         `[generate-resolved-itinerary] day ${day.day}: rebalanced ${rebalanced.length} stop(s) ${label}: ${rebalanced.join('; ')}`
@@ -2833,7 +2971,39 @@ async function settleDay(day, context) {
       applyFixedSchedule(day, options);
     }
 
-    if (!resorted && filled.length === 0 && !reordered && moved.length === 0 && shut.length === 0 && rebalanced.length === 0) break;
+    // And the meals, which the drop above deliberately skips. Re-placing one
+    // needs the placeholder machinery, so it is a separate call rather than a
+    // splice. It has to be here, on the times the day is holding: every earlier
+    // meal pass ran either with no weekday to check against or before the
+    // repairs above moved dinner into a different hour.
+    const overrunMeals =
+      weekday == null || !usedBrands
+        ? []
+        : day.items.filter((item) => item.mealType && item.location && mealOutstaysClosing(item, weekday));
+    if (overrunMeals.length > 0) {
+      const before = new Map<number, any>(overrunMeals.map((item) => [day.items.indexOf(item), { ...item }] as [number, any]));
+      await resolveMealPlaceholders(day, anchor, usedPlaceIds, stay, usedBrands, budget, weekday);
+      // A meal with a name and no location is the unresolved-stop bug this
+      // codebase has already fixed once. Nothing open nearby means the original
+      // goes back and the day ships with a dinner that closes early, which is a
+      // smaller problem than a card with no address on it.
+      for (const [index, original] of before) {
+        if (!day.items[index]?.location) Object.assign(day.items[index], original);
+      }
+      await computeTravelTimes(day.items, transport);
+      applyFixedSchedule(day, options);
+    }
+
+    if (
+      !resorted &&
+      filled.length === 0 &&
+      !reordered &&
+      moved.length === 0 &&
+      shut.length === 0 &&
+      rebalanced.length === 0 &&
+      overrunMeals.length === 0
+    )
+      break;
   }
 }
 

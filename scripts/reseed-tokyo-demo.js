@@ -67,7 +67,7 @@ if (!process.execArgv.includes(STRIP)) {
   process.exit(result.status ?? 1);
 }
 
-const { isOpenAt, weekdayForDay } = await import('../api/_lib/openingHours.ts');
+const { isOpenAt, weekdayForDay, closesAt } = await import('../api/_lib/openingHours.ts');
 // The pipeline's own interest matcher, imported rather than reimplemented.
 // This script used to carry its own keyword lists and they drifted: the
 // pipeline counted a 1393 temple as modern architecture off its description
@@ -352,6 +352,12 @@ const MIN_REVIEWS_FOR_ANY_DEMO_STOP = 1000;
 // nothing, and the previous "more than half a day" rule was both looser and
 // harder to reason about than a plain cap of one (Akber, 8 Sep 2026).
 const MAX_STOPS_PER_INTEREST_PER_DAY = 1;
+// Mirrors MAX_STOPS_PER_INTEREST_PER_PLAN in generate-resolved-itinerary.ts.
+// Blocking here, because unlike the per-day balance target this is a flat rule
+// the traveller stated (Akber, 8 Sep 2026).
+const MAX_STOPS_PER_INTEREST_PER_PLAN = {
+  'temples & shrines': 1,
+};
 const LONG_LEG_KM = 4;
 const REVERSAL_DEGREES = 140;
 
@@ -515,8 +521,14 @@ function auditDemo(itinerary) {
       const known = activities.filter(
         (i) => typeof i.ratingCount === 'number' && i.ratingCount >= MIN_WELL_KNOWN_REVIEWS
       );
-      const obscure = activities.filter(
-        (i) => typeof i.ratingCount === 'number' && i.ratingCount < MIN_REVIEWS_FOR_ANY_DEMO_STOP
+      // Meals included. A restaurant nobody has heard of is the same problem as
+      // an attraction nobody has heard of, and the demo shipped a 491-review
+      // dinner because this line only ever looked at activities.
+      const obscure = items.filter(
+        (i) =>
+          i.type !== 'accommodation' &&
+          typeof i.ratingCount === 'number' &&
+          i.ratingCount < MIN_REVIEWS_FOR_ANY_DEMO_STOP
       );
       if (obscure.length > 0) {
         problems.push(
@@ -614,6 +626,21 @@ function auditDemo(itinerary) {
         if (!Number.isFinite(h) || !Number.isFinite(m)) continue;
         if (isOpenAt(item.weekdayDescriptions, weekdayIndex, h * 60 + m) === false) {
           problems.push(`${label}: ${item.name} is scheduled at ${item.startTime} and is closed then`);
+          continue;
+        }
+        // Open at the hour it starts is not the same as open until the traveller
+        // leaves. The shipped demo sat a two-hour dinner at Sukiyabashi Jiro from
+        // 20:00 against a 21:00 close and this audit passed it, because nothing
+        // asked about the end (Akber, 8 Sep 2026).
+        const closing = closesAt(item.weekdayDescriptions, weekdayIndex);
+        const ends = h * 60 + m + (item.durationMinutes || 0);
+        if (closing != null && ends > closing + 15) {
+          const hh = String(Math.floor(closing / 60) % 24).padStart(2, '0');
+          const mm = String(closing % 60).padStart(2, '0');
+          problems.push(
+            `${label}: ${item.name} runs to ${String(Math.floor(ends / 60) % 24).padStart(2, '0')}:` +
+              `${String(ends % 60).padStart(2, '0')} but closes at ${hh}:${mm}`
+          );
         }
       }
 
@@ -696,6 +723,41 @@ function auditDemo(itinerary) {
               `${MAX_STOPS_PER_INTEREST_PER_DAY} a day`
           );
         }
+      }
+
+      // A stop serving none of the four chips, in a day that is missing one of
+      // them. Advisory: the pipeline swaps these out, and the swap depends on
+      // Google having something suitable nearby.
+      const uncovered = wantedInterests.filter(
+        (interest) => !activities.some((entry) => matchesInterest(entry, interest))
+      );
+      const serveNothing = activities.filter(
+        (entry) => !wantedInterests.some((interest) => matchesInterest(entry, interest))
+      );
+      if (uncovered.length > 0 && serveNothing.length > 0) {
+        notes.push(
+          `${variant} day ${dayNumber}: ${serveNothing.map((e) => e.name).join(', ')} serve none of the chips ` +
+            `while the day has no "${uncovered.join('" or "')}"`
+        );
+      }
+    }
+  }
+
+  // Blocking, unlike the per-day cap above. Akber asked for this one twice and
+  // in plain words: one shrine per itinerary when that chip is picked. It is a
+  // cap of one across a whole plan rather than a balance target, so a draft that
+  // breaks it is not a partial improvement worth keeping (Akber, 8 Sep 2026).
+  for (const variant of ['packed', 'slow']) {
+    for (const [interest, cap] of Object.entries(MAX_STOPS_PER_INTEREST_PER_PLAN)) {
+      if (!wantedInterests.includes(interest)) continue;
+      const serving = seenInterestText[variant].filter(
+        (entry) => entry.isActivity && matchesInterest(entry, interest)
+      );
+      if (serving.length > cap) {
+        problems.push(
+          `${variant}: ${serving.length} stops are "${interest}" (${serving.map((e) => e.name).join(', ')}) ` +
+            `- the cap is ${cap} for the whole plan`
+        );
       }
     }
   }
