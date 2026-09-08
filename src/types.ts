@@ -48,6 +48,11 @@ export interface ItineraryItem {
   // restaurant can be matched to the traveller's budget (see budgetFit.ts).
   // Absent on most attractions, which is expected: only dining reliably has one.
   priceLevel?: string | null
+  // Google's own place types, kept on the shipped item rather than stripped.
+  // They are the authoritative answer to what a place IS, and without them the
+  // demo audit fell back to reading descriptions and disagreed with the
+  // pipeline about whether a souvenir street counts as a temple.
+  placeTypes?: string[] | null
   photoUrl?: string | null
   hasHours?: boolean
   weekdayDescriptions?: string[] | null
@@ -105,6 +110,11 @@ export interface Place {
   // restaurant can be matched to the traveller's budget (see budgetFit.ts).
   // Absent on most attractions, which is expected: only dining reliably has one.
   priceLevel?: string | null
+  // Google's own place types, kept on the shipped item rather than stripped.
+  // They are the authoritative answer to what a place IS, and without them the
+  // demo audit fell back to reading descriptions and disagreed with the
+  // pipeline about whether a souvenir street counts as a temple.
+  placeTypes?: string[] | null
   photoUrl?: string | null
   hasHours?: boolean
   weekdayDescriptions?: string[] | null

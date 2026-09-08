@@ -35,7 +35,15 @@ export function stripAdoptionMarkers(days) {
   for (const day of days) {
     for (const item of day.items) {
       delete item.adoptedFrom;
-      delete item.placeTypes;
+      // placeTypes stays. It was deleted here because src/types.ts had no field
+      // for it and the demo fixture is saved as TypeScript, so shipping it broke
+      // the build. The field exists now, and stripping it was doing real damage:
+      // the pipeline decides what a place is from Google's types, the demo audit
+      // reads the shipped fixture, and with the types gone the audit fell back to
+      // matching keywords against prose. A souvenir street whose description
+      // mentions the temple it leads to counted as a temple for one and not the
+      // other, which is the pipeline-and-audit disagreement that cost fifteen
+      // generations in another guise (Akber, 8 Sep 2026).
     }
   }
 }
