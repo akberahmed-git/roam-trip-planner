@@ -2518,6 +2518,22 @@ async function resolveItinerary(itinerary, destination, anchor, transport, accom
           await computeTravelTimes(day.items, transport);
           applyFixedSchedule(day, options);
         }
+
+        // And the starvation check, for the same reason the route one is here.
+        // It runs inside the per-day loop, which finishes before this pass adds a
+        // stop for a missing interest and before the repair above swaps one place
+        // for another kind with a different ceiling. Either can leave a block
+        // holding more time than its stops can absorb, and with nothing looking
+        // again fitBlock hands the surplus to whichever stop can hold most of it.
+        // That is how a park shipped with five hours against it (Akber, 8 Sep 2026).
+        const late = await fillStarvedBlocks(day, options.cutoffMinutes, anchor, usedPlaceIds, stay, interests);
+        if (late.length > 0) {
+          console.info(
+            `[generate-resolved-itinerary] day ${day.day}: filled ${late.length} stretch(es) left thin by the late passes: ${late.join(', ')}`
+          );
+          await computeTravelTimes(day.items, transport);
+          applyFixedSchedule(day, options);
+        }
       }
     }
   } catch (error) {
