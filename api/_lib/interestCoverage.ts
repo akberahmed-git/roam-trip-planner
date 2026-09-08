@@ -26,7 +26,10 @@ const INTEREST_SIGNALS = {
   // called AFURI Harajuku was satisfying a traveller's anime interest.
   'anime & pop culture': {
     types: [],
-    keywords: ['anime', 'manga', 'pokemon', 'pokémon', 'akihabara', 'otaku', 'cosplay', 'arcade', 'comic', 'game centre', 'game center', 'nintendo', 'ghibli', 'maid cafe', 'figure'],
+    // The retailers by name, because Google types them as plain stores and the
+    // log showed Mandarake Shibuya swapped out for "serving nothing" and
+    // replaced with Kotobukiya, another anime shop the matcher did not know.
+    keywords: ['anime', 'manga', 'pokemon', 'pokémon', 'akihabara', 'otaku', 'cosplay', 'arcade', 'comic', 'game centre', 'game center', 'nintendo', 'ghibli', 'maid cafe', 'figure', 'mandarake', 'animate', 'kotobukiya', 'gamers', 'radio kaikan', 'super potato', 'nakano broadway', 'jump shop', 'kiddy land', 'gachapon', 'capcom', 'sanrio', 'one piece', 'gundam', 'kirby'],
   },
   // No types, deliberately. Google has no "modern architecture" category, and
   // the nearest thing, observation_deck, is narrower than the interest: the

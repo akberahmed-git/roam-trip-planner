@@ -73,6 +73,12 @@ const MEAL_ORDER = ['breakfast', 'lunch', 'dinner'];
 // infeasible, so rebalanceBlocks moves one out and the survivor gets the time.
 let floorMinutes = MIN_STAY_MINUTES;
 
+// Whether a stop is one the traveller asked for by name. Set per call by
+// applyFixedSchedule from its options, the same way floorMinutes is, because
+// the two drops below run on every refit and neither had any way to know.
+// Default: nothing is pinned.
+let isPinnedStop: (item: any) => boolean = () => false;
+
 // After this, the day is the evening and only nightlife belongs in it. Akber's
 // call (7 Sep 2026): by nine almost every museum, shop, temple and viewpoint has
 // shut, so a stop scheduled later than this is either a bar, a club, a live
@@ -763,7 +769,12 @@ function rebalanceBlocks(day, cutoffMinutes) {
       .sort((a, b) => (b.minNeed - b.available) - (a.minNeed - a.available))[0];
     if (!over) break;
 
-    const index = over.stopIndexes[over.stopIndexes.length - 1];
+    // The last stop that is not a must-see. A block whose every stop is one
+    // the traveller named keeps them all and runs long; the audit reports
+    // the marathon, the traveller would report the missing museum.
+    const droppable = [...over.stopIndexes].reverse().find((i) => !isPinnedStop(day.items[i]));
+    if (droppable == null) break;
+    const index = droppable;
     if (index > 0) day.items[index - 1].travelToNext = day.items[index].travelToNext;
     changed.removed.push(day.items[index].name);
     day.items.splice(index, 1);
@@ -848,7 +859,9 @@ function relieveEvening(day, cutoffMinutes) {
       continue;
     }
 
-    const last = evening[evening.length - 1];
+    const droppable = [...evening].reverse().find((i) => !isPinnedStop(day.items[i]));
+    if (droppable == null) break;
+    const last = droppable;
     day.items[last - 1].travelToNext = day.items[last].travelToNext;
     changed.removed.push(day.items[last].name);
     day.items.splice(last, 1);
@@ -1034,9 +1047,10 @@ function assignTimes(day, anchors, residuals, mode) {
 // One entry point, replacing the passes that used to negotiate over the clock
 // between them. Returns what it had to change about the day's contents so the
 // caller can re-route and log it.
-export function applyFixedSchedule(day, { cutoffMinutes, transport, minStayMinutes }: { cutoffMinutes?: number | null; transport?: string; minStayMinutes?: number }) {
+export function applyFixedSchedule(day, { cutoffMinutes, transport, minStayMinutes, pinned }: { cutoffMinutes?: number | null; transport?: string; minStayMinutes?: number; pinned?: (item: any) => boolean }) {
   const mode = transport === 'No car or taxi' ? 'walk' : 'drive';
   floorMinutes = minStayMinutes || MIN_STAY_MINUTES;
+  isPinnedStop = typeof pinned === 'function' ? pinned : () => false;
   const duplicates = dedupeMeals(day);
   fillMissingLegs(day, mode);
 

@@ -208,7 +208,7 @@ CRITICAL SECOND-OPTION RULE (strictly enforced): The traveller sees this plan si
 
 A second option built from the same restaurants and the same landmarks is not a second option, it is the first one shuffled, and the comparison is the entire reason two are shown. This applies to other branches of the same business as much as to the exact place: if the other plan eats at one branch of a ramen chain, do not pick another branch of it.
 
-A city large enough to visit has more than enough alternatives, so treat this as a hard rule. The single exception is for SIGHTS only: if a landmark is so essential that a first-time visitor leaving without it would be strange, you may reuse ONE of those across the whole plan, and only one. It never applies to a restaurant, cafe, bar or shop. There is no such thing as an unmissable branch of a sushi chain, and a repeated meal is the most obvious kind of repetition there is, because the traveller reads the two plans side by side and sees the same dinner twice.
+A city large enough to visit has more than enough alternatives, so treat this as a hard rule. The one thing it never applies to is a place listed under MUST INCLUDE above: those appear in both plans by the traveller's request, and that line wins over this one. The single exception is for SIGHTS only: if a landmark is so essential that a first-time visitor leaving without it would be strange, you may reuse ONE of those across the whole plan, and only one. It never applies to a restaurant, cafe, bar or shop. There is no such thing as an unmissable branch of a sushi chain, and a repeated meal is the most obvious kind of repetition there is, because the traveller reads the two plans side by side and sees the same dinner twice.
 
 Already used by the other plan, do not reuse:
 ${avoid.map((name) => `- ${name}`).join('\n')}
@@ -412,8 +412,13 @@ export async function generateRawItinerary(params) {
   // a second option that duplicates the first is not a second option and the
   // time spent producing it was wasted anyway (Akber, 8 Sep 2026).
   const packedRaw = await callClaude(buildPackedPrompt(p));
-  const pinned = new Set(p.mustVisit.map((name) => name.toLowerCase()));
-  const avoid = placeNamesOf(packedRaw).filter((name) => !pinned.has(String(name).toLowerCase()));
+  // Loose match on both sides, as the pipeline's isPinnedTo: the packed model
+  // writes "Nintendo TOKYO Shibuya PARCO" and an exact comparison against
+  // "Nintendo TOKYO" would put it on the avoid list, where the second-option
+  // rule then tells the slow plan not to use the must-see.
+  const plain = (v) => String(v || '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase().trim();
+  const isMustSee = (name) => p.mustVisit.some((w) => { const a = plain(name), b = plain(w); return b.length > 0 && (a.includes(b) || b.includes(a)); });
+  const avoid = placeNamesOf(packedRaw).filter((name) => !isMustSee(name));
   const slowRaw = await callClaude(buildSlowPrompt(p, avoid));
 
   const parsed = { packed: packedRaw, slow: slowRaw };

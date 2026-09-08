@@ -812,7 +812,7 @@ function composeCategoryTag(item, place) {
   return item.categoryTag || null;
 }
 
-function applyResolution(item, result, usedPlaceIds, anchor, stay, budget) {
+function applyResolution(item, result, usedPlaceIds, anchor, stay, budget, isPinned = (_item) => false) {
   if (result.status === 'found') {
     // Same real place already used earlier in the trip? This happens when
     // Claude proposes two distinct-sounding stops that Google resolves to the
@@ -822,7 +822,7 @@ function applyResolution(item, result, usedPlaceIds, anchor, stay, budget) {
     // guarded the substitute (not_found) path; a successful match had none.
     // Flag it for removal rather than mutating it; resolveItinerary drops
     // flagged items before anything else runs. First occurrence wins.
-    if (usedPlaceIds.has(result.placeId)) {
+    if (usedPlaceIds.has(result.placeId) && !isPinned(item)) {
       item._duplicatePlace = true;
       return;
     }
@@ -846,7 +846,10 @@ function applyResolution(item, result, usedPlaceIds, anchor, stay, budget) {
   }
 
   const suggestions = result.status === 'not_found' ? result.suggestions : null;
-  const substitute = pickSubstitute(suggestions, usedPlaceIds, anchor, stay, budget);
+  // A must-see is never quietly renamed to whatever Google suggested instead.
+  // Left unresolved, it is retried by name in backfillOrDropActivities, and if
+  // that fails too it ships as itself with the audit saying so.
+  const substitute = isPinned(item) ? null : pickSubstitute(suggestions, usedPlaceIds, anchor, stay, budget);
 
   if (substitute) {
     item.name = substitute.name;
@@ -1162,7 +1165,7 @@ function describeAdoptedActivity(pick) {
 //   - food places are rejected, so a backfill can't become a second lunch
 //   - "Nightlife" is only used as a query after 19:00, since a bar at 10am is
 //     not what the chip meant
-async function backfillOrDropActivities(day, anchor, usedPlaceIds, interests, stay, itinerary) {
+async function backfillOrDropActivities(day, anchor, usedPlaceIds, interests, stay, itinerary, isPinned = (_item) => false) {
   const capped = interestsAtPlanCap(itinerary, interests);
   const dropped: string[] = [];
   const adopted: string[] = [];
@@ -1172,6 +1175,34 @@ async function backfillOrDropActivities(day, anchor, usedPlaceIds, interests, st
     const item = day.items[i];
 
     if (item.type === 'accommodation' || item.mealType || item.location) {
+      kept.push(item);
+      continue;
+    }
+
+    // A must-see that did not verify is searched for by its own name, once
+    // more, before anything else. It is never replaced by a category search
+    // and never dropped: unresolved, it ships as itself and the audit says so.
+    if (isPinned(item)) {
+      const byName = await findNearbyCandidates(item.name, null, anchor || stay).catch(() => []);
+      const match = byName.find((c) => c.location && isPinnedTo(c, [item.name]) && c.availablePhotoUrl);
+      if (match) {
+        item.name = match.name;
+        item.address = match.address;
+        item.location = match.location;
+        item.rating = match.rating ?? null;
+        item.ratingCount = match.ratingCount ?? null;
+        item.priceLevel = match.priceLevel ?? null;
+        item.photoUrl = match.availablePhotoUrl || null;
+        item.hasHours = match.hasHours || false;
+        item.weekdayDescriptions = match.weekdayDescriptions || null;
+        item.categoryTag = composeCategoryTag(item, match);
+        item.placeId = match.placeId;
+        item.placeTypes = match.types || null;
+        usedPlaceIds.add(match.placeId);
+        adopted.push(`${item.name} (must-see, found by name)`);
+      } else {
+        console.warn(`[generate-resolved-itinerary] day ${day.day}: must-see ${item.name} could not be verified, keeping it unresolved`);
+      }
       kept.push(item);
       continue;
     }
@@ -1336,7 +1367,7 @@ const FINAL_NIGHT_CUTOFF_MINUTES = 21 * 60;
 // than the rest of the trip (Akber, 4 Sep 2026).
 const MIN_ACTIVITIES_AFTER_TRIM = 2;
 
-function trimFinalNight(day) {
+function trimFinalNight(day, isPinned = (_item) => false) {
   const activities = day.items.filter((i) => i.type !== 'accommodation' && !i.mealType);
   const dropped: string[] = [];
 
@@ -1351,6 +1382,9 @@ function trimFinalNight(day) {
   const removing = new Set();
   for (const item of late) {
     if (activities.length - removing.size <= MIN_ACTIVITIES_AFTER_TRIM) break;
+    // A must-see stays even on the last night. The audit reports a late end;
+    // it would report a missing must-see louder.
+    if (isPinned(item)) continue;
     removing.add(item);
     dropped.push(item.name);
   }
@@ -1403,10 +1437,14 @@ function withinReachOfStay(location, stay) {
 
 const MAX_KM_FROM_ACCOMMODATION = 15;
 
-function markUnusableStops(day, accommodationLocation) {
+function markUnusableStops(day, accommodationLocation, isPinned = (_item) => false) {
   const flagged: string[] = [];
 
   for (const item of day.items) {
+    // A must-see is an excursion by definition: the traveller named it knowing
+    // where it is. Nulling its location here is what hands it to the backfill
+    // pass to be replaced with something nearer.
+    if (isPinned(item)) continue;
     if (item.type === 'accommodation' || !item.location) continue;
 
     if (accommodationLocation) {
@@ -2390,6 +2428,9 @@ async function repositionStrandedStops(day, anchor, usedPlaceIds, stay, interest
   const moved: string[] = [];
 
   for (const item of located) {
+    // Never a must-see, pivot or not. Far from the day's centre is exactly
+    // where a named excursion sits.
+    if (typeof pinned === 'function' && pinned(item)) continue;
     if (item !== pivot && haversineMeters(item.location, centre) / 1000 <= MEAL_LEASH_KM) continue;
 
     // Meals were the only thing this moved, on the assumption that a restaurant
@@ -2534,7 +2575,7 @@ function medoidOfLocations(points) {
   return best;
 }
 
-async function enforceDriveCap(day, transport, usedPlaceIds, stay) {
+async function enforceDriveCap(day, transport, usedPlaceIds, stay, isPinned = (_item) => false) {
   for (let i = 0; i < day.items.length - 1; i++) {
     const current = day.items[i];
     const next = day.items[i + 1];
@@ -2552,6 +2593,11 @@ async function enforceDriveCap(day, transport, usedPlaceIds, stay) {
     // long drive back to it on a far-flung day is a real, honest number to
     // show, not a sign something resolved to the wrong place.
     if (next.type === 'accommodation') {
+      continue;
+    }
+    // A must-see is worth the drive. The traveller named it knowing where it
+    // is, and a long leg to it is the excursion, not a mistake.
+    if (isPinned(next)) {
       continue;
     }
 
@@ -2704,7 +2750,7 @@ async function resolveItinerary(itinerary, destination, anchor, transport, accom
   );
 
   allItems.forEach((item, index) => {
-    applyResolution(item, results[index], usedPlaceIds, anchor, stay, budget);
+    applyResolution(item, results[index], usedPlaceIds, anchor, stay, budget, pinned);
   });
 
   // Remove any stop applyResolution flagged as a duplicate real place (two
@@ -2781,14 +2827,14 @@ async function resolveItinerary(itinerary, destination, anchor, transport, accom
     // Before the backfill, not after: a stop out of reach of the hotel is
     // treated exactly like one that never resolved, so the same pass replaces
     // it with something near the rest of the day or drops it.
-    const unusable = markUnusableStops(day, accommodationDetails?.location);
+    const unusable = markUnusableStops(day, accommodationDetails?.location, pinned);
     if (unusable.length > 0) {
       console.info(
         `[generate-resolved-itinerary] day ${day.day}: ${unusable.length} stop(s) sent back for replacement: ${unusable.join('; ')}`
       );
     }
 
-    const { dropped, adopted } = await backfillOrDropActivities(day, anchor, usedPlaceIds, interests, stay, itinerary);
+    const { dropped, adopted } = await backfillOrDropActivities(day, anchor, usedPlaceIds, interests, stay, itinerary, pinned);
 
     // backfillOrDropActivities deliberately skips meals, so a meal that
     // markUnusableStops just invalidated (too far from the hotel, or no photo)
@@ -2871,7 +2917,7 @@ async function resolveItinerary(itinerary, destination, anchor, transport, accom
   // usedPlaceIds, and days shouldn't race each other over which one claims
   // a given nearby replacement first.
   for (const day of itinerary.days) {
-    await enforceDriveCap(day, transport, usedPlaceIds, stay);
+    await enforceDriveCap(day, transport, usedPlaceIds, stay, pinned);
   }
 
   // No shared state here (unlike enforceDriveCap above), so this can run
@@ -2913,7 +2959,7 @@ async function resolveItinerary(itinerary, destination, anchor, transport, accom
   // once something has been removed (Akber, 4 Sep 2026).
   const lastDay = itinerary.days[itinerary.days.length - 1];
   if (lastDay) {
-    const trimmed = trimFinalNight(lastDay);
+    const trimmed = trimFinalNight(lastDay, pinned);
     if (trimmed.length > 0) {
       console.info(
         `[generate-resolved-itinerary] day ${lastDay.day} is the last: trimmed ${trimmed.length} late stop(s) so the final night ends at the normal time: ${trimmed.join(', ')}`
@@ -2939,7 +2985,7 @@ async function resolveItinerary(itinerary, destination, anchor, transport, accom
   // gallery 21:00 on a generation where the rule was working perfectly (Akber,
   // 7 Sep 2026). The check has to be the last word, so the day is refitted and
   // rechecked until nothing more needs doing.
-  const settings = { cutoffMinutes: 0, transport, minStayMinutes };
+  const settings = { cutoffMinutes: 0, transport, minStayMinutes, pinned };
 
   for (let index = 0; index < itinerary.days.length; index++) {
     const day = itinerary.days[index];
@@ -3103,6 +3149,7 @@ async function resolveItinerary(itinerary, destination, anchor, transport, accom
           cutoffMinutes: dayCutoffMinutes(index, itinerary.days.length, interests),
           transport,
           minStayMinutes,
+          pinned,
         };
         await computeTravelTimes(day.items, transport);
         applyFixedSchedule(day, options);
