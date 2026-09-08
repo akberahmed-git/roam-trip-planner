@@ -171,6 +171,7 @@ export async function computeTravelTimes(items, transportMode) {
       pairs.push({ index: i, origin: current.location, destination: next.location });
     } else {
       current.travelToNext = null;
+      current.routedMinutes = null;
     }
   }
 
@@ -180,9 +181,17 @@ export async function computeTravelTimes(items, transportMode) {
 
   pairs.forEach((pair, i) => {
     items[pair.index].travelToNext = results[i];
+    // The routed value, kept apart from the display string. assignTimes pads
+    // travelToNext to absorb a block's slack, and blocksOf then read the padded
+    // string back as if it were the route, so every refit saw a tighter block
+    // than it had and every re-pad compounded the last one. The scheduler
+    // measures against this number now and only ever writes the string.
+    const parsed = String(results[i] || '').match(/(\d+)\s*minute/);
+    items[pair.index].routedMinutes = parsed ? Number(parsed[1]) : null;
   });
 
   if (items.length > 0) {
     items[items.length - 1].travelToNext = null;
+    items[items.length - 1].routedMinutes = null;
   }
 }

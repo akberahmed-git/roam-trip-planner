@@ -104,3 +104,17 @@ export function weekdayForDay(checkInDate, dayNumber) {
   start.setUTCDate(start.getUTCDate() + Math.max(0, (dayNumber || 1) - 1));
   return start.getUTCDay();
 }
+
+// Whether a place is open for the whole of [startMinutes, endMinutes). Three
+// valued like isOpenAt: true, false, or null when Google has nothing to say.
+// isOpenAt answers for one minute, and a stop that is open when the traveller
+// arrives and shut before they leave is the case that keeps getting through.
+// A grace period at the close, because finishing as the doors shut is fine.
+export function openThroughout(weekdayDescriptions, weekdayIndex, startMinutes, endMinutes, graceMinutes = 15) {
+  const atStart = isOpenAt(weekdayDescriptions, weekdayIndex, startMinutes);
+  if (atStart == null) return null;
+  if (atStart === false) return false;
+  const closing = closesAt(weekdayDescriptions, weekdayIndex);
+  if (closing == null) return true;
+  return endMinutes <= closing + graceMinutes;
+}

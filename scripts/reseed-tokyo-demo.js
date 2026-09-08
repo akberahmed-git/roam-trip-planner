@@ -766,7 +766,18 @@ function auditDemo(itinerary) {
         // partial improvement into a thrown-away generation. Fifteen have gone
         // that way. The pipeline still pushes every day toward the cap, which is
         // what the traveller actually feels (Akber, 8 Sep 2026).
-        if (count > MAX_STOPS_PER_INTEREST_PER_DAY) {
+        // Two of one interest in a day is a themed afternoon and stays advisory.
+        // Three is the planner running out of ideas - "Akihabara Gamers, JUMP
+        // SHOP, Animate Akihabara" in a row - and blocks. The pipeline now drops
+        // a per-day surplus it cannot swap when the day can spare it, and the
+        // fill pass no longer buys an interest the day is already at cap for,
+        // so this is a bar it can actually reach (Akber, 8 Sep 2026).
+        if (count >= MAX_STOPS_PER_INTEREST_PER_DAY + 2) {
+          problems.push(
+            `${variant} day ${dayNumber}: ${count} activities are "${interest}" in one day ` +
+              `(${activities.filter((e) => matchesInterest(e, interest)).map((e) => e.name).join(', ')}) - that is a rut, not a theme`
+          );
+        } else if (count > MAX_STOPS_PER_INTEREST_PER_DAY) {
           notes.push(
             `${variant} day ${dayNumber}: ${count} activities are "${interest}", the cap is ` +
               `${MAX_STOPS_PER_INTEREST_PER_DAY} a day`
@@ -827,7 +838,22 @@ function auditDemo(itinerary) {
         // Coverage across the trip stays blocking, below. A plan missing one
         // chip while its partner carries it is worth seeing in the output and
         // not worth another EUR 1.43 (Akber, 8 Sep 2026).
-        notes.push(`${variant}: nothing in this plan delivers "${interest}", the other plan may carry it`);
+        // Blocking only when the plan had a slot to spare: a stop serving none
+        // of the four chips is a slot the missing chip could have had. A plan
+        // with every stop already earning its place and one chip still missing
+        // is a real constraint and stays advisory; a plan that spent a slot on
+        // nothing and still missed a chip is a defect (Akber, 8 Sep 2026).
+        const wasted = seenInterestText[variant].filter(
+          (entry) => entry.isActivity && !wantedInterests.some((other) => matchesInterest(entry, other))
+        );
+        if (wasted.length > 0) {
+          problems.push(
+            `${variant}: nothing delivers "${interest}" while ${wasted.map((e) => e.name).join(', ')} ` +
+              `serve none of the chips - a slot went spare`
+          );
+        } else {
+          notes.push(`${variant}: nothing in this plan delivers "${interest}", the other plan may carry it`);
+        }
       }
     }
   }

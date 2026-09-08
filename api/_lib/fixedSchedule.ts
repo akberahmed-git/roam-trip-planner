@@ -103,6 +103,12 @@ export const MIN_REVIEWS_FOR_A_STOP = 200;
 // copy, which is the two-copies problem that has cost this codebase five drafts
 // (Akber, 8 Sep 2026).
 export const MAX_PLAUSIBLE_STAY_MINUTES = 200;
+// How far past its own ceiling a stop may be stretched to absorb a block's
+// slack before the rest goes to the legs. Three 15-minute steps.
+const OVERFLOW_ALLOWANCE_MINUTES = 45;
+// The most padding a block's legs absorb before the longest stop is stretched
+// further instead.
+const LEG_PADDING_TOLERANCE_MINUTES = 45;
 
 // The floor in force for the current request. 200 is right for a real trip to a
 // real town, where the neighbourhood shrine worth an hour runs to hundreds of
@@ -437,6 +443,10 @@ export function unsuitableStops(day, weekdayIndex, budget, minReviews = undefine
 }
 
 function legOf(item) {
+  // The routed figure when there is one. travelToNext is a display string that
+  // assignTimes pads with a block's slack, and reading the padding back as
+  // route is how a block measured tighter on every refit (see travelTime.ts).
+  if (typeof item?.routedMinutes === 'number') return item.routedMinutes;
   const parsed = parseTravelMinutes(item.travelToNext);
   return parsed ? parsed.minutes : null;
 }
@@ -857,10 +867,33 @@ function fitBlock(day, block) {
     // collects it into residuals, and assignTimes spreads it across the block's
     // travel legs with the last one closing exactly on the next anchor. So a
     // capped stop pads the walk rather than moving dinner (Akber, 8 Sep 2026).
-    const room = Math.max(0, MAX_PLAUSIBLE_STAY_MINUTES - (longest.durationMinutes || 0));
+    // Room is measured against the stop's own ceiling plus one extra step, not
+    // against the hard 200-minute cap. A shop's ceiling is 90, so it can take
+    // 135 at most; a museum's is 180, so it can reach the cap. The hard cap
+    // still applies on top. What does not fit here goes to the legs, and a
+    // padded walk is a smaller lie than three hours in a figure shop.
+    const ownCeiling = Math.min(MAX_PLAUSIBLE_STAY_MINUTES, activityCeiling(longest) + OVERFLOW_ALLOWANCE_MINUTES);
+    const room = Math.max(0, ownCeiling - (longest.durationMinutes || 0));
     const spend = Math.min(whole, Math.floor(room / STAY_DURATION_INCREMENT_MINUTES) * STAY_DURATION_INCREMENT_MINUTES);
     longest.durationMinutes += spend;
     remaining -= spend;
+
+    // What is left pads the legs. Up to a point: a 115-minute "drive" across
+    // Shibuya is as much of a lie as a three-hour shop, so beyond
+    // LEG_PADDING_TOLERANCE the stop takes the rest, up to the hard cap. Either
+    // way starvedBlocks still reports this block - it measures against the
+    // ceilings, not the durations - so the fill pass is asked for a real stop
+    // regardless of how the slack was parked (Akber, 8 Sep 2026).
+    if (remaining > LEG_PADDING_TOLERANCE_MINUTES) {
+      const overflow = remaining - LEG_PADDING_TOLERANCE_MINUTES;
+      const hardRoom = Math.max(0, MAX_PLAUSIBLE_STAY_MINUTES - (longest.durationMinutes || 0));
+      const more = Math.min(
+        Math.floor(overflow / STAY_DURATION_INCREMENT_MINUTES) * STAY_DURATION_INCREMENT_MINUTES,
+        Math.floor(hardRoom / STAY_DURATION_INCREMENT_MINUTES) * STAY_DURATION_INCREMENT_MINUTES
+      );
+      longest.durationMinutes += more;
+      remaining -= more;
+    }
   }
 
   return remaining;
@@ -928,6 +961,10 @@ function assignTimes(day, anchors, residuals, mode) {
     for (let i = block.startIndex; i < block.endIndex; i++) {
       const isLast = i === block.endIndex - 1;
       const base = legOf(items[i]) || TRAVEL_GRID_MINUTES;
+      // A leg that was never routed (an estimate from fillMissingLegs) gets its
+      // pre-padding value pinned here, so the next refit pads from the same
+      // base rather than from this round's padded string.
+      if (typeof items[i].routedMinutes !== 'number') items[i].routedMinutes = base;
       const raw = base + (isLast ? residual - share * (legCount - 1) : share);
       const value = Math.max(
         TRAVEL_GRID_MINUTES,

@@ -23,7 +23,7 @@ import { applyFixedSchedule, orderBlocksByOpeningHours, dedupeMeals, starvedBloc
 import { sortByBudgetFit, isOffBandDining } from './_lib/budgetFit.js';
 import { uncoveredInterests, satisfiesInterest, isEveningInterest, interestKey } from './_lib/interestCoverage.js';
 import { isDeclinedPlace } from './_lib/declinedPlaces.js';
-import { weekdayForDay, isOpenAt, closesAt } from './_lib/openingHours.js';
+import { weekdayForDay, isOpenAt, closesAt, openThroughout } from './_lib/openingHours.js';
 import { shapeOf, dayShape, REORDER_REVERSAL_DEGREES } from './_lib/routeShape.js';
 import { describeAdoptedStops, stripAdoptionMarkers } from './_lib/describeAdoptedStops.js';
 
@@ -1033,7 +1033,7 @@ const INTEREST_SEARCH_QUERY = {
   // Tower kept turning up: a 1958 broadcast tower is a landmark, and Google was
   // being asked for one. Modern architecture is a building people go to look at
   // BECAUSE of how it was designed (Akber, 8 Sep 2026).
-  'modern architecture': 'contemporary architecture notable building',
+  'modern architecture': 'modern architecture skyscraper observation deck famous building',
   'art galleries': 'art gallery',
   'museums': 'museum',
   'nature': 'park',
@@ -1590,6 +1590,40 @@ function interestsAtPlanCap(itinerary, interests) {
   return full;
 }
 
+// Whether a candidate can actually be in the slot it is being bought for.
+//
+// The log of one generation read: Animate Shibuya bought for 10:20, dropped
+// (opens 11:00). NIGHT CLUB THE PINK TOKYO bought for a daytime stretch three
+// times, dropped three times. ATOM, T2 SHINJUKU, TK NIGHTCLUB, Music Fashion
+// Bar RUN, all the same. Every pass that adopts a stop checked photos, reviews,
+// distance and interest, and none of them asked whether the place would be
+// open at the hour the stop was going into; the hours check then dropped it a
+// pass later. Each of those cost a Places call and a settle round, and the last
+// round always ended with the day thinner than it started. Silence from Google
+// still counts as open, as everywhere else (Akber, 8 Sep 2026).
+function fitsSlot(candidate, weekday, startMinutes, durationMinutes) {
+  if (weekday == null || startMinutes == null) return true;
+  if (!candidate?.weekdayDescriptions) return true;
+  const verdict = openThroughout(
+    candidate.weekdayDescriptions, weekday, startMinutes, startMinutes + (durationMinutes || MIN_STAY_MINUTES_FOR_NEW_STOP)
+  );
+  return verdict !== false;
+}
+
+// Interests this day may not take another of: the per-day cap and the per-plan
+// cap, as one set, for the passes that buy. The fill pass knew about the plan
+// cap and not the day cap, and "filled 2 stretches: JUMP SHOP, Animate
+// Akihabara" is how a day got three anime shops in a row.
+function interestsAtDayCap(day, itinerary, interests) {
+  const capped = interestsAtPlanCap(itinerary, interests);
+  const activities = (day?.items || []).filter((item) => item.type !== 'accommodation' && !item.mealType && item.location);
+  for (const interest of interests || []) {
+    const count = activities.filter((item) => satisfiesInterest({ ...item, placeTypes: item.placeTypes }, interest)).length;
+    if (count >= MAX_STOPS_PER_INTEREST_PER_DAY) capped.add(interestKey(interest));
+  }
+  return capped;
+}
+
 // True when adopting this candidate would push a capped interest over its cap.
 function wouldBreakPlanCap(candidate, capped) {
   if (!capped || capped.size === 0) return false;
@@ -1597,13 +1631,17 @@ function wouldBreakPlanCap(candidate, capped) {
   return [...capped].some((interest) => satisfiesInterest(asStop, interest));
 }
 
-async function fillStarvedBlocks(day, cutoff, anchor, usedPlaceIds, stay, interests, itinerary) {
+async function fillStarvedBlocks(day, cutoff, anchor, usedPlaceIds, stay, interests, itinerary, weekday: number | null = null) {
   const added: string[] = [];
-  const capped = interestsAtPlanCap(itinerary, interests);
 
   for (const block of starvedBlocks(day, cutoff)) {
     // The other way a day grows. Same ceiling as roomForAnotherStop.
     if (numberedStopCount(day) >= MAX_NUMBERED_STOPS_PER_DAY) break;
+
+    // Recomputed per block: the previous block's fill may have just taken this
+    // day to its cap for an interest.
+    const capped = interestsAtDayCap(day, itinerary, interests);
+
     // Every interest the traveller picked that a restaurant cannot satisfy, tried
     // in turn, then somewhere worth going as a last resort.
     //
@@ -1614,40 +1652,70 @@ async function fillStarvedBlocks(day, cutoff, anchor, usedPlaceIds, stay, intere
     // starved with three other interests never asked about. The extra Places
     // calls only happen when the first query comes up empty, which is precisely
     // when they are worth making (Akber, 8 Sep 2026).
-    // Not the capped ones. Asking Google for a shrine and then rejecting every
-    // shrine it returns just burns the lookup.
+    //
+    // Not the capped ones: asking Google for a shrine and then rejecting every
+    // shrine it returns just burns the lookup. And never nightlife: the blocks
+    // this pass fills are breakfast-to-lunch and lunch-to-dinner by
+    // construction, and a nightclub bought for the afternoon is dropped as shut
+    // one pass later. One generation bought NIGHT CLUB THE PINK TOKYO for a
+    // daytime stretch three separate times.
     const queries = [
       ...new Set(
         (interests || [])
-          .filter((interest) => !capped.has(interestKey(interest)))
+          .filter((interest) => !capped.has(interestKey(interest)) && !isEveningInterest(interest))
           .map(interestQuery)
           .filter(Boolean)
       ),
     ];
     queries.push('popular tourist attraction');
 
+    // The window the new stop will sit in. It goes in at block.insertAt, right
+    // before the meal that closes the block, so it ends at that meal's anchor
+    // and starts as far before it as the block's spare time allows.
+    const closingMeal = day.items[block.insertAt];
+    const slotEnd = timeToMinutes(closingMeal?.startTime);
+    const lateStart = slotEnd == null ? null : slotEnd - MIN_STAY_MINUTES_FOR_NEW_STOP;
+    // Or the front of the block: orderBlocksByOpeningHours moves a stop that
+    // closes early ahead of the ones that close late, so a museum shutting at
+    // 17:00 is still a fine buy for a lunch-to-dinner block as long as it can
+    // take the first slot in it.
+    const earlyStart = slotEnd == null ? null : slotEnd - block.available;
+    const fitsBlock = (c) =>
+      fitsSlot(c, weekday, lateStart, MIN_STAY_MINUTES_FOR_NEW_STOP) ||
+      fitsSlot(c, weekday, earlyStart, MIN_STAY_MINUTES_FOR_NEW_STOP);
+
+    // Beside the block's last stop first, then the city centre. A day out in
+    // Kichijoji has one museum within reach of both the block and the hotel;
+    // the centre has fifty.
+    const searchAt = [block.near, anchor].filter((loc, i, all) => loc && all.indexOf(loc) === i);
+
     let pick: any = null;
     const tried: string[] = [];
-    for (const query of queries) {
-      const candidates = await findNearbyCandidates(query, null, block.near).catch(() => []);
-      const usable = candidates.filter(
-          (c) =>
-            c.location &&
-            // Photo, readable name, not a marker stone, and enough reviews. The
-            // marker check was the one this pass never had, which is how a
-            // commemorative stone tablet with 381 reviews became an afternoon.
-            isUsableCandidate(c) &&
-            !usedPlaceIds.has(c.placeId) &&
-            !isFoodOnly(c) &&
-            // 'popular tourist attraction' in Tokyo returns shrines whatever the
-            // query asked for, so the cap has to be checked on the candidate too.
-            !wouldBreakPlanCap(c, capped) &&
-            (!anchor || haversineMeters(anchor, c.location) <= MAX_BROAD_DISTANCE_METERS) &&
-            withinReachOfStay(c.location, stay)
-      );
-      tried.push(`"${query}" ${candidates.length}/${usable.length}`);
-      pick = preferWellKnown(usable);
-      if (pick) break;
+    search: for (const query of queries) {
+      for (const at of searchAt) {
+        const candidates = await findNearbyCandidates(query, null, at).catch(() => []);
+        const usable = candidates.filter(
+            (c) =>
+              c.location &&
+              // Photo, readable name, not a marker stone, and enough reviews. The
+              // marker check was the one this pass never had, which is how a
+              // commemorative stone tablet with 381 reviews became an afternoon.
+              isUsableCandidate(c) &&
+              !usedPlaceIds.has(c.placeId) &&
+              !isFoodOnly(c) &&
+              // 'popular tourist attraction' in Tokyo returns shrines whatever the
+              // query asked for, so the cap has to be checked on the candidate too.
+              !wouldBreakPlanCap(c, capped) &&
+              // Open somewhere in the block it is going into, or it is dropped
+              // next round.
+              fitsBlock(c) &&
+              (!anchor || haversineMeters(anchor, c.location) <= MAX_BROAD_DISTANCE_METERS) &&
+              withinReachOfStay(c.location, stay)
+        );
+        tried.push(`"${query}"${at === anchor && searchAt.length > 1 ? ' (centre)' : ''} ${candidates.length}/${usable.length}`);
+        pick = preferWellKnown(usable);
+        if (pick) break search;
+      }
     }
 
     // A block that stays starved is how a shrine ends up with three and three
@@ -1715,7 +1783,7 @@ function buildAdoptedStop(pick, durationMinutes) {
 // for it - a search for "temple shrine" will happily return the gift shop
 // opposite, and adding that would close the gap on paper while leaving the trip
 // without a temple.
-async function coverMissingInterests(itinerary, { interests, anchor, usedPlaceIds, stay, cutoffFor }) {
+async function coverMissingInterests(itinerary, { interests, anchor, usedPlaceIds, stay, cutoffFor, weekdayFor }) {
   const capped = interestsAtPlanCap(itinerary, interests);
   const added: string[] = [];
 
@@ -1781,9 +1849,20 @@ async function coverMissingInterests(itinerary, { interests, anchor, usedPlaceId
           ? eveningInsertPoint(day)
           : roomForAnotherStop(day, cutoffFor(index));
         if (!slot) continue;
-        const candidates = await findNearbyCandidates(query, null, slot.near).catch(() => []);
+        // The window the stop would take: it goes in at slot.insertAt, ending
+        // where the item there begins.
+        const slotEnd = timeToMinutes(day.items[slot.insertAt]?.startTime);
+        const slotStart = slotEnd == null ? null : slotEnd - MIN_STAY_MINUTES_FOR_NEW_STOP;
+        const weekday = typeof weekdayFor === 'function' ? weekdayFor(index) : null;
+        // Beside the slot first, then the centre. The slow plan shipped with no
+        // modern architecture because the one search near its slot found none.
+        const searchAt = [slot.near, anchor].filter((loc, i, all) => loc && all.indexOf(loc) === i);
+        const candidates = (
+          await Promise.all(searchAt.map((at) => findNearbyCandidates(query, null, at).catch(() => [])))
+        ).flat();
         for (const candidate of candidates) {
           if (!usable(candidate, interest)) continue;
+          if (!fitsSlot(candidate, weekday, slotStart, MIN_STAY_MINUTES_FOR_NEW_STOP)) continue;
           const serves = interestsServed(candidate);
           const reviews = typeof candidate.ratingCount === 'number' ? candidate.ratingCount : 0;
           if (best === null || serves > best.serves || (serves === best.serves && reviews > best.reviews)) {
@@ -2034,7 +2113,7 @@ function planKeepersFor(itinerary, interest) {
 // Swaps a day's surplus stops for places serving an interest the day is short
 // of. Never drops without replacing: a day one stop lighter is how a museum
 // ends up with four hours against it.
-async function rebalanceInterests(day, { interests, anchor, usedPlaceIds, stay, transport, itinerary }) {
+async function rebalanceInterests(day, { interests, anchor, usedPlaceIds, stay, transport, itinerary, weekday }) {
   if (!interests || interests.length < 2) return [];
 
   const servedBy = (item, interest) =>
@@ -2054,37 +2133,58 @@ async function rebalanceInterests(day, { interests, anchor, usedPlaceIds, stay, 
 
   // Buys `wanted` and puts it where `item` stands. Both directions below want
   // exactly this, and writing it twice is how the two copies drift apart.
+  //
+  // Beside the victim first, then the city centre: a museum in Ueno has no
+  // modern architecture within a short walk and the centre has plenty.
   const swapIn = async (item, wanted, avoid) => {
     const query = wanted ? interestQuery(wanted) : null;
     if (!query) return null;
 
-    const candidates = await findNearbyCandidates(query, null, item.location).catch(() => []);
-    const pick = preferWellKnown(
-      candidates.filter(
-        (c) =>
-          c.location &&
-          isUsableCandidate(c) &&
-          !usedPlaceIds.has(c.placeId) &&
-          !isFoodOnly(c) &&
-          (!anchor || haversineMeters(anchor, c.location) <= MAX_BROAD_DISTANCE_METERS) &&
-          withinReachOfStay(c.location, stay) &&
-          // Same reasoning as usable() above: the search was for `wanted`, so
-          // trust it. The one thing still worth checking is that the
-          // replacement is not another of the interest we are trying to thin
-          // out, and satisfiesInterest is reliable in that direction because a
-          // shrine really does say shrine.
-          (!avoid || !satisfiesInterest({ ...c, placeTypes: c.types, mealType: null }, avoid))
-      )
-    );
-    if (!pick) return null;
+    const slotStart = timeToMinutes(item.startTime);
+    const searchAt = [item.location, anchor].filter((loc, i, all) => loc && all.indexOf(loc) === i);
 
-    const replacement = buildAdoptedStop(pick, item.durationMinutes || MIN_STAY_MINUTES_FOR_NEW_STOP);
+    for (const at of searchAt) {
+      const candidates = await findNearbyCandidates(query, null, at).catch(() => []);
+      const pick = preferWellKnown(
+        candidates.filter(
+          (c) =>
+            c.location &&
+            isUsableCandidate(c) &&
+            !usedPlaceIds.has(c.placeId) &&
+            !isFoodOnly(c) &&
+            (!anchor || haversineMeters(anchor, c.location) <= MAX_BROAD_DISTANCE_METERS) &&
+            withinReachOfStay(c.location, stay) &&
+            // Open for the hours the victim held. Without this the swap put a
+            // nightclub in a 17:50 slot, the hours check dropped it, and the
+            // day was one stop lighter than before the "repair".
+            fitsSlot(c, weekday, slotStart, item.durationMinutes) &&
+            // Same reasoning as usable() above: the search was for `wanted`, so
+            // trust it. The one thing still worth checking is that the
+            // replacement is not another of the interest we are trying to thin
+            // out, and satisfiesInterest is reliable in that direction because a
+            // shrine really does say shrine.
+            (!avoid || !satisfiesInterest({ ...c, placeTypes: c.types, mealType: null }, avoid))
+        )
+      );
+      if (!pick) continue;
+
+      const replacement = buildAdoptedStop(pick, item.durationMinutes || MIN_STAY_MINUTES_FOR_NEW_STOP);
+      const index = day.items.indexOf(item);
+      if (index < 0) return null;
+      if (index > 0) day.items[index - 1].travelToNext = null;
+      day.items[index] = replacement;
+      usedPlaceIds.add(pick.placeId);
+      return pick;
+    }
+    return null;
+  };
+
+  const dropStop = (item) => {
     const index = day.items.indexOf(item);
-    if (index < 0) return null;
+    if (index < 0) return false;
     if (index > 0) day.items[index - 1].travelToNext = null;
-    day.items[index] = replacement;
-    usedPlaceIds.add(pick.placeId);
-    return pick;
+    day.items.splice(index, 1);
+    return true;
   };
 
   // An interest already sitting at its plan-wide cap is not something a day is
@@ -2099,19 +2199,25 @@ async function rebalanceInterests(day, { interests, anchor, usedPlaceIds, stay, 
     return across >= cap;
   };
 
-  // Nightlife bought for an afternoon slot is a bar the hours check drops next
-  // round, and the round after that buys another one. The slot has to be able to
-  // hold the thing being bought.
-  const EVENING_FROM_MINUTES = 17 * 60;
+  // And one already at its per-day cap is not something to buy more of either,
+  // or the swap creates the surplus the next round has to remove.
+  const atDayCap = (interest) => countFor(interest) >= MAX_STOPS_PER_INTEREST_PER_DAY;
+
+  // Nightlife goes after dinner and nowhere else. A bar bought for the
+  // afternoon is a bar the hours check drops next round, and the round after
+  // that buys another one; the log of one generation shows the same nightclub
+  // bought and dropped three times. 17:00 was tried as the line and was wrong -
+  // clubs open at 22:00 - so the test is positional: only a stop that already
+  // sits after dinner can be swapped for a night venue.
+  const dinnerAt = day.items.findIndex((item) => item.mealType === 'dinner');
   const suitsSlot = (interest, item) => {
-    if (interest !== 'nightlife') return true;
-    const start = timeToMinutes(item?.startTime);
-    return start == null || start >= EVENING_FROM_MINUTES;
+    if (!isEveningInterest(interest)) return true;
+    return dinnerAt >= 0 && day.items.indexOf(item) > dinnerAt;
   };
 
   const wantedFor = (exclude, item) => {
     const open = interests.filter(
-      (other) => other !== exclude && !atPlanCap(other) && suitsSlot(other, item)
+      (other) => other !== exclude && !atPlanCap(other) && !atDayCap(other) && suitsSlot(other, item)
     );
     if (open.length === 0) return null;
     return open.sort((a, b) => countFor(a) - countFor(b))[0];
@@ -2141,21 +2247,21 @@ async function rebalanceInterests(day, { interests, anchor, usedPlaceIds, stay, 
         continue;
       }
 
-      // Nothing to swap it for. A plan-wide cap is a flat rule rather than a
-      // target, so the stop goes and the day comes back a stop lighter; the fill
-      // at the top of the next round is what puts something in its place, and
-      // that is the machinery built for exactly this. Leaving it in was how a
-      // blocking check ended up enforced against a best-effort repair, which is
-      // the shape that threw fifteen generations away.
+      // Nothing to swap it for. Over the plan cap the stop goes regardless: a
+      // plan-wide cap is a flat rule rather than a target, and the fill at the
+      // top of the next round is what puts something in its place.
       //
-      // Only for the plan cap. The per-day balance target keeps its old
-      // behaviour: no replacement means no change.
-      if (!keepers) continue;
-      const index = day.items.indexOf(item);
-      if (index < 0) continue;
-      if (index > 0) day.items[index - 1].travelToNext = null;
-      day.items.splice(index, 1);
-      swapped.push(`${item.name} dropped (over the plan cap for ${interest}, nothing to swap in)`);
+      // Over the per-day cap it goes only when the day can spare it. Three
+      // anime shops in a row on a six-stop day is the planner running out of
+      // ideas, and four stops with four different interests is the better day.
+      // Two on a three-stop day is a themed afternoon and stays.
+      const canSpare = activitiesNow().length > MIN_ACTIVITIES_TO_DROP_A_SURPLUS;
+      if (!keepers && !canSpare) continue;
+      if (dropStop(item)) {
+        swapped.push(
+          `${item.name} dropped (over the ${keepers ? 'plan' : 'day'} cap for ${interest}, nothing to swap in)`
+        );
+      }
     }
   }
 
@@ -2185,10 +2291,14 @@ async function rebalanceInterests(day, { interests, anchor, usedPlaceIds, stay, 
   return swapped;
 }
 
+// A day keeps a per-day surplus rather than dropping it when it has this many
+// activities or fewer. Below it, thinning the day is worse than the repeat.
+const MIN_ACTIVITIES_TO_DROP_A_SURPLUS = 3;
+
 const MEAL_LEASH_KM = 4;
 
-async function repositionStrandedStops(day, anchor, usedPlaceIds, stay, interests, itinerary) {
-  const capped = interestsAtPlanCap(itinerary, interests);
+async function repositionStrandedStops(day, anchor, usedPlaceIds, stay, interests, itinerary, weekday: number | null = null) {
+  const capped = interestsAtDayCap(day, itinerary, interests);
   const located = day.items.filter((i) => i.type !== 'accommodation' && i.location);
   const activities = located.filter((i) => !i.mealType);
   if (activities.length < 2) return [];
@@ -2271,6 +2381,8 @@ async function repositionStrandedStops(day, anchor, usedPlaceIds, stay, interest
       if (MARKER_NAME_PATTERNS.some((pattern) => pattern.test(candidate.name))) { reasons.unreadable++; return false; }
       if (!hasEnoughReviews(candidate)) { reasons.tooFewReviews++; return false; }
       if (!item.mealType && wouldBreakPlanCap(candidate, capped)) { reasons.wrongKind++; return false; }
+      // Open for the hours the pivot held, or the replacement is dropped next round.
+      if (!fitsSlot(candidate, weekday, timeToMinutes(item.startTime), item.durationMinutes)) { reasons.wrongKind++; return false; }
       // A meal has to land on somewhere that serves food. An activity only has
       // to be the same kind of thing it is replacing, which the query already
       // asks for, so holding it to the food list would reject every candidate.
@@ -2655,7 +2767,7 @@ async function resolveItinerary(itinerary, destination, anchor, transport, accom
       );
     }
 
-    const restranded = await repositionStrandedStops(day, anchor, usedPlaceIds, stay, interests, itinerary);
+    const restranded = await repositionStrandedStops(day, anchor, usedPlaceIds, stay, interests, itinerary, weekdayForDay(checkInDate, day.day));
     if (restranded.length > 0) {
       console.info(
         `[generate-resolved-itinerary] day ${day.day}: moved ${restranded.length} stranded stop(s) back to the day: ${restranded.join('; ')}`
@@ -2854,7 +2966,7 @@ async function resolveItinerary(itinerary, destination, anchor, transport, accom
       // Dropping leaves the day thinner, and a thin block is what produces a
       // four-hour visit to a shopping street, so it is worth going to find
       // whatever the day is now short of.
-      const added = await fillStarvedBlocks(day, cutoff, anchor, usedPlaceIds, stay, interests, itinerary);
+      const added = await fillStarvedBlocks(day, cutoff, anchor, usedPlaceIds, stay, interests, itinerary, weekday);
       if (added.length > 0) {
         console.info(
           `[generate-resolved-itinerary] day ${day.day}: added ${added.length} stop(s) to fill a stretch nothing could plausibly cover: ${added.join(', ')}`
@@ -2901,6 +3013,7 @@ async function resolveItinerary(itinerary, destination, anchor, transport, accom
       usedPlaceIds,
       stay,
       cutoffFor: (index) => dayCutoffMinutes(index, itinerary.days.length, interests),
+      weekdayFor: (index) => weekdayForDay(checkInDate, itinerary.days[index]?.day),
     });
     if (covered.length > 0) {
       console.info(
@@ -3027,7 +3140,7 @@ async function settleDay(day, context) {
   // where the hours check ran against the times the day will actually ship with
   // and found none (Akber, 8 Sep 2026).
   for (let round = 0; round < 5; round++) {
-    const rebalanced = await rebalanceInterests(day, { interests, anchor, usedPlaceIds, stay, transport, itinerary });
+    const rebalanced = await rebalanceInterests(day, { interests, anchor, usedPlaceIds, stay, transport, itinerary, weekday });
     if (rebalanced.length > 0) {
       console.info(
         `[generate-resolved-itinerary] day ${day.day}: rebalanced ${rebalanced.length} stop(s) ${label}: ${rebalanced.join('; ')}`
@@ -3043,7 +3156,7 @@ async function settleDay(day, context) {
     }
 
     const filled = await fillStarvedBlocks(
-      day, options.cutoffMinutes, anchor, usedPlaceIds, stay, interests, itinerary
+      day, options.cutoffMinutes, anchor, usedPlaceIds, stay, interests, itinerary, weekday
     );
     if (filled.length > 0) {
       console.info(
@@ -3058,7 +3171,7 @@ async function settleDay(day, context) {
       );
     }
 
-    const moved = await repositionStrandedStops(day, anchor, usedPlaceIds, stay, interests, itinerary);
+    const moved = await repositionStrandedStops(day, anchor, usedPlaceIds, stay, interests, itinerary, weekday);
     if (moved.length > 0) {
       console.info(
         `[generate-resolved-itinerary] day ${day.day}: moved ${moved.length} stranded stop(s) ${label}: ${moved.join('; ')}`

@@ -380,8 +380,26 @@ export function activityCeiling(item) {
   const text = `${item.name || ''}`.toLowerCase();
   if (LINGER_KEYWORDS.some((word) => text.includes(word))) return LINGER_ACTIVITY_CEILING_MINUTES;
   if (QUICK_KEYWORDS.some((word) => text.includes(word))) return QUICK_ACTIVITY_CEILING_MINUTES;
+
+  // Google's own types, where the name says nothing. "Animate Shibuya" is a
+  // shop and shipped at 3h 15m because nothing in its name matched a keyword
+  // and the neutral ceiling let the overflow pile on. A shop is a quick stop,
+  // a museum is a long one, whatever it is called (Akber, 8 Sep 2026).
+  const types = Array.isArray(item.placeTypes) ? item.placeTypes : [];
+  if (types.some((type) => LINGER_PLACE_TYPES.has(type))) return LINGER_ACTIVITY_CEILING_MINUTES;
+  if (types.some((type) => QUICK_PLACE_TYPES.has(type))) return QUICK_ACTIVITY_CEILING_MINUTES;
   return NEUTRAL_ACTIVITY_CEILING_MINUTES;
 }
+
+const LINGER_PLACE_TYPES = new Set([
+  'museum', 'art_museum', 'art_gallery', 'park', 'national_park', 'garden', 'botanical_garden',
+  'aquarium', 'zoo', 'amusement_park', 'theme_park', 'water_park', 'beach', 'spa', 'castle', 'palace',
+]);
+const QUICK_PLACE_TYPES = new Set([
+  'store', 'book_store', 'toy_store', 'gift_shop', 'clothing_store', 'electronics_store',
+  'department_store', 'shopping_mall', 'market', 'observation_deck', 'monument', 'historical_landmark',
+  'church', 'shinto_shrine', 'buddhist_temple', 'place_of_worship', 'bar', 'night_club',
+]);
 
 // Fills the gap before dinner by spreading it across the afternoon, so a Slow
 // day runs unhurried right up to a normal dinner instead of ending early.

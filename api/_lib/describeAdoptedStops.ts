@@ -35,6 +35,9 @@ export function stripAdoptionMarkers(days) {
   for (const day of days) {
     for (const item of day.items) {
       delete item.adoptedFrom;
+      // Scheduler scratch: the routed leg kept apart from the padded display
+      // string. src/types.ts has no field for it and the fixture is TypeScript.
+      delete item.routedMinutes;
       // placeTypes stays. It was deleted here because src/types.ts had no field
       // for it and the demo fixture is saved as TypeScript, so shipping it broke
       // the build. The field exists now, and stripping it was doing real damage:
