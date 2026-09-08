@@ -231,7 +231,16 @@ function ownersOwnPhoto(place) {
 function photoUrlFor(place) {
   const photos = place.photos;
   if (!photos || photos.length === 0) return null;
-  const photo = ownersOwnPhoto(place) || photos[0];
+  const owned = ownersOwnPhoto(place);
+  // TEMPORARY (Akber, 8 Sep 2026): the owner-photo preference is not firing and
+  // I cannot tell from here whether Google returns no business-attributed photo
+  // for hotels or returns no attributions at all. Says which, once, then this
+  // comes out.
+  console.info(
+    `[hotelSearch] ${place.displayName?.text}: ${photos.length} photo(s), owner match ${owned ? 'YES' : 'no'}, ` +
+      `authors: ${photos.slice(0, 5).map((ph) => (ph.authorAttributions || []).map((a) => a.displayName).join('/') || '(none)').join(' | ')}`
+  );
+  const photo = owned || photos[0];
   return '/api/place-photo?ref=' + encodeURIComponent(photo.name);
 }
 
