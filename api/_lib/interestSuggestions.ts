@@ -28,6 +28,7 @@
 import Anthropic from '@anthropic-ai/sdk';
 import { cached } from './kvCache.js';
 import { checkRateLimit } from './rateLimit.js';
+import { fetchDestinationSuggestions } from './autocompletePlaces.js';
 import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -104,33 +105,67 @@ const INTEREST_CACHE_TTL_SECONDS = 60 * 60 * 24 * 365;
 // v2: the entry now carries `signals` (place types and keywords per chip) so the
 // itinerary rules can recognise the chips. Bumping the namespace regenerates
 // every city once, with the signals (Akber, 9 Sep 2026).
-const INTEREST_CACHE_NAMESPACE = 'interests:v2';
-
-// What the balancing rules need to recognise a chip in a list of real places.
-// Read by the generation handler; null when the city has never been through
-// getInterestSuggestions (a pinned city, or a request that skipped the picker).
-export async function getInterestSignals(destination) {
-  const cacheKey = String(destination || '').trim().toLowerCase();
-  if (!cacheKey) return null;
-  const entry = await cached(INTEREST_CACHE_NAMESPACE, cacheKey, async () => null, {
-    shouldCache: () => false,
-    ttl: INTEREST_CACHE_TTL_SECONDS,
-  }).catch(() => null);
-  return entry && typeof entry === 'object' && entry.signals ? entry.signals : null;
-}
+// v3: keyed on the place, not on the text typed. See interestCacheKey.
+const INTEREST_CACHE_NAMESPACE = 'interests:v3';
 
 const PINNED_INTERESTS = {
   'tokyo, japan': ['Temples & Shrines', 'Anime & Pop Culture', 'Nightlife', 'Modern Architecture'],
   tokyo: ['Temples & Shrines', 'Anime & Pop Culture', 'Nightlife', 'Modern Architecture'],
 };
 
-export async function getInterestSuggestions(destination) {
-  const cacheKey = destination.trim().toLowerCase();
+function typedKey(destination) {
+  return String(destination || '').trim().toLowerCase().replace(/\s+/g, ' ');
+}
 
-  const pinned = PINNED_INTERESTS[cacheKey];
+// One cache entry per place, whatever was typed to reach it.
+//
+// The entry used to be keyed on the exact text of the request, and the picker
+// sends two: the words as typed once the debounce fires ("monte carlo"), then
+// the suggestion that was picked ("Monte Carlo, Monaco"). Each was generated
+// on its own, each with its own wording, so which set a visitor saw depended
+// on how fast they typed. The rule is now: the first set generated for a place
+// is the set that place always shows. Both spellings are put through the same
+// autocomplete the picker uses (cached, so the second look-up is free), and
+// the first prediction's place id is the key. A pinned city keeps its own
+// key, and anything autocomplete cannot place falls back to the typed words
+// (Akber, 9 Sep 2026).
+export async function interestCacheKey(destination) {
+  const typed = typedKey(destination);
+  if (!typed) return { key: '', name: '' };
+  if (PINNED_INTERESTS[typed]) return { key: typed, name: destination.trim() };
+  try {
+    const suggestions = await fetchDestinationSuggestions(destination);
+    const first = Array.isArray(suggestions) ? suggestions[0] : null;
+    // Only a real prediction. A country name answers with a list of its
+    // cities and no place id, and "France" should not become Paris's chips.
+    if (first?.placeId) return { key: `place:${first.placeId}`, name: first.text || destination.trim() };
+  } catch {
+    // Autocomplete over its daily ceiling, or Google unreachable: the typed
+    // words still make a stable key for anyone typing the same thing.
+  }
+  return { key: typed, name: destination.trim() };
+}
+
+// What the balancing rules need to recognise a chip in a list of real places.
+// Read by the generation handler; null when the city has never been through
+// getInterestSuggestions (a pinned city, or a request that skipped the picker).
+export async function getInterestSignals(destination) {
+  const { key } = await interestCacheKey(destination);
+  if (!key) return null;
+  const entry = await cached(INTEREST_CACHE_NAMESPACE, key, async () => null, {
+    shouldCache: () => false,
+    ttl: INTEREST_CACHE_TTL_SECONDS,
+  }).catch(() => null);
+  return entry && typeof entry === 'object' && entry.signals ? entry.signals : null;
+}
+
+export async function getInterestSuggestions(destination) {
+  const pinned = PINNED_INTERESTS[typedKey(destination)];
   if (pinned) {
     return { interests: [...STAPLE_INTERESTS, ...pinned] };
   }
+
+  const { key: cacheKey, name: placeName } = await interestCacheKey(destination);
 
   // The file cache below only ever worked locally. On Vercel the deployment
   // filesystem is read-only at runtime, so every saveCache call failed and every
@@ -156,9 +191,11 @@ export async function getInterestSuggestions(destination) {
     return { interests: [...STAPLE_INTERESTS] };
   }
 
+  console.info(`[interestSuggestions] generating chips for "${placeName}" (typed "${destination}", key ${cacheKey})`);
+
   const prompt = `You are choosing interest categories for a trip-planning app's interest picker, for a specific destination.
 
-Destination: ${destination}
+Destination: ${placeName}
 
 Three staple categories are already shown for every destination, including this one, so don't include them or close synonyms of them: ${STAPLE_INTERESTS.join(', ')}.
 
