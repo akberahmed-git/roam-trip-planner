@@ -95,17 +95,51 @@ export function interestKey(interest) {
 // a year, and the generation handler installs them here per request. Failing
 // that, the chip's own words are the keywords: "casino gaming" reads as
 // "casino" and "gaming", "yachting" also as "yacht".
-const dynamicSignals: Record<string, { types: string[]; keywords: string[]; not?: string[]; ignoreDescription?: boolean }> = {};
+const dynamicSignals: Record<string, { types: string[]; keywords: string[]; not?: string[]; ignoreDescription?: boolean; namesToo?: boolean }> = {};
 
-export function setDynamicInterestSignals(signals) {
+// Types too broad to say what a place is. The model offered tourist_attraction
+// for "Formula 1 Racing", which made the oceanographic museum a racing stop,
+// put the chip at its plan cap, dropped the museum for it, and then rejected
+// every replacement the fill found for being a tourist attraction too. A gap
+// of 2h18m shipped under a rule that says gaps never ship (Akber, 9 Sep 2026).
+const GENERIC_TYPES = new Set([
+  'tourist_attraction', 'point_of_interest', 'establishment', 'store', 'restaurant', 'food', 'cafe',
+  'shopping_mall', 'park', 'locality', 'neighborhood', 'route', 'premise', 'political', 'geocode',
+  'landmark', 'historical_landmark', 'event_venue', 'cultural_landmark', 'plaza', 'street',
+]);
+// Words that describe every place in a city, not a kind of place.
+const GENERIC_KEYWORDS = new Set([
+  'luxury', 'famous', 'best', 'top', 'popular', 'local', 'tour', 'tours', 'visit', 'experience', 'experiences',
+  'culture', 'scene', 'heritage', 'iconic', 'historic', 'historical', 'beautiful', 'stunning', 'must',
+  'attraction', 'attractions', 'landmark', 'landmarks', 'sightseeing', 'place', 'places', 'spot', 'spots',
+]);
+
+export function getDynamicInterestSignals() {
+  return { ...dynamicSignals };
+}
+
+export function setDynamicInterestSignals(signals, destination = '') {
   for (const key of Object.keys(dynamicSignals)) delete dynamicSignals[key];
   if (!signals || typeof signals !== 'object') return;
+  const destinationWords = new Set(plain(destination).split(/[^a-z0-9]+/).filter((w) => w.length >= 3));
   for (const [label, value] of Object.entries(signals)) {
     const v: any = value || {};
-    const types = Array.isArray(v.types) ? v.types.filter((t) => typeof t === 'string' && /^[a-z_]{3,40}$/.test(t)).slice(0, 8) : [];
-    const keywords = Array.isArray(v.keywords) ? v.keywords.map((k) => plain(k).trim()).filter((k) => k.length >= 3 && k.length <= 40).slice(0, 10) : [];
+    const types = Array.isArray(v.types)
+      ? v.types.filter((t) => typeof t === 'string' && /^[a-z_]{3,40}$/.test(t) && !GENERIC_TYPES.has(t)).slice(0, 8)
+      : [];
+    const keywords = Array.isArray(v.keywords)
+      ? v.keywords
+          .map((k) => plain(k).trim())
+          .filter((k) => (k.length >= 4 || /\d/.test(k)) && k.length <= 40)
+          .filter((k) => !GENERIC_KEYWORDS.has(k) && !destinationWords.has(k))
+          // "monaco grand prix" is fine; "monaco" alone is every place in town.
+          .filter((k) => !k.split(' ').every((w) => destinationWords.has(w) || GENERIC_KEYWORDS.has(w)))
+          .slice(0, 10)
+      : [];
     if (types.length === 0 && keywords.length === 0) continue;
-    dynamicSignals[interestKey(label)] = { types, keywords };
+    // Names and category tags only: prose about a place is not evidence of what
+    // it is, the same call the static table makes for modern architecture.
+    dynamicSignals[interestKey(label)] = { types, keywords, ignoreDescription: true, namesToo: true };
   }
 }
 
@@ -122,7 +156,7 @@ function derivedSignals(key) {
     else if (word.endsWith('s') && word.length >= 5) keywords.add(word.slice(0, -1));  // casinos -> casino
   }
   if (words.length > 1) keywords.add(words.join(' '));
-  return { types: [], keywords: [...keywords] };
+  return { types: [], keywords: [...keywords], ignoreDescription: true, namesToo: true };
 }
 
 function signalsFor(interest) {
@@ -154,7 +188,13 @@ export function satisfiesInterest(item, interest) {
   // and pop culture, and modern architecture. Those are cultural ideas rather
   // than place kinds, so for them the name and description are the only evidence
   // there is.
-  if (signals.types.length > 0 && types.length > 0) return false;
+  //
+  // That holds for the static table, whose types were chosen by hand. The
+  // model's types for a city's own chips are guesses ("stadium" for Formula 1
+  // Racing), so for those, and for signals derived from a chip's own words, the
+  // name and category tag still count: Monaco Circuit is a racing stop whatever
+  // Google files it under (Akber, 9 Sep 2026).
+  if (signals.types.length > 0 && types.length > 0 && !signals.namesToo) return false;
 
   // Whole words, so "Akihabara" is not read as a bar and "Barcelona" is not
   // read as one either.

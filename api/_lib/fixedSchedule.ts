@@ -11,7 +11,7 @@ import {
 import { dayShape } from './routeShape.js';
 import { isOpenAt, closesAt } from './openingHours.js';
 import { isOffBandDining } from './budgetFit.js';
-import { isDeclinedPlace } from './declinedPlaces.js';
+import { isDeclinedPlace, isLodgingOnly } from './declinedPlaces.js';
 
 // Fifteen minutes of grace, so a stop finishing exactly as the doors close is
 // not a rejection. Used by the closing-overrun check below.
@@ -437,6 +437,12 @@ export function unsuitableStops(day, weekdayIndex, budget, minReviews = undefine
     // any other unsuitable stop, so the fill puts something else in its place.
     if (isDeclinedPlace(item.name)) {
       found.push({ index, name: item.name, reason: 'the traveller asked for this one to be left out' });
+      return;
+    }
+
+    // A hotel is not a stop. See declinedPlaces.ts.
+    if (item.type !== 'accommodation' && isLodgingOnly(item.placeTypes)) {
+      found.push({ index, name: item.name, reason: 'a hotel, not somewhere to go' });
       return;
     }
 

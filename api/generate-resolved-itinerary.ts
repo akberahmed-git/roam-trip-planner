@@ -26,9 +26,9 @@ import {
 } from './_lib/scheduleRealign.js';
 import { applyFixedSchedule, orderBlocksByOpeningHours, dedupeMeals, starvedBlocks, unsuitableStops, roomForAnotherStop, eveningInsertPoint, hasEnoughReviews, numberedStopCount, setReviewFloor, currentReviewFloor, isNightVenue, lastShortenedStops, MAX_NUMBERED_STOPS_PER_DAY } from './_lib/fixedSchedule.js';
 import { sortByBudgetFit, isOffBandDining } from './_lib/budgetFit.js';
-import { uncoveredInterests, satisfiesInterest, isEveningInterest, interestKey, setDynamicInterestSignals } from './_lib/interestCoverage.js';
+import { uncoveredInterests, satisfiesInterest, isEveningInterest, interestKey, setDynamicInterestSignals, getDynamicInterestSignals } from './_lib/interestCoverage.js';
 import { getInterestSignals } from './_lib/interestSuggestions.js';
-import { isDeclinedPlace } from './_lib/declinedPlaces.js';
+import { isDeclinedPlace, isLodgingOnly } from './_lib/declinedPlaces.js';
 import { recordGeneration } from './_lib/stats.js';
 import { weekdayForDay, isOpenAt, closesAt, openThroughout } from './_lib/openingHours.js';
 import { shapeOf, dayShape, REORDER_REVERSAL_DEGREES } from './_lib/routeShape.js';
@@ -563,6 +563,8 @@ function isUsableCandidate(candidate) {
   if (!hasReadableName(candidate.name)) return false;
   if (MARKER_NAME_PATTERNS.some((pattern) => pattern.test(candidate.name))) return false;
   if (isDeclinedPlace(candidate.name)) return false;
+  // Somewhere to sleep is not somewhere to go. See isLodgingOnly.
+  if (isLodgingOnly(candidate.types || candidate.placeTypes)) return false;
   // pickSubstitute and enforceDriveCap are the two adoption paths that ran with
   // no review check whatsoever - they filter on this function alone and then
   // take preferWithPhoto, which has no threshold either. Every other pass had a
@@ -886,6 +888,14 @@ function applyResolution(item, result, usedPlaceIds, anchor, stay, budget, isPin
     // flagged items before anything else runs. First occurrence wins.
     if (usedPlaceIds.has(result.placeId) && !isPinned(item)) {
       item._duplicatePlace = true;
+      return;
+    }
+    // Google says the place the model named is a hotel and nothing else. Left
+    // without a location, so backfillOrDropActivities replaces it with a real
+    // stop rather than the day shipping a lobby. Monte-Carlo Beach Hotel and
+    // the Fairmont went out back to back this way (Akber, 9 Sep 2026).
+    if (item.type !== 'accommodation' && !isPinned(item) && isLodgingOnly(result.types)) {
+      console.info(`[generate-resolved-itinerary] ${item.name} resolved to a hotel (${result.name}), replacing it`);
       return;
     }
     item.name = result.name;
@@ -1319,6 +1329,7 @@ async function backfillOrDropActivities(day, anchor, usedPlaceIds, interests, st
           if (!candidate.availablePhotoUrl) return false;
           if (usedPlaceIds.has(candidate.placeId)) return false;
           if (isFoodOnly(candidate)) return false;
+          if (isLodgingOnly(candidate.types)) return false;
           if (!isSubstantialActivity(candidate)) return false;
           if (wouldBreakPlanCap(candidate, capped)) return false;
           // This pass replaces every stop the model drafted that failed
@@ -1748,7 +1759,7 @@ function wouldBreakPlanCap(candidate, capped) {
   return [...capped].some((interest) => satisfiesInterest(asStop, interest));
 }
 
-async function fillStarvedBlocks(day, cutoff, anchor, usedPlaceIds, stay, interests, itinerary, weekday: number | null = null) {
+async function fillStarvedBlocks(day, cutoff, anchor, usedPlaceIds, stay, interests, itinerary, weekday: number | null = null, pinned: any = null) {
   const added: string[] = [];
 
   for (const block of starvedBlocks(day, cutoff)) {
@@ -1806,32 +1817,102 @@ async function fillStarvedBlocks(day, cutoff, anchor, usedPlaceIds, stay, intere
     // the centre has fifty.
     const searchAt = [block.near, anchor].filter((loc, i, all) => loc && all.indexOf(loc) === i);
 
+    // Photo, readable name, not a marker stone, not a hotel, and enough reviews.
+    // The marker check was the one this pass never had, which is how a
+    // commemorative stone tablet with 381 reviews became an afternoon. Open
+    // somewhere in the block it is going into, or it is dropped next round.
+    const baseline = (c) =>
+      c.location &&
+      isUsableCandidate(c) &&
+      !usedPlaceIds.has(c.placeId) &&
+      !isFoodOnly(c) &&
+      fitsBlock(c) &&
+      (!anchor || haversineMeters(anchor, c.location) <= MAX_BROAD_DISTANCE_METERS) &&
+      withinReachOfStay(c.location, stay);
+    // 'popular tourist attraction' in Tokyo returns shrines whatever the query
+    // asked for, so the cap has to be checked on the candidate too.
+    const underCap = (c) => baseline(c) && !wouldBreakPlanCap(c, capped);
+
+    // Everything Google returned for this block, kept for the last resorts
+    // below so they cost no further lookups.
+    const pool: any[] = [];
+    const seen = new Set<string>();
+    const searchFor = async (query, at) => {
+      const candidates = await findNearbyCandidates(query, null, at).catch(() => []);
+      for (const c of candidates) {
+        if (c.placeId && !seen.has(c.placeId)) {
+          seen.add(c.placeId);
+          pool.push(c);
+        }
+      }
+      return candidates;
+    };
+    const label = (query, at) => `"${query}"${at === anchor && searchAt.length > 1 ? ' (centre)' : ''}`;
+
     let pick: any = null;
+    let how = '';
     const tried: string[] = [];
     search: for (const query of queries) {
       for (const at of searchAt) {
-        const candidates = await findNearbyCandidates(query, null, at).catch(() => []);
-        const usable = candidates.filter(
-            (c) =>
-              c.location &&
-              // Photo, readable name, not a marker stone, and enough reviews. The
-              // marker check was the one this pass never had, which is how a
-              // commemorative stone tablet with 381 reviews became an afternoon.
-              isUsableCandidate(c) &&
-              !usedPlaceIds.has(c.placeId) &&
-              !isFoodOnly(c) &&
-              // 'popular tourist attraction' in Tokyo returns shrines whatever the
-              // query asked for, so the cap has to be checked on the candidate too.
-              !wouldBreakPlanCap(c, capped) &&
-              // Open somewhere in the block it is going into, or it is dropped
-              // next round.
-              fitsBlock(c) &&
-              (!anchor || haversineMeters(anchor, c.location) <= MAX_BROAD_DISTANCE_METERS) &&
-              withinReachOfStay(c.location, stay)
-        );
-        tried.push(`"${query}"${at === anchor && searchAt.length > 1 ? ' (centre)' : ''} ${candidates.length}/${usable.length}`);
+        const candidates = await searchFor(query, at);
+        const usable = candidates.filter(underCap);
+        tried.push(`${label(query, at)} ${candidates.length}/${usable.length}`);
         pick = preferWellKnown(usable);
         if (pick) break search;
+      }
+    }
+
+    // A gap never ships. The rule was there and it shipped one anyway: a Monaco
+    // morning with 2h18m against nothing, because every chip was at its cap and
+    // all twenty tourist attractions counted as one chip or another. So the
+    // fill no longer stops at the first empty search. In order, until one
+    // works: kinds of place nobody picked as a chip, which cannot break a cap;
+    // then the cap itself is relaxed over everything already fetched, which
+    // costs nothing more; then a stop from later in the day is moved up. A
+    // repeat of an interest is a smaller failure than a morning with nothing
+    // in it (Akber, 9 Sep 2026).
+    if (!pick) {
+      generic: for (const query of GAP_BRIDGE_QUERIES) {
+        for (const at of searchAt) {
+          const candidates = await searchFor(query, at);
+          const usable = candidates.filter(underCap);
+          tried.push(`${label(query, at)} ${candidates.length}/${usable.length}`);
+          pick = preferWellKnown(usable);
+          if (pick) {
+            how = ', a kind of place outside the chips';
+            break generic;
+          }
+        }
+      }
+    }
+    if (!pick) {
+      pick = preferWellKnown(pool.filter(baseline));
+      if (pick) how = ', interest cap relaxed to avoid a gap';
+    }
+
+    if (!pick) {
+      const movable = day.items.findIndex(
+        (item, index) =>
+          index > block.insertAt &&
+          item.type !== 'accommodation' &&
+          !item.mealType &&
+          item.location &&
+          !(typeof pinned === 'function' && pinned(item)) &&
+          fitsBlock(item)
+      );
+      if (movable >= 0) {
+        const [item] = day.items.splice(movable, 1);
+        if (movable > 0) day.items[movable - 1].travelToNext = null;
+        item.travelToNext = null;
+        if (block.insertAt > 0) day.items[block.insertAt - 1].travelToNext = null;
+        day.items.splice(block.insertAt, 0, item);
+        console.info(
+          `[generate-resolved-itinerary] day ${day.day}: moved ${item.name} up to bridge a ${Math.round(block.shortfall)}-minute gap, ` +
+            `searched ${tried.join(', ')} (candidates/usable)`
+        );
+        added.push(`${item.name} (moved up)`);
+        // The blocks were measured before the move; the next round measures again.
+        break;
       }
     }
 
@@ -1840,14 +1921,18 @@ async function fillStarvedBlocks(day, cutoff, anchor, usedPlaceIds, stay, intere
     // goes to whichever can hold most of it. Working out why cost a generation
     // each time, so it says so now (Akber, 8 Sep 2026).
     if (!pick) {
-      console.info(
-        `[generate-resolved-itinerary] day ${day.day}: nothing to fill a ${Math.round(block.shortfall)}-minute gap with, ` +
+      console.warn(
+        `[generate-resolved-itinerary] day ${day.day}: NOTHING to fill a ${Math.round(block.shortfall)}-minute gap with, ` +
           `searched ${tried.join(', ')} (candidates/usable)`
       );
       continue;
     }
 
-    const stop = buildAdoptedStop(pick, MIN_STAY_MINUTES_FOR_NEW_STOP);
+    const stop: any = buildAdoptedStop(pick, MIN_STAY_MINUTES_FOR_NEW_STOP);
+    if (how.includes('relaxed')) stop._bridgesGap = true;
+    if (how) {
+      console.info(`[generate-resolved-itinerary] day ${day.day}: ${pick.name} bridges a ${Math.round(block.shortfall)}-minute gap${how}`);
+    }
 
     // Its new neighbours were routed against each other, not against it.
     if (block.insertAt > 0) day.items[block.insertAt - 1].travelToNext = null;
@@ -1858,6 +1943,11 @@ async function fillStarvedBlocks(day, cutoff, anchor, usedPlaceIds, stay, intere
 
   return added;
 }
+
+// Kinds of place a gap can always be bridged with. None of them is a chip in
+// the static table, and a chip's own signals rarely name them, so they clear
+// the caps in almost every city. Three, because each is a Text Search.
+const GAP_BRIDGE_QUERIES = ['museum or art gallery', 'park or botanical garden', 'viewpoint or scenic lookout'];
 
 const MIN_STAY_MINUTES_FOR_NEW_STOP = 60;
 
@@ -2375,7 +2465,10 @@ async function rebalanceInterests(day, { interests, anchor, usedPlaceIds, stay, 
           .filter((item) => servedBy(item, interest))
           .sort((a, b) => Number(isPinned(b)) - Number(isPinned(a)) || (b.ratingCount || 0) - (a.ratingCount || 0))
           .slice(MAX_STOPS_PER_INTEREST_PER_DAY)
-    ).filter((item) => !isPinned(item));
+    // Nor is a stop the fill bought with the cap deliberately relaxed: it is
+    // there because nothing else could bridge a gap, and dropping it here would
+    // put the gap straight back (see fillStarvedBlocks).
+    ).filter((item) => !isPinned(item) && !item._bridgesGap);
 
     for (const item of surplus) {
       const wanted = wantedFor(interest, item);
@@ -2568,6 +2661,7 @@ async function repositionStrandedStops(day, anchor, usedPlaceIds, stay, interest
       if (MARKER_NAME_PATTERNS.some((pattern) => pattern.test(candidate.name))) { reasons.unreadable++; return false; }
       if (!hasEnoughReviews(candidate)) { reasons.tooFewReviews++; return false; }
       if (!item.mealType && wouldBreakPlanCap(candidate, capped)) { reasons.wrongKind++; return false; }
+      if (!item.mealType && isLodgingOnly(candidate.types)) { reasons.wrongKind++; return false; }
       // Open for the hours the pivot held, or the replacement is dropped next round.
       if (!fitsSlot(candidate, weekday, timeToMinutes(item.startTime), item.durationMinutes)) { reasons.wrongKind++; return false; }
       // A meal has to land on somewhere that serves food. An activity only has
@@ -3380,7 +3474,7 @@ async function settleDay(day, context) {
     }
 
     const filled = await fillStarvedBlocks(
-      day, options.cutoffMinutes, anchor, usedPlaceIds, stay, interests, itinerary, weekday
+      day, options.cutoffMinutes, anchor, usedPlaceIds, stay, interests, itinerary, weekday, pinned
     );
     if (filled.length > 0) {
       console.info(
@@ -3523,7 +3617,7 @@ function stopCount(raw) {
     Array.isArray(variant?.days)
       ? variant.days
           .map((day, i) => `Day ${day.day ?? i + 1}: ${items(day).map((it) => String(it.name || '').slice(0, 60)).join(' · ')}`)
-          .join(' | ')
+          .join(' ‖ ')
           .slice(0, 2000)
       : null;
   return {
@@ -3609,7 +3703,16 @@ export default async function handler(req, res) {
   // let the balancing rules recognise them. Null for a pinned city (Tokyo's
   // chips are in the static table) or one that skipped the picker, in which
   // case the chip's own words are used (see interestCoverage.ts).
-  setDynamicInterestSignals(await getInterestSignals(destination));
+  setDynamicInterestSignals(await getInterestSignals(destination), destination);
+  const installed = getDynamicInterestSignals();
+  console.info(
+    `[generate-resolved-itinerary] chip signals for ${destination}: ` +
+      (Object.keys(installed).length === 0
+        ? 'none (chip words only)'
+        : Object.entries(installed)
+            .map(([k, v]: [string, any]) => `${k} = [${v.types.join(' ')}] {${v.keywords.join(', ')}}`)
+            .join('; '))
+  );
 
   let raw;
   let anchor;
