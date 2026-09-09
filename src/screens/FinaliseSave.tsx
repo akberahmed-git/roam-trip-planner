@@ -6,6 +6,7 @@ import Footer from '../components/Footer'
 import PlacePhoto from '../components/PlacePhoto'
 import { formatCompactRange } from '../utils/currency'
 import { saveTrip } from '../utils/savedTrips'
+import { track } from '../utils/track'
 
 function formatDateRange(startStr, endStr) {
   if (!startStr || !endStr) return ''
@@ -300,6 +301,7 @@ export default function FinaliseSave() {
 
   function handleSaveTrip() {
     if (!tripParams) return
+    track('saved', { destination: tripParams.destination })
     saveTrip({
       title: `${tripParams.days} day${tripParams.days === 1 ? '' : 's'} in ${tripParams.destination}`,
       subtitle: (function() { var td = tripParams.startDate ? new Date(tripParams.startDate + 'T00:00:00') : null; var ds = td ? td.toLocaleDateString('en-US', { month: 'short', year: 'numeric' }) : ''; var sep = ' · '; var is = (tripParams.interests || []).join(sep); return [ds, is].filter(Boolean).join(sep); })(),

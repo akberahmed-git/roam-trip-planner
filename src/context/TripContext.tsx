@@ -7,6 +7,7 @@ import type {
   TripParams,
   TripStatus,
 } from '../types'
+import { track } from '../utils/track'
 
 const TripContext = createContext<TripContextValue | null>(null)
 
@@ -64,6 +65,7 @@ export function TripProvider({ children }: { children: ReactNode }) {
   const generateItinerary = useCallback(async (params: TripParams): Promise<ResolvedItinerary> => {
     setStatus('loading')
     setErrorMessage(null)
+    track('generate', { destination: params.destination })
     try {
       const response = await fetch('/api/generate-resolved-itinerary', {
         method: 'POST',
@@ -84,11 +86,13 @@ export function TripProvider({ children }: { children: ReactNode }) {
         if (response.status === 429 && errorBody.code === 'RATE_LIMITED') {
           error.code = 'RATE_LIMITED'
           error.scope = errorBody.scope
+          track('rate_limited', { destination: params.destination })
         }
         throw error
       }
 
       const data = await response.json()
+      track('generated', { destination: params.destination })
       setResolvedItinerary(data)
       setStatus('success')
       return data

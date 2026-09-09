@@ -28,6 +28,7 @@ import { applyFixedSchedule, orderBlocksByOpeningHours, dedupeMeals, starvedBloc
 import { sortByBudgetFit, isOffBandDining } from './_lib/budgetFit.js';
 import { uncoveredInterests, satisfiesInterest, isEveningInterest, interestKey } from './_lib/interestCoverage.js';
 import { isDeclinedPlace } from './_lib/declinedPlaces.js';
+import { recordGeneration } from './_lib/stats.js';
 import { weekdayForDay, isOpenAt, closesAt, openThroughout } from './_lib/openingHours.js';
 import { shapeOf, dayShape, REORDER_REVERSAL_DEGREES } from './_lib/routeShape.js';
 import { describeAdoptedStops, stripAdoptionMarkers } from './_lib/describeAdoptedStops.js';
@@ -3431,6 +3432,15 @@ async function settleDay(day, context) {
 // the number of Text Search requests that left this server; the cache hits are
 // the ones that did not. This is the figure the case study's cost cards quote,
 // so it is logged rather than estimated (Akber, 8 Sep 2026).
+// Stops per variant, for the stats log, as two flat columns so the CSV stays flat.
+function stopCount(raw) {
+  const count = (variant) =>
+    Array.isArray(variant?.days)
+      ? variant.days.reduce((n, day) => n + (day.items || []).filter((i) => i.type !== 'accommodation').length, 0)
+      : null;
+  return { stopsPacked: count(raw?.packed), stopsSlow: count(raw?.slow) };
+}
+
 function logPlacesUsage() {
   const u = currentPlacesUsage();
   console.info(
@@ -3453,9 +3463,11 @@ export default async function handler(req, res) {
   // why this fails open.
   const limit = await checkRateLimit('trip', req);
   if (!limit.allowed) {
+    await recordGeneration(req, { outcome: 'rate_limited', scope: limit.scope });
     return rateLimitResponse(res, limit);
   }
 
+  const startedAt = Date.now();
   const destination = req.body.destination;
   const days = req.body.days;
   const budget = req.body.budget;
@@ -3518,6 +3530,7 @@ export default async function handler(req, res) {
     // absolutely is something to act on.
     if (isCapacityError(error)) {
       console.error('[generate-resolved-itinerary] upstream capacity exhausted:', error.message);
+      await recordGeneration(req, { outcome: 'anthropic_capacity', ms: Date.now() - startedAt });
       return res.status(429).json({
         error:
           "Roam has reached its planning limit for now. Here's an example trip in the meantime.",
@@ -3525,6 +3538,7 @@ export default async function handler(req, res) {
         scope: 'capacity',
       });
     }
+    await recordGeneration(req, { outcome: 'error', ms: Date.now() - startedAt, error: String(error.message || '').slice(0, 120) });
     if (error.rawText) {
       return res.status(500).json({ error: error.message, raw: error.rawText });
     }
@@ -3552,18 +3566,26 @@ export default async function handler(req, res) {
       console.error(
         `[generate-resolved-itinerary] Google Places refused ${refused.count} call(s) with HTTP ${refused.status}: ${refused.message}`
       );
+      await recordGeneration(req, { outcome: 'places_unavailable', ms: Date.now() - startedAt, googleCalls: currentPlacesUsage().billed });
       return res.status(503).json({
         error: `Google Places refused ${refused.count} lookups (HTTP ${refused.status}): ${refused.message}`,
         code: 'PLACES_UNAVAILABLE',
         scope: 'capacity',
       });
     }
+    await recordGeneration(req, {
+      outcome: 'ok',
+      ms: Date.now() - startedAt,
+      googleCalls: currentPlacesUsage().billed,
+      ...stopCount(raw),
+    });
     res.status(200).json(raw);
   } catch (error) {
     // Same treatment for the resolution half: the place, route and description
     // passes each call out too, so credit can run dry after the draft succeeds.
     if (isCapacityError(error)) {
       console.error('[generate-resolved-itinerary] upstream capacity exhausted:', error.message);
+      await recordGeneration(req, { outcome: 'anthropic_capacity', ms: Date.now() - startedAt });
       return res.status(429).json({
         error:
           "Roam has reached its planning limit for now. Here's an example trip in the meantime.",
@@ -3571,6 +3593,7 @@ export default async function handler(req, res) {
         scope: 'capacity',
       });
     }
+    await recordGeneration(req, { outcome: 'error', ms: Date.now() - startedAt, error: String(error.message || '').slice(0, 120) });
     res.status(500).json({ error: error.message });
   }
 }

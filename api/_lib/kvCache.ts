@@ -41,6 +41,18 @@ async function kvCommand(command) {
   return res.json();
 }
 
+// Any Upstash command, result or null. For the stats log, which needs
+// LPUSH / LTRIM / LRANGE and must never throw into a request.
+export async function kvRun(command) {
+  if (!KV_ENABLED) return null;
+  try {
+    const data = await kvCommand(command);
+    return data && data.result != null ? data.result : null;
+  } catch {
+    return null;
+  }
+}
+
 async function kvGet(key) {
   if (!KV_ENABLED) return null;
   try {
