@@ -10,6 +10,15 @@ const LANDED_SENT_KEY = 'roam:landedSent'
 
 type TrackEvent = 'landed' | 'plan_started' | 'generate' | 'generated' | 'rate_limited' | 'saved' | 'swap' | 'left'
 
+// Inside the case study's phone frame, or a normal tab?
+export function isEmbedded(): boolean {
+  try {
+    return window.self !== window.top
+  } catch {
+    return true
+  }
+}
+
 function randomId(): string {
   try {
     if (typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function') return crypto.randomUUID()
@@ -43,6 +52,7 @@ export function track(event: TrackEvent, extra: { destination?: string } = {}) {
       event,
       elapsedMs: Date.now() - landedAt,
       path: window.location.pathname,
+      embedded: isEmbedded(),
       ...extra,
     })
     if (typeof navigator.sendBeacon === 'function') {

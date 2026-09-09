@@ -94,7 +94,9 @@ async function push(key, entry) {
 // outcome: ok | rate_limited | places_unavailable | anthropic_capacity | error
 export async function recordGeneration(req, entry) {
   try {
-    await push(GENERATIONS_KEY, { at: new Date().toISOString(), ...contextOf(req), ...describeRequest(req.body), ...entry });
+    // The app sends this header from inside the case study's phone frame.
+    const embedded = header(req, 'x-roam-embedded') === '1';
+    await push(GENERATIONS_KEY, { at: new Date().toISOString(), ...contextOf(req), embedded, ...describeRequest(req.body), ...entry });
   } catch {
     // Never let the log break a generation.
   }
@@ -122,6 +124,8 @@ export async function recordEvent(req, body) {
       seconds: elapsed !== null && elapsed >= 0 && elapsed < 86400000 ? Math.round(elapsed / 100) / 10 : null,
       path: text(b.path, 80),
       destination: text(b.destination, 80),
+      // true when the app is running inside the case study's phone frame
+      embedded: b.embedded === true,
     });
   } catch {
     // Same: best effort.
@@ -146,8 +150,8 @@ export async function readStats(list, limit) {
 // Column order for the CSV, so the file reads the same every time and an
 // empty log still downloads with a header rather than as a blank file.
 export const COLUMNS = {
-  generations: ['at', 'city', 'region', 'country', 'device', 'os', 'browser', 'destination', 'days', 'startDate', 'endDate', 'budget', 'transport', 'interests', 'adults', 'accommodation', 'outcome', 'scope', 'seconds', 'googleCalls', 'stopsPacked', 'stopsSlow', 'error'],
-  events: ['at', 'city', 'region', 'country', 'device', 'os', 'browser', 'session', 'event', 'seconds', 'path', 'destination'],
+  generations: ['at', 'city', 'region', 'country', 'device', 'os', 'browser', 'embedded', 'destination', 'days', 'startDate', 'endDate', 'budget', 'transport', 'interests', 'adults', 'accommodation', 'outcome', 'scope', 'seconds', 'googleCalls', 'stopsPacked', 'stopsSlow', 'packedStops', 'slowStops', 'error'],
+  events: ['at', 'city', 'region', 'country', 'device', 'os', 'browser', 'embedded', 'session', 'event', 'seconds', 'path', 'destination'],
 };
 
 export function toCsv(rows: Record<string, any>[], known: string[] = []) {

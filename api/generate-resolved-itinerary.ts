@@ -3432,13 +3432,26 @@ async function settleDay(day, context) {
 // the number of Text Search requests that left this server; the cache hits are
 // the ones that did not. This is the figure the case study's cost cards quote,
 // so it is logged rather than estimated (Akber, 8 Sep 2026).
-// Stops per variant, for the stats log, as two flat columns so the CSV stays flat.
+// Stops per variant for the stats log: a count, and the place names per day
+// ("Day 1: Cafe Aaliya · Roppongi Hills · …"), which is 1-2 KB a row and enough
+// to answer "what did it actually plan" without storing the whole itinerary.
 function stopCount(raw) {
+  const items = (day) => (day?.items || []).filter((i) => i.type !== 'accommodation');
   const count = (variant) =>
+    Array.isArray(variant?.days) ? variant.days.reduce((n, day) => n + items(day).length, 0) : null;
+  const names = (variant) =>
     Array.isArray(variant?.days)
-      ? variant.days.reduce((n, day) => n + (day.items || []).filter((i) => i.type !== 'accommodation').length, 0)
+      ? variant.days
+          .map((day, i) => `Day ${day.day ?? i + 1}: ${items(day).map((it) => String(it.name || '').slice(0, 60)).join(' · ')}`)
+          .join(' | ')
+          .slice(0, 2000)
       : null;
-  return { stopsPacked: count(raw?.packed), stopsSlow: count(raw?.slow) };
+  return {
+    stopsPacked: count(raw?.packed),
+    stopsSlow: count(raw?.slow),
+    packedStops: names(raw?.packed),
+    slowStops: names(raw?.slow),
+  };
 }
 
 function logPlacesUsage() {

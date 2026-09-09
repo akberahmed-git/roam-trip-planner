@@ -7,7 +7,7 @@ import type {
   TripParams,
   TripStatus,
 } from '../types'
-import { track } from '../utils/track'
+import { track, isEmbedded } from '../utils/track'
 
 const TripContext = createContext<TripContextValue | null>(null)
 
@@ -69,7 +69,7 @@ export function TripProvider({ children }: { children: ReactNode }) {
     try {
       const response = await fetch('/api/generate-resolved-itinerary', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: { 'Content-Type': 'application/json', 'X-Roam-Embedded': isEmbedded() ? '1' : '0' },
         body: JSON.stringify(params),
       })
 
