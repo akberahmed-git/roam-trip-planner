@@ -67,9 +67,30 @@ function dailyLimit(name, fallback) {
   return Number.isFinite(raw) && raw > 0 ? Math.floor(raw) : fallback;
 }
 
+// Every endpoint that can bill something has a bucket here, sized so that the
+// day's worst case on each is a few euros at most. The generation cap does the
+// real work (a plan is ~EUR 2.30 cold, measured 9 Sep 2026); the rest exist
+// because a link on LinkedIn brings people who never press Generate, and each
+// of these fires before that button:
+//
+//   hotel         3 Enterprise searches per new city, ~EUR 0.10, cached after
+//   autocomplete  one Google Autocomplete request per keystroke burst,
+//                 ~EUR 0.003, cached per input after this change
+//   swap          one Enterprise search + a model call per "Swap places"
+//   interests     one Haiku call per never-seen destination (cached a year)
+//   travel        Routes calls after a swap or reorder, cached per pair
+//
+// Past a bucket's ceiling the client degrades rather than breaks: autocomplete
+// goes quiet and you type the city yourself, interests fall back to the
+// staple chips, swap shows its retry state, travel times keep the last number
+// (Akber, 9 Sep 2026).
 export const LIMITS = {
   trip: { perIp: null, global: dailyLimit('TRIP_DAILY_LIMIT', 20) },
-  hotel: { perIp: null, global: dailyLimit('HOTEL_DAILY_LIMIT', 200) },
+  hotel: { perIp: null, global: dailyLimit('HOTEL_DAILY_LIMIT', 100) },
+  autocomplete: { perIp: null, global: dailyLimit('AUTOCOMPLETE_DAILY_LIMIT', 2000) },
+  swap: { perIp: null, global: dailyLimit('SWAP_DAILY_LIMIT', 200) },
+  interests: { perIp: null, global: dailyLimit('INTERESTS_DAILY_LIMIT', 300) },
+  travel: { perIp: null, global: dailyLimit('TRAVEL_DAILY_LIMIT', 500) },
 };
 
 // Vercel puts the real client address at the front of x-forwarded-for; the
@@ -115,7 +136,7 @@ export async function checkRateLimit(bucket, req) {
   }
 
   if (!KV_ENABLED) {
-    return { allowed: true, scope: null, count: null, limit: null };
+    return { allowed: true, scope: null, count: null, limit: null, bucket };
   }
 
   const stamp = todayStamp();
@@ -134,13 +155,13 @@ export async function checkRateLimit(bucket, req) {
   ]);
 
   if (globalCount !== null && globalCount > limits.global) {
-    return { allowed: false, scope: 'global', count: globalCount, limit: limits.global };
+    return { allowed: false, scope: 'global', count: globalCount, limit: limits.global, bucket };
   }
   if (perIpEnabled && ipCount !== null && ipCount > limits.perIp) {
-    return { allowed: false, scope: 'ip', count: ipCount, limit: limits.perIp };
+    return { allowed: false, scope: 'ip', count: ipCount, limit: limits.perIp, bucket };
   }
 
-  return { allowed: true, scope: null, count: globalCount, limit: limits.global };
+  return { allowed: true, scope: null, count: globalCount, limit: limits.global, bucket };
 }
 
 // The same question checkRateLimit answers, without spending anything to ask.
@@ -174,8 +195,13 @@ export async function peekRateLimit(bucket) {
 // frontend only has to recognise a single shape. code is what the client
 // branches on; error is shown to the person if the client has nothing better.
 export function rateLimitResponse(res, result) {
-  const message =
-    result.scope === 'global'
+  // Only the planning buckets talk about "an example trip"; the client for a
+  // small feature (autocomplete, swap) ignores the body and degrades quietly,
+  // but if a message ever does surface it should describe that feature.
+  const planning = result.bucket == null || result.bucket === 'trip' || result.bucket === 'hotel';
+  const message = !planning
+    ? "Roam has hit today's limit for this feature. It resets tomorrow."
+    : result.scope === 'global'
       ? "Roam has hit today's shared planning limit. Here's an example trip in the meantime, and full planning is back tomorrow."
       : "You've reached today's limit of planned trips. Here's an example trip in the meantime, and your limit resets tomorrow.";
 

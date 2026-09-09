@@ -27,6 +27,7 @@
 // three categories that are safe unconditionally.
 import Anthropic from '@anthropic-ai/sdk';
 import { cached } from './kvCache.js';
+import { checkRateLimit } from './rateLimit.js';
 import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -127,6 +128,14 @@ export async function getInterestSuggestions(destination) {
   const cache = loadCache();
   if (cache[cacheKey]) {
     return cache[cacheKey];
+  }
+
+  // Only a never-seen destination reaches the model, so only that is counted.
+  // Past the ceiling the staples are returned, which is what the client would
+  // fall back to on an error anyway, minus the error.
+  const limit = await checkRateLimit('interests', null);
+  if (!limit.allowed) {
+    return { interests: [...STAPLE_INTERESTS] };
   }
 
   const prompt = `You are choosing interest categories for a trip-planning app's interest picker, for a specific destination.

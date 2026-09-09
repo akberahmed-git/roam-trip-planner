@@ -1,6 +1,7 @@
 import { computeTravelTimes } from './_lib/travelTime.js';
 import { fillMissingTravelTimes } from './_lib/scheduleRealign.js';
 import { applyFixedSchedule } from './_lib/fixedSchedule.js';
+import { checkRateLimit, rateLimitResponse } from './_lib/rateLimit.js';
 
 // Kept in step with generate-resolved-itinerary.js's own floor for Slow days.
 const SLOW_MIN_STAY_MINUTES = 75;
@@ -27,6 +28,14 @@ const SLOW_MIN_STAY_MINUTES = 75;
 export default async function handler(req, res) {
   if (req.method !== 'POST') {
     return res.status(405).json({ error: 'Method not allowed' });
+  }
+
+  // Routes calls are cached per coordinate pair, so a real user rarely bills
+  // here, but a script posting random coordinates would. The client keeps the
+  // last travel times on a 429.
+  const limit = await checkRateLimit('travel', req);
+  if (!limit.allowed) {
+    return rateLimitResponse(res, limit);
   }
 
   const destination = req.body.destination;

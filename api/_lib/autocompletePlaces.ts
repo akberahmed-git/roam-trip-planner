@@ -1,3 +1,6 @@
+import { cached } from './kvCache.js';
+import { checkRateLimit } from './rateLimit.js';
+
 // Server-side proxy for Google Places Autocomplete (New). Keeps the API key
 // off the client, same pattern as verifyPlace.js and trendingLocations.js.
 //
@@ -266,9 +269,39 @@ function toTitleCase(str) {
     .join(' ')
 }
 
-// ── Google Places Autocomplete ───────────────────────────────────────────────
+// ── Google Places Autocomplete ────────────────────────────────────────────────
 // Standard city/region autocomplete. 'country' type excluded intentionally.
+//
+// Cached per lowercased input for 30 days and counted against the
+// autocomplete bucket only on a cache miss. Before this every keystroke burst
+// was a billed request and nothing capped it; "berl" answered the same way for
+// everyone, so it is answered once. Past the day's ceiling the box goes quiet
+// and the city can still be typed in full (Akber, 9 Sep 2026).
 async function googleAutocomplete(input) {
+  const key = input.toLowerCase();
+  let blocked = false;
+  const results = await cached(
+    'places:autocomplete:v1',
+    key,
+    async () => {
+      const limit = await checkRateLimit('autocomplete', null);
+      if (!limit.allowed) {
+        blocked = true;
+        return [];
+      }
+      return fetchGoogleAutocomplete(input);
+    },
+    { shouldCache: (r) => Array.isArray(r) && r.length > 0 }
+  );
+  if (blocked) {
+    const error: any = new Error('Autocomplete limit reached for today');
+    error.rateLimited = true;
+    throw error;
+  }
+  return results;
+}
+
+async function fetchGoogleAutocomplete(input) {
   const res = await fetch('https://places.googleapis.com/v1/places:autocomplete', {
     method: 'POST',
     headers: {

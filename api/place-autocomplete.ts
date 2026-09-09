@@ -15,6 +15,11 @@ export default async function handler(req, res) {
     const suggestions = await fetchDestinationSuggestions(input);
     res.status(200).json({ suggestions });
   } catch (error) {
+    // The client treats any non-OK answer as "no suggestions", which is the
+    // right degradation for a spent budget: the box goes quiet, typing works.
+    if (error.rateLimited) {
+      return res.status(429).json({ error: error.message, code: 'RATE_LIMITED', scope: 'global' });
+    }
     res.status(500).json({ error: error.message });
   }
 }
