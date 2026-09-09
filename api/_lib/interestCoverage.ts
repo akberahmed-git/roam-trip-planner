@@ -72,10 +72,62 @@ const INTEREST_SIGNALS = {
     types: ['night_club', 'bar'],
     keywords: ['nightclub', 'night club', 'cocktail', 'club', 'lounge', 'live music', 'jazz', 'karaoke'],
   },
+  // A staple on every destination. Meals never count (see satisfiesInterest),
+  // so this is for the food that is an activity: a market, a class, a tour.
+  'cuisine': {
+    types: ['food_court', 'market'],
+    keywords: ['food market', 'food hall', 'cooking class', 'food tour', 'street food', 'tasting', 'cuisine', 'gastronom'],
+  },
 };
 
 export function interestKey(interest) {
   return String(interest || '').trim().toLowerCase();
+}
+
+// Chips the app generates per destination ("Casino Gaming", "Yachting",
+// "Formula 1") used to be invisible here: no entry in the table, so no stop
+// ever satisfied them, so the one-per-day cap, the plan cap and the coverage
+// check all ran and did nothing. A Monaco plan shipped three casinos in a day
+// under a rule that says one (Akber, 9 Sep 2026).
+//
+// Two sources fill the gap. The interest-suggestion call now asks the model
+// for place types and keywords alongside each chip, cached with the chips for
+// a year, and the generation handler installs them here per request. Failing
+// that, the chip's own words are the keywords: "casino gaming" reads as
+// "casino" and "gaming", "yachting" also as "yacht".
+const dynamicSignals: Record<string, { types: string[]; keywords: string[]; not?: string[]; ignoreDescription?: boolean }> = {};
+
+export function setDynamicInterestSignals(signals) {
+  for (const key of Object.keys(dynamicSignals)) delete dynamicSignals[key];
+  if (!signals || typeof signals !== 'object') return;
+  for (const [label, value] of Object.entries(signals)) {
+    const v: any = value || {};
+    const types = Array.isArray(v.types) ? v.types.filter((t) => typeof t === 'string' && /^[a-z_]{3,40}$/.test(t)).slice(0, 8) : [];
+    const keywords = Array.isArray(v.keywords) ? v.keywords.map((k) => plain(k).trim()).filter((k) => k.length >= 3 && k.length <= 40).slice(0, 10) : [];
+    if (types.length === 0 && keywords.length === 0) continue;
+    dynamicSignals[interestKey(label)] = { types, keywords };
+  }
+}
+
+const DERIVE_STOP_WORDS = new Set(['and', 'the', 'for', 'with', 'local', 'culture', 'scene', 'experiences', 'experience', 'life', 'spots', 'tours', 'tour']);
+
+// Keywords straight from the chip label, for a chip nothing else describes.
+function derivedSignals(key) {
+  const words = key.split(/[^a-z0-9]+/).filter((w) => w.length >= 3 && !DERIVE_STOP_WORDS.has(w));
+  const keywords = new Set<string>();
+  for (const word of words) {
+    keywords.add(word);
+    if (word.endsWith('ing') && word.length >= 8) keywords.add(word.slice(0, -3));  // yachting -> yacht
+    if (word.endsWith('ies') && word.length >= 6) keywords.add(word.slice(0, -3) + 'y'); // wineries -> winery
+    else if (word.endsWith('s') && word.length >= 5) keywords.add(word.slice(0, -1));  // casinos -> casino
+  }
+  if (words.length > 1) keywords.add(words.join(' '));
+  return { types: [], keywords: [...keywords] };
+}
+
+function signalsFor(interest) {
+  const key = interestKey(interest);
+  return INTEREST_SIGNALS[key] || dynamicSignals[key] || (key ? derivedSignals(key) : null);
 }
 
 // Meals are excluded on purpose. A trip always has restaurants, and letting one
@@ -85,7 +137,7 @@ export function interestKey(interest) {
 export function satisfiesInterest(item, interest) {
   if (!item || item.type === 'accommodation' || item.mealType) return false;
 
-  const signals = INTEREST_SIGNALS[interestKey(interest)];
+  const signals = signalsFor(interest);
   if (!signals) return false;
 
   const types = Array.isArray(item.placeTypes) ? item.placeTypes : [];
@@ -138,9 +190,7 @@ function plain(value) {
 // across the whole trip rather than per day, matching what the prompt asks for:
 // a two-day trip cannot reasonably fit five interests into both days.
 export function uncoveredInterests(days, interests) {
-  const wanted = (Array.isArray(interests) ? interests : []).filter((interest) =>
-    INTEREST_SIGNALS[interestKey(interest)]
-  );
+  const wanted = (Array.isArray(interests) ? interests : []).filter((interest) => signalsFor(interest));
 
   return wanted.filter(
     (interest) => !days.some((day) => day.items.some((item) => satisfiesInterest(item, interest)))

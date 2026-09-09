@@ -26,7 +26,8 @@ import {
 } from './_lib/scheduleRealign.js';
 import { applyFixedSchedule, orderBlocksByOpeningHours, dedupeMeals, starvedBlocks, unsuitableStops, roomForAnotherStop, eveningInsertPoint, hasEnoughReviews, numberedStopCount, setReviewFloor, currentReviewFloor, isNightVenue, lastShortenedStops, MAX_NUMBERED_STOPS_PER_DAY } from './_lib/fixedSchedule.js';
 import { sortByBudgetFit, isOffBandDining } from './_lib/budgetFit.js';
-import { uncoveredInterests, satisfiesInterest, isEveningInterest, interestKey } from './_lib/interestCoverage.js';
+import { uncoveredInterests, satisfiesInterest, isEveningInterest, interestKey, setDynamicInterestSignals } from './_lib/interestCoverage.js';
+import { getInterestSignals } from './_lib/interestSuggestions.js';
 import { isDeclinedPlace } from './_lib/declinedPlaces.js';
 import { recordGeneration } from './_lib/stats.js';
 import { weekdayForDay, isOpenAt, closesAt, openThroughout } from './_lib/openingHours.js';
@@ -696,6 +697,63 @@ function longestSharedRun(a, b) {
     }
   }
   return best;
+}
+
+// Two Google listings for one venue: the square and the building on it, the
+// harbour and the marina in it. Place du Casino and Casino de Monte-Carlo
+// shipped on the same day with the same photo, fifty metres apart, and the
+// dedupe saw two place ids. Same photo is one venue, full stop. A shared name
+// word within 60 m is one venue only when the two also serve the same
+// interest, so Shibuya Sky and Shibuya Crossing, a building and the street
+// beside it, stay two stops (Akber, 9 Sep 2026).
+const SAME_VENUE_METERS = 60;
+const VENUE_STOP_WORDS = new Set(['the', 'and', 'del', 'della', 'delle', 'dei', 'di', 'da', 'de', 'du', 'des', 'la', 'le', 'les', 'el', 'los', 'las', 'von', 'der', 'die', 'das', 'of', 'in', 'on', 'at', 'place', 'plaza', 'piazza', 'square', 'street', 'road', 'centre', 'center', 'park']);
+function venueWords(name) {
+  return new Set(
+    String(name || '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase()
+      .split(/[^a-z0-9]+/).filter((w) => w.length >= 4 && !VENUE_STOP_WORDS.has(w))
+  );
+}
+function photoId(item) {
+  const url = String(item?.photoUrl || item?.availablePhotoUrl || '');
+  const m = url.match(/photos(?:%2F|\/)([A-Za-z0-9_-]{20,})/);
+  return m ? m[1] : null;
+}
+function sameVenue(a, b, interests = []) {
+  if (!a || !b) return false;
+  const pa = photoId(a), pb = photoId(b);
+  if (pa && pb && pa === pb) return true;
+  if (!a.location || !b.location) return false;
+  if (haversineMeters(a.location, b.location) > SAME_VENUE_METERS) return false;
+  const wa = venueWords(a.name);
+  if (![...venueWords(b.name)].some((w) => wa.has(w))) return false;
+  const served = (item) => (interests || []).filter((i) => satisfiesInterest({ ...item, placeTypes: item.placeTypes }, i));
+  // Only when both serve the same chip. Two generic stops that share a district
+  // name are not a duplicate; the photo rule above catches the real ones.
+  const sb = served(b);
+  return served(a).some((i) => sb.includes(i));
+}
+
+// Drops from `day` any stop that is the same venue as an earlier stop in the
+// trip (an earlier day, or earlier in this day). First occurrence stays; a
+// must-see is never the one dropped. Returns the names removed.
+function dropNearDuplicates(day, itinerary, pinned, interests = []) {
+  const isPinned = typeof pinned === 'function' ? pinned : () => false;
+  const earlier: any[] = [];
+  for (const d of itinerary?.days || []) {
+    if (d === day) break;
+    for (const it of d.items || []) if (it.type !== 'accommodation' && it.location) earlier.push(it);
+  }
+  const removed: string[] = [];
+  const kept: any[] = [];
+  for (const item of day.items || []) {
+    if (item.type === 'accommodation' || !item.location || isPinned(item)) { kept.push(item); continue; }
+    const twin = [...earlier, ...kept].find((other) => other !== item && other.type !== 'accommodation' && !other.mealType === !item.mealType && sameVenue(other, item, interests));
+    if (twin) removed.push(`${item.name} (same venue as ${twin.name})`);
+    else kept.push(item);
+  }
+  if (removed.length > 0) day.items = kept;
+  return removed;
 }
 
 function sharesBrand(name, usedBrands, neighbourhood) {
@@ -1639,7 +1697,7 @@ function interestsAtPlanCap(itinerary, interests) {
   const full = new Set<string>();
   if (!itinerary?.days) return full;
   for (const interest of interests || []) {
-    const cap = MAX_STOPS_PER_INTEREST_PER_PLAN[interestKey(interest)];
+    const cap = planCapFor(interest, itinerary);
     if (cap == null) continue;
     const serving = planActivities(itinerary).filter((item) =>
       satisfiesInterest({ ...item, placeTypes: item.placeTypes }, interest)
@@ -2148,6 +2206,22 @@ const MAX_STOPS_PER_INTEREST_PER_PLAN = {
   'temples & shrines': 1,
 };
 
+// Every other interest is capped across the plan too, scaled to its length:
+// one stop per chip on a one or two day trip, two on three or four days, three
+// on five or six. A Monaco weekend shipped three casinos and two yachting
+// stops because only the shrine had a plan cap; a flat one would starve a
+// week in Kyoto of the temples it asked for (Akber, 9 Sep 2026).
+export function planCapFor(interest, itinerary) {
+  const named = MAX_STOPS_PER_INTEREST_PER_PLAN[interestKey(interest)];
+  if (named != null) return named;
+  // Nightlife is positional, one venue after dinner on every night but the
+  // last, so a plan-wide count would fight the rule that puts it there.
+  if (isEveningInterest(interest)) return null;
+  const days = Array.isArray(itinerary?.days) ? itinerary.days.length : 0;
+  if (days === 0) return null;
+  return Math.max(1, Math.ceil(days / 2));
+}
+
 function planActivities(itinerary) {
   if (!itinerary?.days) return [];
   return itinerary.days
@@ -2159,7 +2233,7 @@ function planActivities(itinerary) {
 // best `cap` of them by review count, which is the only measure of which shrine
 // a traveller would actually be told to visit.
 function planKeepersFor(itinerary, interest) {
-  const cap = MAX_STOPS_PER_INTEREST_PER_PLAN[interestKey(interest)];
+  const cap = planCapFor(interest, itinerary);
   // No cap, or no plan-level view to enforce it against. Returning an empty set
   // for a missing itinerary would mark every stop surplus and empty the day.
   if (cap == null || !itinerary?.days) return null;
@@ -2251,7 +2325,7 @@ async function rebalanceInterests(day, { interests, anchor, usedPlaceIds, stay, 
   // short of, however few of it this particular day holds. Without this the
   // second pass below would go and buy the shrine the first pass just removed.
   const atPlanCap = (interest) => {
-    const cap = MAX_STOPS_PER_INTEREST_PER_PLAN[interestKey(interest)];
+    const cap = planCapFor(interest, itinerary);
     if (cap == null) return false;
     const across = itinerary
       ? planActivities(itinerary).filter((item) => servedBy(item, interest)).length
@@ -3284,6 +3358,12 @@ async function settleDay(day, context) {
   // where the hours check ran against the times the day will actually ship with
   // and found none (Akber, 8 Sep 2026).
   for (let round = 0; round < 5; round++) {
+    const twins = dropNearDuplicates(day, itinerary, pinned, interests);
+    if (twins.length > 0) {
+      console.info(`[generate-resolved-itinerary] day ${day.day}: dropped ${twins.length} repeat venue(s) ${label}: ${twins.join('; ')}`);
+      applyFixedSchedule(day, options);
+    }
+
     const rebalanced = await rebalanceInterests(day, { interests, anchor, usedPlaceIds, stay, transport, itinerary, weekday, pinned });
     if (rebalanced.length > 0) {
       console.info(
@@ -3525,6 +3605,11 @@ export default async function handler(req, res) {
 
   resetPlacesOutage();
   resetPlacesUsage();
+  // The chips this city was offered, with the place types and keywords that
+  // let the balancing rules recognise them. Null for a pinned city (Tokyo's
+  // chips are in the static table) or one that skipped the picker, in which
+  // case the chip's own words are used (see interestCoverage.ts).
+  setDynamicInterestSignals(await getInterestSignals(destination));
 
   let raw;
   let anchor;

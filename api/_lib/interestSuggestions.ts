@@ -101,6 +101,24 @@ function saveCache(cache) {
 // here to remove (Akber, 8 Sep 2026).
 const INTEREST_CACHE_TTL_SECONDS = 60 * 60 * 24 * 365;
 
+// v2: the entry now carries `signals` (place types and keywords per chip) so the
+// itinerary rules can recognise the chips. Bumping the namespace regenerates
+// every city once, with the signals (Akber, 9 Sep 2026).
+const INTEREST_CACHE_NAMESPACE = 'interests:v2';
+
+// What the balancing rules need to recognise a chip in a list of real places.
+// Read by the generation handler; null when the city has never been through
+// getInterestSuggestions (a pinned city, or a request that skipped the picker).
+export async function getInterestSignals(destination) {
+  const cacheKey = String(destination || '').trim().toLowerCase();
+  if (!cacheKey) return null;
+  const entry = await cached(INTEREST_CACHE_NAMESPACE, cacheKey, async () => null, {
+    shouldCache: () => false,
+    ttl: INTEREST_CACHE_TTL_SECONDS,
+  }).catch(() => null);
+  return entry && typeof entry === 'object' && entry.signals ? entry.signals : null;
+}
+
 const PINNED_INTERESTS = {
   'tokyo, japan': ['Temples & Shrines', 'Anime & Pop Culture', 'Nightlife', 'Modern Architecture'],
   tokyo: ['Temples & Shrines', 'Anime & Pop Culture', 'Nightlife', 'Modern Architecture'],
@@ -119,7 +137,7 @@ export async function getInterestSuggestions(destination) {
   // request regenerated - which is why the same city offered different chips on
   // every visit. KV is shared across instances and survives a deploy, so a city
   // is generated once and then reads the same for everyone.
-  const fromKv = await cached('interests', cacheKey, async () => null, {
+  const fromKv = await cached(INTEREST_CACHE_NAMESPACE, cacheKey, async () => null, {
     shouldCache: () => false,
     ttl: INTEREST_CACHE_TTL_SECONDS,
   }).catch(() => null);
@@ -155,10 +173,16 @@ Generate exactly 7 additional interest categories that are specifically well-sui
 
 Separately, decide one boolean: does this destination have a genuine, culturally appropriate nightlife scene - bars, clubs, live-music venues or a late-night going-out culture that locals and visitors actually use? Set "hasNightlife" to true only when that is really the case. For destinations where late-night or alcohol-centred venues are not part of the culture, or that are quiet/rural without a real night-out scene, set it to false. This is the same cultural-fit judgment as rule 1, applied specifically to nightlife.
 
+For each of the 7 categories, also say how to recognise a matching place in a list of Google Places results: up to 4 Google Places API place types (snake_case, only real types such as casino, marina, stadium, winery, spa, zoo, aquarium, amusement_park, art_gallery, museum, park, beach, hiking_area, tourist_attraction, historical_landmark, market, shopping_mall, night_club, bar; leave the list empty if no type fits) and 3 to 6 short lowercase keywords that would appear in such a place's name or description.
+
 Respond with ONLY valid JSON, no markdown formatting, no code fences, no commentary. Use this exact structure:
 
 {
   "interests": ["Temples", "Street food", "Markets", "Nature", "Architecture", "Tea houses", "Gardens"],
+  "signals": {
+    "Temples": { "types": ["hindu_temple", "buddhist_temple", "place_of_worship"], "keywords": ["temple", "shrine", "pagoda"] },
+    "Street food": { "types": ["food_court", "market"], "keywords": ["street food", "hawker", "food stall", "night market"] }
+  },
   "hasNightlife": true
 }`;
 
@@ -173,7 +197,7 @@ Respond with ONLY valid JSON, no markdown formatting, no code fences, no comment
   // remaining lever for "waiting on the actual generation call" itself.
   const message = await anthropic.messages.create({
     model: 'claude-haiku-4-5-20251001',
-    max_tokens: 512,
+    max_tokens: 1200,
     messages: [{ role: 'user', content: prompt }],
   });
 
@@ -228,16 +252,30 @@ Respond with ONLY valid JSON, no markdown formatting, no code fences, no comment
   // for a destination the model couldn't usefully classify. Cached like any
   // other result - a second request for the same destination should get the
   // same answer instantly, not pay for an identical generation call again.
+  // Signals only for the chips that survived the filter above, in a shape the
+  // coverage module validates again on its way in.
+  const signals = {};
+  const rawSignals = parsed.signals && typeof parsed.signals === 'object' ? parsed.signals : {};
+  for (const label of dynamic) {
+    const found = rawSignals[label] || rawSignals[Object.keys(rawSignals).find((k) => k.toLowerCase() === label.toLowerCase()) || ''];
+    if (!found || typeof found !== 'object') continue;
+    signals[label] = {
+      types: Array.isArray(found.types) ? found.types.filter((t) => typeof t === 'string').slice(0, 8) : [],
+      keywords: Array.isArray(found.keywords) ? found.keywords.filter((k) => typeof k === 'string').slice(0, 10) : [],
+    };
+  }
+
   const result = {
     interests: [
       ...STAPLE_INTERESTS,
       ...(hasNightlife ? ['Nightlife'] : []),
       ...dynamic,
     ],
+    signals,
   };
 
   // Written to KV first, since that is the copy that actually survives.
-  await cached('interests', cacheKey, async () => result, {
+  await cached(INTEREST_CACHE_NAMESPACE, cacheKey, async () => result, {
     ttl: INTEREST_CACHE_TTL_SECONDS,
   }).catch(() => {});
 
