@@ -3530,7 +3530,7 @@ export default async function handler(req, res) {
     // absolutely is something to act on.
     if (isCapacityError(error)) {
       console.error('[generate-resolved-itinerary] upstream capacity exhausted:', error.message);
-      await recordGeneration(req, { outcome: 'anthropic_capacity', ms: Date.now() - startedAt });
+      await recordGeneration(req, { outcome: 'anthropic_capacity', seconds: Math.round((Date.now() - startedAt) / 100) / 10 });
       return res.status(429).json({
         error:
           "Roam has reached its planning limit for now. Here's an example trip in the meantime.",
@@ -3538,7 +3538,7 @@ export default async function handler(req, res) {
         scope: 'capacity',
       });
     }
-    await recordGeneration(req, { outcome: 'error', ms: Date.now() - startedAt, error: String(error.message || '').slice(0, 120) });
+    await recordGeneration(req, { outcome: 'error', seconds: Math.round((Date.now() - startedAt) / 100) / 10, error: String(error.message || '').slice(0, 120) });
     if (error.rawText) {
       return res.status(500).json({ error: error.message, raw: error.rawText });
     }
@@ -3566,7 +3566,7 @@ export default async function handler(req, res) {
       console.error(
         `[generate-resolved-itinerary] Google Places refused ${refused.count} call(s) with HTTP ${refused.status}: ${refused.message}`
       );
-      await recordGeneration(req, { outcome: 'places_unavailable', ms: Date.now() - startedAt, googleCalls: currentPlacesUsage().billed });
+      await recordGeneration(req, { outcome: 'places_unavailable', seconds: Math.round((Date.now() - startedAt) / 100) / 10, googleCalls: currentPlacesUsage().billed });
       return res.status(503).json({
         error: `Google Places refused ${refused.count} lookups (HTTP ${refused.status}): ${refused.message}`,
         code: 'PLACES_UNAVAILABLE',
@@ -3575,7 +3575,7 @@ export default async function handler(req, res) {
     }
     await recordGeneration(req, {
       outcome: 'ok',
-      ms: Date.now() - startedAt,
+      seconds: Math.round((Date.now() - startedAt) / 100) / 10,
       googleCalls: currentPlacesUsage().billed,
       ...stopCount(raw),
     });
@@ -3585,7 +3585,7 @@ export default async function handler(req, res) {
     // passes each call out too, so credit can run dry after the draft succeeds.
     if (isCapacityError(error)) {
       console.error('[generate-resolved-itinerary] upstream capacity exhausted:', error.message);
-      await recordGeneration(req, { outcome: 'anthropic_capacity', ms: Date.now() - startedAt });
+      await recordGeneration(req, { outcome: 'anthropic_capacity', seconds: Math.round((Date.now() - startedAt) / 100) / 10 });
       return res.status(429).json({
         error:
           "Roam has reached its planning limit for now. Here's an example trip in the meantime.",
@@ -3593,7 +3593,7 @@ export default async function handler(req, res) {
         scope: 'capacity',
       });
     }
-    await recordGeneration(req, { outcome: 'error', ms: Date.now() - startedAt, error: String(error.message || '').slice(0, 120) });
+    await recordGeneration(req, { outcome: 'error', seconds: Math.round((Date.now() - startedAt) / 100) / 10, error: String(error.message || '').slice(0, 120) });
     res.status(500).json({ error: error.message });
   }
 }

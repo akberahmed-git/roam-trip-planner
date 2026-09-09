@@ -1,5 +1,5 @@
 import { timingSafeEqual } from 'node:crypto';
-import { recordEvent, readStats, toCsv } from './_lib/stats.js';
+import { recordEvent, readStats, toCsv, COLUMNS } from './_lib/stats.js';
 
 // POST: a beacon from the app (see src/utils/track.ts). No token, always 204.
 // GET:  the log, for the owner only. Needs STATS_TOKEN, set in Vercel and
@@ -44,7 +44,7 @@ export default async function handler(req, res) {
   if (req.query.format === 'csv') {
     res.setHeader('Content-Type', 'text/csv; charset=utf-8');
     res.setHeader('Content-Disposition', `attachment; filename="roam-${list}.csv"`);
-    return res.status(200).send(toCsv(rows));
+    return res.status(200).send(toCsv(rows, COLUMNS[list]));
   }
 
   res.status(200).json({ list, count: rows.length, rows });

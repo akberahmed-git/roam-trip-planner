@@ -1,6 +1,6 @@
 import { useEffect } from 'react'
 import { Analytics } from '@vercel/analytics/react'
-import { trackLanded } from './utils/track'
+import { trackLanded, trackLeaving } from './utils/track'
 import { BrowserRouter, Routes, Route, Navigate, useLocation } from 'react-router-dom'
 import { TripProvider } from './context/TripContext'
 import ScrollToTop from './components/ScrollToTop'
@@ -52,6 +52,7 @@ function AnimatedRoutes() {
 function App() {
   useEffect(() => {
     trackLanded()
+    trackLeaving()
   }, [])
 
   return (

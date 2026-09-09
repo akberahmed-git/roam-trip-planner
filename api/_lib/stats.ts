@@ -38,6 +38,33 @@ export function geoOf(req) {
   };
 }
 
+// Device, OS and browser from the User-Agent, coarse on purpose: "phone,
+// iOS, Safari" is the level worth reading, and it needs no library. The raw
+// string is not stored.
+export function deviceOf(req) {
+  const ua = String(header(req, 'user-agent') || '');
+  const device = /iPad|Tablet|Android(?!.*Mobile)/i.test(ua) ? 'tablet' : /Mobi|iPhone|Android/i.test(ua) ? 'phone' : ua ? 'desktop' : null;
+  const os = /iPhone|iPad|iPod/i.test(ua) ? 'iOS'
+    : /Android/i.test(ua) ? 'Android'
+    : /Windows/i.test(ua) ? 'Windows'
+    : /Mac OS X|Macintosh/i.test(ua) ? 'macOS'
+    : /CrOS/i.test(ua) ? 'ChromeOS'
+    : /Linux/i.test(ua) ? 'Linux'
+    : null;
+  const browser = /Edg\//i.test(ua) ? 'Edge'
+    : /OPR\/|Opera/i.test(ua) ? 'Opera'
+    : /SamsungBrowser/i.test(ua) ? 'Samsung'
+    : /Firefox|FxiOS/i.test(ua) ? 'Firefox'
+    : /CriOS|Chrome\//i.test(ua) ? 'Chrome'
+    : /Safari\//i.test(ua) ? 'Safari'
+    : ua ? 'other' : null;
+  return { device, os, browser };
+}
+
+function contextOf(req) {
+  return { ...geoOf(req), ...deviceOf(req) };
+}
+
 // The trip as requested, trimmed to the fields worth keeping and to sane
 // lengths, so a hostile body cannot fill the store with junk.
 export function describeRequest(body) {
@@ -67,13 +94,15 @@ async function push(key, entry) {
 // outcome: ok | rate_limited | places_unavailable | anthropic_capacity | error
 export async function recordGeneration(req, entry) {
   try {
-    await push(GENERATIONS_KEY, { at: new Date().toISOString(), ...geoOf(req), ...describeRequest(req.body), ...entry });
+    await push(GENERATIONS_KEY, { at: new Date().toISOString(), ...contextOf(req), ...describeRequest(req.body), ...entry });
   } catch {
     // Never let the log break a generation.
   }
 }
 
-const EVENTS = new Set(['landed', 'plan_started', 'generate', 'generated', 'rate_limited', 'saved', 'swap']);
+// 'left' fires when the tab is hidden or closed, carrying the seconds since
+// landing, which is the closest a beacon gets to "how long they spent".
+const EVENTS = new Set(['landed', 'plan_started', 'generate', 'generated', 'rate_limited', 'saved', 'swap', 'left']);
 const SESSION = /^[A-Za-z0-9-]{8,40}$/;
 
 // Beacons from src/utils/track.ts. Anything malformed is dropped silently; the
@@ -87,10 +116,10 @@ export async function recordEvent(req, body) {
   try {
     await push(EVENTS_KEY, {
       at: new Date().toISOString(),
-      ...geoOf(req),
+      ...contextOf(req),
       session,
       event,
-      elapsedMs: elapsed !== null && elapsed >= 0 && elapsed < 86400000 ? Math.round(elapsed) : null,
+      seconds: elapsed !== null && elapsed >= 0 && elapsed < 86400000 ? Math.round(elapsed / 100) / 10 : null,
       path: text(b.path, 80),
       destination: text(b.destination, 80),
     });
@@ -114,9 +143,16 @@ export async function readStats(list, limit) {
   return rows.map((row) => (typeof row === 'string' ? safeParse(row) : row)).filter((r) => r && typeof r === 'object');
 }
 
-export function toCsv(rows: Record<string, any>[]) {
-  if (rows.length === 0) return '';
-  const columns: string[] = [...new Set(rows.flatMap((r) => Object.keys(r)))];
+// Column order for the CSV, so the file reads the same every time and an
+// empty log still downloads with a header rather than as a blank file.
+export const COLUMNS = {
+  generations: ['at', 'city', 'region', 'country', 'device', 'os', 'browser', 'destination', 'days', 'startDate', 'endDate', 'budget', 'transport', 'interests', 'adults', 'accommodation', 'outcome', 'scope', 'seconds', 'googleCalls', 'stopsPacked', 'stopsSlow', 'error'],
+  events: ['at', 'city', 'region', 'country', 'device', 'os', 'browser', 'session', 'event', 'seconds', 'path', 'destination'],
+};
+
+export function toCsv(rows: Record<string, any>[], known: string[] = []) {
+  const extra = rows.flatMap((r) => Object.keys(r)).filter((k) => !known.includes(k));
+  const columns: string[] = [...new Set([...known, ...extra])];
   const cell = (v) => {
     const s = Array.isArray(v) ? v.join('; ') : v == null ? '' : String(v);
     return /[",\n]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s;

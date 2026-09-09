@@ -8,7 +8,7 @@ const SESSION_KEY = 'roam:session'
 const LANDED_KEY = 'roam:landedAt'
 const LANDED_SENT_KEY = 'roam:landedSent'
 
-type TrackEvent = 'landed' | 'plan_started' | 'generate' | 'generated' | 'rate_limited' | 'saved' | 'swap'
+type TrackEvent = 'landed' | 'plan_started' | 'generate' | 'generated' | 'rate_limited' | 'saved' | 'swap' | 'left'
 
 function randomId(): string {
   try {
@@ -57,6 +57,27 @@ export function track(event: TrackEvent, extra: { destination?: string } = {}) {
     }
   } catch {
     // Never let tracking touch the app.
+  }
+}
+
+// 'left' whenever the tab is hidden or closed, so the log holds how long the
+// visit lasted even when nothing was saved. Throttled: switching tabs ten
+// times should not write ten rows.
+let lastLeftAt = 0
+export function trackLeaving() {
+  const send = () => {
+    const now = Date.now()
+    if (now - lastLeftAt < 10000) return
+    lastLeftAt = now
+    track('left')
+  }
+  try {
+    document.addEventListener('visibilitychange', () => {
+      if (document.visibilityState === 'hidden') send()
+    })
+    window.addEventListener('pagehide', send)
+  } catch {
+    // ignore
   }
 }
 
