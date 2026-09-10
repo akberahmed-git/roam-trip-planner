@@ -67,11 +67,17 @@ None of this shows. That's the point. It just feels like the plan makes sense.
 
 ## Screenshots
 
-![Home](docs/home.png)
-![Compare two itineraries](docs/comparison.png)
-![Map view](docs/map.png)
-![Swap a place](docs/swap.png)
-![Finalise and save](docs/finalise.png)
+<p align="center">
+  <img src="docs/home.png" width="400" alt="Home">
+  <img src="docs/comparison.png" width="400" alt="Compare two itineraries">
+</p>
+<p align="center">
+  <img src="docs/map.png" width="400" alt="Map view">
+  <img src="docs/swap.png" width="400" alt="Swap a place">
+</p>
+<p align="center">
+  <img src="docs/finalise.png" width="400" alt="Finalise and save">
+</p>
 
 ## Running it locally
 
