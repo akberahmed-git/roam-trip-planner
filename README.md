@@ -75,9 +75,6 @@ None of this shows. That's the point. It just feels like the plan makes sense.
   <img src="docs/map.png" width="400" alt="Map view">
   <img src="docs/swap.png" width="400" alt="Swap a place">
 </p>
-<p align="center">
-  <img src="docs/finalise.png" width="400" alt="Finalise and save">
-</p>
 
 ## Running it locally
 
