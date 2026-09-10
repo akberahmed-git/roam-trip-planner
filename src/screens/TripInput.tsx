@@ -9,6 +9,7 @@ import DateRangePicker from '../components/DateRangePicker'
 import SegmentedControl from '../components/SegmentedControl'
 import { toLocalISODate, MAX_TRIP_DAYS } from '../utils/date'
 import LimitReached from '../components/LimitReached'
+import { track } from '../utils/track'
 
 // Always shown first, in this order, for every destination - the only
 // categories universal enough that they never need a per-destination call
@@ -226,9 +227,18 @@ export default function TripInput() {
   // DestinationAutocomplete calls this with isSelection=true when the
   // change came from picking a suggestion (click or Enter) rather than a
   // keystroke - see skipDebounceRef above for why that distinction matters.
+  // Sent once per visit, on the first character typed into the destination.
+  // Without it the log could not tell someone who never touched the form from
+  // someone who typed a city and gave up at the chips (Akber, 10 Sep 2026).
+  const planStartedRef = useRef(false)
+
   function handleDestinationChange(value: string, isSelection?: boolean) {
     if (isSelection) {
       skipDebounceRef.current = true
+    }
+    if (!planStartedRef.current && value.trim().length > 0) {
+      planStartedRef.current = true
+      track('plan_started')
     }
     setDestination(value)
   }
