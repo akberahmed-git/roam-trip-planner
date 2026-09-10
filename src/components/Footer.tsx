@@ -5,11 +5,12 @@ import { Link } from 'react-router-dom'
 // Accommodation frame). Matches Figma's structure exactly: three link columns,
 // a divider, and a copyright line.
 //
-// "Plan a trip" and "Map view" are now real links - both have screens, and
-// rendering them as plain <span> meant they looked exactly like links, invited
-// a click, and did nothing. Help, About and Settings stay as spans because
-// they still have no screen behind them: a dead <Link> would be worse than
-// text that was never clickable.
+// "Plan a trip" is the one real link. "Map view" went back to a span: the map
+// needs a plan to draw, so from the footer it landed on an empty screen. Help,
+// About and Settings stay as spans because they still have no screen behind
+// them: a dead <Link> would be worse than text that was never clickable. None
+// of the five is underlined; the link reads as one from its hover colour
+// (Akber, 10 Sep 2026).
 export default function Footer() {
   return (
     <footer className="app-footer">
@@ -23,7 +24,7 @@ export default function Footer() {
             <div className="app-footer__column">
               <span className="app-footer__heading">Explore</span>
               <Link className="app-footer__link" to="/trip-input">Plan a trip</Link>
-              <Link className="app-footer__link" to="/map">Map view</Link>
+              <span className="app-footer__link">Map view</span>
             </div>
             <div className="app-footer__column">
               <span className="app-footer__heading">Support</span>

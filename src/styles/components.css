@@ -2418,6 +2418,15 @@ h1 {
   font-weight: var(--font-weight-medium);
   font-size: var(--font-size-small);
   color: var(--text-tertiary);
+  text-decoration: none;
+}
+
+/* Only the real link reacts. Help, About and Settings are spans with no
+   screen behind them, and a hover state would promise a click that does
+   nothing (Akber, 10 Sep 2026). */
+a.app-footer__link:hover,
+a.app-footer__link:focus-visible {
+  color: var(--text-primary);
 }
 
 .app-footer__divider {
