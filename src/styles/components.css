@@ -281,6 +281,10 @@ h1 {
   padding: var(--spacing-4);
   text-decoration: none;
   color: inherit;
+  /* On the base class, not only the button variant: the Settings / Help /
+     About rows are plain <div>s now, and iOS only gives a pressed state to
+     an element it treats as clickable. */
+  cursor: pointer;
   transition: box-shadow var(--duration-fast) var(--easing-standard),
     background-color var(--duration-fast) var(--easing-standard);
 }

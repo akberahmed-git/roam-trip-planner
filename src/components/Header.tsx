@@ -1,4 +1,4 @@
-import { Link } from 'react-router-dom'
+import { Link, useLocation } from 'react-router-dom'
 
 function RoamLogoIcon() {
   return (
@@ -12,17 +12,36 @@ function RoamLogoIcon() {
 }
 
 export default function Header() {
+  // Both controls go Home. On Home itself that is a navigation to the page
+  // already showing, which only replays the screen's enter animation, so
+  // there they are plain elements instead (Akber, 10 Sep 2026).
+  const onHome = useLocation().pathname === '/'
   return (
     <header className="app-header">
-      <Link to="/" className="app-header__logo">
-        <RoamLogoIcon />
-        Roam
-      </Link>
-      <Link to="/" className="app-header__menu" aria-label="Menu">
-        <span />
-        <span />
-        <span />
-      </Link>
+      {onHome ? (
+        <span className="app-header__logo">
+          <RoamLogoIcon />
+          Roam
+        </span>
+      ) : (
+        <Link to="/" className="app-header__logo">
+          <RoamLogoIcon />
+          Roam
+        </Link>
+      )}
+      {onHome ? (
+        <span className="app-header__menu" aria-label="Menu">
+          <span />
+          <span />
+          <span />
+        </span>
+      ) : (
+        <Link to="/" className="app-header__menu" aria-label="Menu">
+          <span />
+          <span />
+          <span />
+        </Link>
+      )}
     </header>
   )
 }

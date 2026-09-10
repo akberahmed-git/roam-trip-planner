@@ -9,10 +9,15 @@ import { getSavedTrips } from '../utils/savedTrips'
 import { DEMO_TRIPS } from '../data/demoTrips'
 import type { DemoTrip, SavedTrip, TrendingLocation } from '../types'
 
+// No screens behind these yet. They used to be <Link to="/">, which pushed a
+// new history entry for the page you were already on, and the route wrapper
+// replayed its enter animation: tap Settings, the whole screen shrinks and
+// grows back, nothing else happens. Plain rows now: hover and pressed states
+// stay, the page does not move (Akber, 10 Sep 2026).
 const MENU_ITEMS = [
-  { label: 'Settings', to: '/', icon: SettingsIcon },
-  { label: 'Help', to: '/', icon: HelpIcon },
-  { label: 'About', to: '/', icon: InfoIcon },
+  { label: 'Settings', icon: SettingsIcon },
+  { label: 'Help', icon: HelpIcon },
+  { label: 'About', icon: InfoIcon },
 ]
 
 function SparkleIcon() {
@@ -329,13 +334,13 @@ export default function Home() {
               {MENU_ITEMS.map((item) => {
                 const ItemIcon = item.icon
                 return (
-                  <Link className="list-row" to={item.to} key={item.label}>
+                  <div className="list-row" key={item.label}>
                     <ItemIcon />
                     <span className="list-row__title" style={{ flex: 1 }}>{item.label}</span>
                     <span className="list-row__chevron">
                       <ChevronIcon direction="right" />
                     </span>
-                  </Link>
+                  </div>
                 )
               })}
             </div>
