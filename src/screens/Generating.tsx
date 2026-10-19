@@ -89,14 +89,19 @@ export default function Generating() {
   }
 
   if (status === 'error') {
+    if (errorMessage) console.error('[Roam] generation failed:', errorMessage)
     return (
       <div>
         <Header />
         <div className="screen">
           <div className="container stack">
             <h1>We hit a snag</h1>
+            {/* Plain language only. The technical reason (an API error body,
+                a parse failure) means nothing to a traveller and read as
+                broken; it goes to the console instead, and the server logs
+                carry the full detail. */}
             <p className="error-banner">
-              {errorMessage || "We couldn't generate your itinerary. Please try again."}
+              We couldn't put your trip together this time. Please try again in a moment.
             </p>
             <div className="stack" style={{ flexDirection: 'row', gap: 'var(--spacing-3)' }}>
               <button type="button" className="button-primary" onClick={handleRetry}>

@@ -343,14 +343,35 @@ function validateMeals(parsed, checkDuplicates) {
   }
 }
 
+// Parses the model's reply as JSON. Tries the reply as-is first, then the span
+// from the first "{" to the last "}", which recovers a reply that wrapped the
+// JSON in a sentence of prose despite the prompt asking it not to. Returns
+// undefined when neither parses.
+function parseItineraryJson(rawText) {
+  try {
+    return JSON.parse(rawText);
+  } catch {
+    const start = rawText.indexOf('{');
+    const end = rawText.lastIndexOf('}');
+    if (start === -1 || end <= start) return undefined;
+    try {
+      return JSON.parse(rawText.slice(start, end + 1));
+    } catch {
+      return undefined;
+    }
+  }
+}
+
 async function callClaude(prompt) {
-  // One variant per call: 3 days × ~6 items × ~175 tokens/item ≈ 3,150 tokens.
-  // 8192 gives real headroom; Haiku's output limit is 8192 max_tokens so this
-  // is also the ceiling - but a single variant at 3 days fits comfortably.
+  // One variant per call: 3 days × ~6 items × ~175 tokens/item ≈ 3,150 tokens,
+  // more for longer trips. Haiku 4.5 allows far more than 8,192 output tokens,
+  // and the old 8,192 cap was a self-imposed ceiling: a reply that hit it came
+  // back cut off mid-object and failed as "not valid JSON" with no sign that
+  // truncation was the cause. The cap only costs anything when it is reached.
   async function attempt(checkDuplicates) {
     const message = await anthropic.messages.create({
       model: 'claude-haiku-4-5',
-      max_tokens: 8192,
+      max_tokens: 16000,
       messages: [
         { role: 'user', content: prompt }
       ],
@@ -358,17 +379,27 @@ async function callClaude(prompt) {
 
     // Content blocks are a union; only a text block has `.text` - narrow first.
     const firstBlock = message.content[0];
-    let rawText = (firstBlock.type === 'text' ? firstBlock.text : '').trim();
+    let rawText = (firstBlock && firstBlock.type === 'text' ? firstBlock.text : '').trim();
     if (rawText.startsWith('```')) {
       rawText = rawText.replace(/^```(?:json)?\s*/, '').replace(/```\s*$/, '');
     }
 
-    let parsed;
-    try {
-      parsed = JSON.parse(rawText);
-    } catch (parseError) {
-      const err = new Error('Claude did not return valid JSON') as Error & { rawText?: string };
+    const truncated = message.stop_reason === 'max_tokens';
+    const parsed = truncated ? undefined : parseItineraryJson(rawText);
+    if (parsed === undefined) {
+      // Logged so a one-off failure leaves a trace in the Vercel logs: the stop
+      // reason says whether the reply was cut off or simply malformed, and the
+      // two ends of the text show where it went wrong.
+      console.error(
+        `[generateRawItinerary] unparseable reply (stop_reason=${message.stop_reason}, ` +
+        `output_tokens=${message.usage?.output_tokens}, chars=${rawText.length})\n` +
+        `start: ${rawText.slice(0, 300)}\nend: ${rawText.slice(-300)}`
+      );
+      const err = new Error(
+        truncated ? 'Claude reply was cut off before the itinerary finished' : 'Claude did not return valid JSON'
+      ) as Error & { rawText?: string; jsonParseFailed?: boolean };
       err.rawText = rawText;
+      err.jsonParseFailed = true;
       throw err;
     }
 
@@ -381,9 +412,14 @@ async function callClaude(prompt) {
   try {
     return await attempt(true);
   } catch (err) {
-    // Only auto-retry meal validation failures - JSON parse errors are
-    // unlikely to self-correct on a second attempt with the same prompt.
-    if (!err.mealValidationFailed) throw err;
+    // Retry once on a meal validation failure or an unparseable reply. Parse
+    // failures were once assumed not to self-correct, but they are sporadic:
+    // the same Kathmandu trip that failed on 19 Oct 2026 generated cleanly on
+    // the next attempt. Anything else (auth, capacity, network) is rethrown.
+    if (!err.mealValidationFailed && !err.jsonParseFailed) throw err;
+    if (err.jsonParseFailed) {
+      console.warn('[generateRawItinerary] retrying once after an unparseable reply');
+    }
 
     // The retry no longer rejects a duplicated meal. A missing meal is worth
     // failing over because the day is genuinely incomplete, but a day with two
